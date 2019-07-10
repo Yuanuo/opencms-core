@@ -28,9 +28,11 @@
 package org.opencms.db;
 
 import org.opencms.main.CmsLog;
+import org.opencms.util.CmsFileUtil;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -161,6 +163,20 @@ public class CmsExportPointDriver implements I_CmsExportPointDriver {
      */
     public void writeFile(String resourceName, String exportpoint, byte[] content) {
 
+        writeResource(resourceName, exportpoint, CmsFileUtil.toStream(content));
+    }
+
+    /**
+     * Writes the file with the given root path to the real file system.<p>
+     *
+     * If required, missing parent folders in the real file system are automatically created.<p>
+     *
+     * @param resourceName the root path of the file to write
+     * @param exportpoint the export point to write file to
+     * @param content the contents of the file to write
+     */
+    public void writeFile(String resourceName, String exportpoint, InputStream content) {
+        
         writeResource(resourceName, exportpoint, content);
     }
 
@@ -186,6 +202,16 @@ public class CmsExportPointDriver implements I_CmsExportPointDriver {
      * @param content the file content
      */
     protected void writeResource(File file, byte[] content) {
+        writeResource(file, CmsFileUtil.toStream(content));
+    }
+
+    /**
+     * Writes file data to the RFS.<p>
+     *
+     * @param file the RFS file location
+     * @param content the file content
+     */
+    protected void writeResource(File file, InputStream content) {
 
         try {
             File folder;
@@ -206,9 +232,7 @@ public class CmsExportPointDriver implements I_CmsExportPointDriver {
             }
             if (content != null) {
                 // now write the file to the real file system
-                OutputStream s = new FileOutputStream(file);
-                s.write(content);
-                s.close();
+                CmsFileUtil.copy(content, file);
             }
         } catch (Exception e) {
             LOG.error(
@@ -224,7 +248,7 @@ public class CmsExportPointDriver implements I_CmsExportPointDriver {
      * @param exportpoint the name of the export point
      * @param content the contents of the file to write
      */
-    protected void writeResource(String resourceName, String exportpoint, byte[] content) {
+    protected void writeResource(String resourceName, String exportpoint, InputStream content) {
 
         File file = getExportPointFile(resourceName, exportpoint);
         writeResource(file, content);

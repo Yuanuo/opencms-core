@@ -29,6 +29,8 @@ package org.opencms.configuration;
 
 import org.opencms.file.CmsProperty;
 import org.opencms.file.collectors.I_CmsResourceCollector;
+import org.opencms.file.content.CmsFileContentManager;
+import org.opencms.file.content.I_CmsFileContentDriver;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
@@ -188,6 +190,13 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
     /** The namegenerator node name. */
     private static final String N_NAMEGENERATOR = "namegenerator";
 
+    /** The filecontents node name. */
+    private static final String N_FILECONTENT = "*/" + N_VFS + "/filecontent/";
+
+    /** The filecontent node name. */
+    private static final String N_FILECONTENT_HANDLE = "*/" + N_VFS + "/filecontent/handle";
+
+
     /** The configured XML content type manager. */
     CmsXmlContentTypeManager m_xmlContentTypeManager;
 
@@ -214,6 +223,9 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
 
     /** The list of XSD translations. */
     private List<String> m_xsdTranslations;
+
+    /** The file content manager. */
+    private CmsFileContentManager m_fileContentManager;
 
     /**
      * Adds the resource type rules to the given digester.<p>
@@ -572,6 +584,34 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
             "*/" + N_VFS + "/" + N_XMLCONTENT + "/" + N_SCHEMATYPES + "/" + N_SCHEMATYPE,
             1,
             A_DEFAULTWIDGET);
+
+        // add rules for file content
+        addFileContentHandleRules(digester);
+    }
+
+    private void addFileContentHandleRules(Digester digester) {
+        // file content handle creation rules
+        digester.addObjectCreate(N_FILECONTENT, CmsFileContentManager.class);
+        digester.addSetNext(N_FILECONTENT, "setFileContentManager", CmsFileContentManager.Handle.class.getName());
+
+        digester.addObjectCreate(N_FILECONTENT_HANDLE, CmsFileContentManager.Handle.class);
+        digester.addSetNext(N_FILECONTENT_HANDLE, "addHandle", CmsFileContentManager.Handle.class.getName());
+
+        digester.addObjectCreate(N_FILECONTENT_HANDLE + "/driver", CmsConfigurationException.class.getName(), A_CLASS);
+        digester.addSetNext(N_FILECONTENT_HANDLE + "/driver", "setDriver", I_CmsFileContentDriver.class.getName());
+
+        digester.addCallMethod(N_FILECONTENT_HANDLE + "/driver/param", "addConfigurationParameter", 2);
+        digester.addCallParam(N_FILECONTENT_HANDLE + "/driver/param", 0, A_NAME);
+        digester.addCallParam(N_FILECONTENT_HANDLE + "/driver/param", 1);
+
+        digester.addCallMethod(N_FILECONTENT_HANDLE + "/extension", "addExtension", 1);
+        digester.addCallParam(N_FILECONTENT_HANDLE + "/extension", 0, "value");
+
+        digester.addCallMethod(N_FILECONTENT_HANDLE + "/minlength", "setMinlength", 1, new Class<?>[] {Long.class});
+        digester.addCallParam(N_FILECONTENT_HANDLE + "/minlength", 0, "value");
+
+        digester.addCallMethod(N_FILECONTENT_HANDLE + "/maxlength", "setMaxlength", 1, new Class<?>[] {Long.class});
+        digester.addCallParam(N_FILECONTENT_HANDLE + "/maxlength", 0, "value");
     }
 
     /**
@@ -735,6 +775,9 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
                 type.getClass().getName()).addAttribute(A_DEFAULTWIDGET, widget.getClass().getName());
         }
 
+        // filecontent
+        m_fileContentManager.generateXml(vfs.addElement("filecontent"));
+
         // return the vfs node
         return vfs;
     }
@@ -811,6 +854,11 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
     public CmsXmlContentTypeManager getXmlContentTypeManager() {
 
         return m_xmlContentTypeManager;
+    }
+
+    public CmsFileContentManager getFileContentManager() {
+
+        return m_fileContentManager;
     }
 
     /**
@@ -893,6 +941,16 @@ public class CmsVfsConfiguration extends A_CmsXmlConfiguration {
             CmsLog.INIT.info(Messages.get().getBundle().key(Messages.INIT_VFS_XML_CONTENT_FINISHED_0));
         }
         m_xmlContentTypeManager = manager;
+    }
+
+    /**
+     * Sets the file content manager.<p>
+     *
+     * @param manager the filecontent manager to set
+     */
+    public void setFileContentManager(CmsFileContentManager manager) {
+
+        this.m_fileContentManager = manager;
     }
 
     /**

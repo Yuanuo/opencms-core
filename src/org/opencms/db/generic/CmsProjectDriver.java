@@ -873,7 +873,7 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
         String poolUrl = configuration.get("db.project.pool");
         String classname = configuration.get("db.project.sqlmanager");
         m_sqlManager = initSqlManager(classname);
-        m_sqlManager.init(I_CmsProjectDriver.DRIVER_TYPE_ID, poolUrl);
+        m_sqlManager.init(I_CmsProjectDriver.DRIVER_TYPE_ID, poolUrl, driverManager);
 
         m_driverManager = driverManager;
 
@@ -1011,7 +1011,7 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
                     if (offlineResource.isFile()) {
                         CmsFile offlineFile = new CmsFile(offlineResource);
                         offlineFile.setContents(
-                            vfsDriver.readContent(dbc, dbc.currentProject().getUuid(), offlineFile.getResourceId()));
+                            vfsDriver.readContent(dbc, dbc.currentProject().getUuid(), offlineFile));
                         internalWriteHistory(
                             dbc,
                             offlineFile,
@@ -1353,15 +1353,8 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
         try {
             // read the file content offline
             CmsUUID projectId = dbc.getProjectId();
-            boolean dbcHasProjectId = (projectId != null) && !projectId.isNullUUID();
-            CmsUUID projectIdForReading = (!dbcHasProjectId ? offlineProject.getUuid() : CmsProject.ONLINE_PROJECT_ID);
             dbc.setProjectId(offlineProject.getUuid());
-            byte[] offlineContent = m_driverManager.getVfsDriver(dbc).readContent(
-                dbc,
-                projectIdForReading,
-                offlineResource.getResourceId());
             CmsFile offlineFile = new CmsFile(offlineResource);
-            offlineFile.setContents(offlineContent);
             dbc.setProjectId(projectId);
 
             // create the file online
@@ -1396,7 +1389,7 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
                     m_driverManager.getVfsDriver(dbc).createSibling(dbc, onlineProject, offlineResource);
                 }
                 newFile = new CmsFile(offlineResource);
-                newFile.setContents(offlineContent);
+                //newFile.setContents(offlineContent);
             } else {
                 // update the online/offline structure and resource records of the file
                 m_driverManager.getVfsDriver(dbc).publishResource(dbc, onlineProject, newFile, offlineFile);
@@ -1404,11 +1397,17 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
             // update version numbers
             m_driverManager.getVfsDriver(dbc).publishVersions(dbc, offlineResource, !alreadyPublished);
 
+            // *** 
+            // Let FileContentDriver automatic processing may be better,
+            // This eliminates the need to read data into memory ahead of time.
+            // For example, if it is local storage or other implementation,
+            // The specific implementation can automatically convert the source data to the target data.
+            // ***
             // create/update the content
             m_driverManager.getVfsDriver(dbc).createOnlineContent(
                 dbc,
-                offlineFile.getResourceId(),
-                offlineFile.getContents(),
+                offlineFile,
+                null, // see comments above
                 publishTag,
                 true,
                 needToUpdateContent);
@@ -2937,7 +2936,7 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
             String sql = m_sqlManager.readQuery("C_USER_PUBLISH_LIST_INSERT_3");
             stmt = m_sqlManager.getPreparedStatementForSql(conn, sql);
             for (CmsUserPublishListEntry entry : publishListAdditions) {
-                stmt.setString(1, entry.getUserId().toString());
+                stmt.setString(1, entry.getUserId() != null ? entry.getUserId().toString() : null);
                 stmt.setString(2, entry.getStructureId().toString());
                 stmt.setLong(3, entry.getDateChanged());
                 stmt.addBatch();
@@ -3514,7 +3513,8 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
         }
 
         CmsFile offlineFile = new CmsFile(offlineResource);
-        offlineFile.setContents(newFile.getContents());
+        //The next step does not require file contents.
+        // offlineFile.setContents(newFile.getContents());
         internalWriteHistory(dbc, offlineFile, resourceState, offlineProperties, publishHistoryId, publishTag);
 
         m_driverManager.getVfsDriver(dbc).updateRelations(dbc, onlineProject, offlineResource);
@@ -3581,7 +3581,7 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
             m_driverManager.getVfsDriver(dbc).readContent(
                 dbc,
                 dbc.currentProject().getUuid(),
-                offlineFile.getResourceId()));
+                offlineFile));
         internalWriteHistory(dbc, offlineFile, resourceState, null, publishHistoryId, publishTag);
 
         int propertyDeleteOption = -1;
@@ -3844,7 +3844,8 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
         }
 
         CmsFile offlineFile = new CmsFile(offlineResource);
-        offlineFile.setContents(newFile.getContents());
+        //The next step does not require file contents.
+        //offlineFile.setContents(newFile.getContents());
         internalWriteHistory(dbc, offlineFile, resourceState, offlineProperties, publishHistoryId, publishTag);
 
         m_driverManager.getVfsDriver(dbc).updateRelations(dbc, onlineProject, offlineResource);

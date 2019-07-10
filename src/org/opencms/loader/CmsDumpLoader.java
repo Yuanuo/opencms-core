@@ -35,11 +35,13 @@ import org.opencms.flex.CmsFlexController;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.workplace.CmsWorkplaceManager;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Iterator;
 import java.util.Locale;
 
@@ -228,13 +230,8 @@ public class CmsDumpLoader implements I_CmsResourceLoader {
             return;
         }
 
-        // make sure we have the file contents available
-        CmsFile file = cms.readFile(resource);
-
         // set response status to "200 - OK" (required for static export "on-demand")
         res.setStatus(HttpServletResponse.SC_OK);
-        // set content length header
-        res.setContentLength(file.getContents().length);
 
         if (CmsWorkplaceManager.isWorkplaceUser(req)) {
             // prevent caching for Workplace users
@@ -242,7 +239,7 @@ public class CmsDumpLoader implements I_CmsResourceLoader {
             CmsRequestUtil.setNoCacheHeaders(res);
         } else {
             // set date last modified header
-            res.setDateHeader(CmsRequestUtil.HEADER_LAST_MODIFIED, file.getDateLastModified());
+            res.setDateHeader(CmsRequestUtil.HEADER_LAST_MODIFIED, resource.getDateLastModified());
 
             // set "Expires" only if cache control is not already set
             if (!res.containsHeader(CmsRequestUtil.HEADER_CACHE_CONTROL)) {
@@ -256,7 +253,7 @@ public class CmsDumpLoader implements I_CmsResourceLoader {
             }
         }
 
-        service(cms, file, req, res);
+        service(cms, resource, req, res);
     }
 
     /**
@@ -265,7 +262,18 @@ public class CmsDumpLoader implements I_CmsResourceLoader {
     public void service(CmsObject cms, CmsResource resource, ServletRequest req, ServletResponse res)
     throws CmsException, IOException {
 
-        res.getOutputStream().write(cms.readFile(resource).getContents());
+        //use stream for support large size content
+        InputStream inStream = cms.readFileContentAsStream(resource);
+        
+        // set content length header
+        if(res instanceof HttpServletResponse)
+            CmsFileUtil.setContentLength((HttpServletResponse)res, inStream);
+
+        try {
+            CmsFileUtil.copy(inStream, res.getOutputStream());
+        } finally {
+            inStream.close();
+        }
     }
 
     /**

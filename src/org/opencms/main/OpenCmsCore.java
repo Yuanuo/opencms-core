@@ -58,6 +58,7 @@ import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsUser;
 import org.opencms.file.CmsVfsResourceNotFoundException;
+import org.opencms.file.content.CmsFileContentManager;
 import org.opencms.flex.CmsFlexCache;
 import org.opencms.flex.CmsFlexCacheConfiguration;
 import org.opencms.flex.CmsFlexController;
@@ -328,6 +329,9 @@ public final class OpenCmsCore {
 
     /** The XML content type manager that contains the initialized XML content types. */
     private CmsXmlContentTypeManager m_xmlContentTypeManager;
+
+    /** The filecontent manager */
+    private CmsFileContentManager m_fileContentManager;
 
     /**
      * Protected constructor that will initialize the singleton OpenCms instance
@@ -741,6 +745,16 @@ public final class OpenCmsCore {
     protected CmsResourceManager getResourceManager() {
 
         return m_resourceManager;
+    }
+
+    /**
+     * Returns the filecontent manager.<p>
+     *
+     * @return the filecontent manager
+     */
+    protected CmsFileContentManager getFileContentManager() {
+
+        return m_fileContentManager;
     }
 
     /**
@@ -1445,6 +1459,7 @@ public final class OpenCmsCore {
         m_resourceManager = vfsConfiguation.getResourceManager();
         m_xmlContentTypeManager = vfsConfiguation.getXmlContentTypeManager();
         m_defaultFiles = vfsConfiguation.getDefaultFiles();
+        m_fileContentManager = vfsConfiguation.getFileContentManager();
 
         // initialize translation engines
         m_resourceManager.setTranslators(

@@ -80,6 +80,8 @@ import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -264,24 +266,32 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-    * @see org.opencms.db.I_CmsVfsDriver#createContent(CmsDbContext, CmsUUID, CmsUUID, byte[])
-    */
-    public void createContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId, byte[] content)
+     * @see org.opencms.db.I_CmsVfsDriver#createContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, org.opencms.file.CmsResource, java.io.InputStream)
+     */
+    @SuppressWarnings("resource")
+    public void createContent(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, InputStream content)
     throws CmsDataAccessException {
 
         Connection conn = null;
         PreparedStatement stmt = null;
 
         try {
+            // create content by external driver
+            byte[] externalInfo = m_driverManager.getFileContentDriver(
+                resource).createContent(dbc, resource.getResourceId(), content);
+            if (null == externalInfo)
+                externalInfo = CmsFileUtil.EMPTY_BLOB;
+
             conn = m_sqlManager.getConnection(dbc);
             // create new offline content
             stmt = m_sqlManager.getPreparedStatement(conn, "C_OFFLINE_CONTENTS_WRITE");
-            stmt.setString(1, resourceId.toString());
-            if (content.length < 2000) {
-                stmt.setBytes(2, content);
-            } else {
-                stmt.setBinaryStream(2, new ByteArrayInputStream(content), content.length);
-            }
+            stmt.setString(1, resource.getResourceId().toString());
+
+            // store the externalInfo, and use it to restore file contents from external driver
+            if (externalInfo.length < 2000)
+                stmt.setBytes(2, externalInfo);
+            else stmt.setBinaryStream(2, new ByteArrayInputStream(externalInfo), externalInfo.length);
+
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new CmsDbSqlException(
@@ -455,11 +465,11 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsVfsDriver#createOnlineContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, byte[], int, boolean, boolean)
+     * @see org.opencms.db.I_CmsVfsDriver#createOnlineContent(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, java.io.InputStream, int, boolean, boolean)
      */
     public void createOnlineContent(
         CmsDbContext dbc,
-        CmsUUID resourceId,
+        CmsResource resource,
         byte[] contents,
         int publishTag,
         boolean keepOnline,
@@ -468,12 +478,20 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
 
         Connection conn = null;
         PreparedStatement stmt = null;
+        CmsUUID resourceId = resource.getResourceId();
 
         try {
             conn = m_sqlManager.getConnection(dbc);
             boolean dbcHasProjectId = (dbc.getProjectId() != null) && !dbc.getProjectId().isNullUUID();
 
             if (needToUpdateContent || dbcHasProjectId) {
+                //read content only if necessary
+                if (null == contents) {
+                    CmsUUID projectIdForReading = (dbcHasProjectId ? CmsProject.ONLINE_PROJECT_ID : dbc.getProjectId());
+                    // this happend when publishFileContent,
+                    contents = readOriginalContent(dbc, projectIdForReading, resourceId);
+                }
+
                 if (dbcHasProjectId || !OpenCms.getSystemInfo().isHistoryEnabled()) {
                     // remove the online content for this resource id
                     stmt = m_sqlManager.getPreparedStatement(conn, "C_ONLINE_CONTENTS_DELETE");
@@ -488,15 +506,22 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                     m_sqlManager.closeAll(dbc, null, stmt, null);
                 }
 
+                // create content by external driver
+                byte[] externalInfo = m_driverManager.getFileContentDriver(resource)
+                    .createOnlineContent(dbc, resource.getResourceId(), contents, publishTag, keepOnline);
+                if (null == externalInfo)
+                    externalInfo = CmsFileUtil.EMPTY_BLOB;
+
                 // create new online content
                 stmt = m_sqlManager.getPreparedStatement(conn, "C_ONLINE_CONTENTS_WRITE");
 
                 stmt.setString(1, resourceId.toString());
-                if (contents.length < 2000) {
-                    stmt.setBytes(2, contents);
-                } else {
-                    stmt.setBinaryStream(2, new ByteArrayInputStream(contents), contents.length);
-                }
+
+                // store the externalInfo, and use it to restore file contents from external driver
+                if (externalInfo.length < 2000)
+                    stmt.setBytes(2, externalInfo);
+                else stmt.setBinaryStream(2, new ByteArrayInputStream(externalInfo), externalInfo.length);
+
                 stmt.setInt(3, publishTag);
                 stmt.setInt(4, publishTag);
                 stmt.setInt(5, keepOnline ? 1 : 0);
@@ -626,9 +651,9 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsVfsDriver#createResource(org.opencms.db.CmsDbContext, CmsUUID, org.opencms.file.CmsResource, byte[])
+     * @see org.opencms.db.I_CmsVfsDriver#createResource(org.opencms.db.CmsDbContext, CmsUUID, org.opencms.file.CmsResource, InputStream)
      */
-    public CmsResource createResource(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, byte[] content)
+    public CmsResource createResource(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, InputStream content)
     throws CmsDataAccessException {
 
         CmsUUID newStructureId = null;
@@ -783,7 +808,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
 
                 if (resource.isFile() && (content != null)) {
                     // create the file content
-                    createContent(dbc, projectId, resource.getResourceId(), content);
+                    createContent(dbc, projectId, resource, content);
                 }
             } else {
                 if ((content != null) || !resource.getState().isKeep()) {
@@ -816,7 +841,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                 if (resource.isFile()) {
                     if (content != null) {
                         // update the file content
-                        writeContent(dbc, resource.getResourceId(), content);
+                        writeContent(dbc, resource, content);
                     } else if (resource.getState().isKeep()) {
                         // special case sibling creation - update the link Count
                         int sibCount = countSiblings(dbc, projectId, resource.getResourceId());
@@ -1366,7 +1391,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
         String poolUrl = configuration.get("db.vfs.pool");
         String classname = configuration.get("db.vfs.sqlmanager");
         m_sqlManager = initSqlManager(classname);
-        m_sqlManager.init(I_CmsVfsDriver.DRIVER_TYPE_ID, poolUrl);
+        m_sqlManager.init(I_CmsVfsDriver.DRIVER_TYPE_ID, poolUrl, driverManager);
 
         m_driverManager = driverManager;
 
@@ -1850,9 +1875,11 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsVfsDriver#readContent(org.opencms.db.CmsDbContext, CmsUUID, org.opencms.util.CmsUUID)
+     * @see org.opencms.db.I_CmsVfsDriver#readOriginalContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, org.opencms.util.CmsUUID)
      */
-    public byte[] readContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId) throws CmsDataAccessException {
+    @SuppressWarnings("resource")
+    public byte[] readOriginalContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId)
+    throws CmsDataAccessException {
 
         PreparedStatement stmt = null;
         ResultSet res = null;
@@ -1890,6 +1917,40 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             m_sqlManager.closeAll(dbc, conn, stmt, res);
         }
         return byteRes;
+    }
+
+    /**
+     * @see org.opencms.db.I_CmsVfsDriver#readContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, CmsResource)
+     */
+    public byte[] readContent(CmsDbContext dbc, CmsUUID projectId, CmsResource resource) throws CmsDataAccessException {
+
+        InputStream stream = readContentAsStream(dbc, projectId, resource);
+        try {
+            return CmsFileUtil.toBytesAgain(stream);
+        } finally {
+            if (null != stream)
+                try {
+                    stream.close();
+                } catch (IOException e) {
+                    //ignore
+                }
+        }
+    }
+
+    /**
+     * @see org.opencms.db.I_CmsVfsDriver#readContentAsStream(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, CmsResource)
+     */
+    public InputStream readContentAsStream(CmsDbContext dbc, CmsUUID projectId, CmsResource resource)
+    throws CmsDataAccessException {
+
+        final CmsUUID resourceId = resource.getResourceId();
+        byte[] content = readOriginalContent(dbc, projectId, resourceId);
+        // *** read file contents from external driver
+        // only read content when query success
+        if (null != content) {
+            return m_driverManager.getFileContentDriver(resource).readContent(dbc, resourceId, content);
+        }
+        return null;
     }
 
     /**
@@ -2889,11 +2950,15 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                     stmt = m_sqlManager.getPreparedStatement(conn, "C_ONLINE_CONTENTS_DELETE");
                     stmt.setString(1, resource.getResourceId().toString());
                     stmt.executeUpdate();
+                    
+                    m_driverManager.getFileContentDriver(resource).removeContent(dbc, true, resource.getResourceId());
                 } else {
                     // delete content records with this resource id
                     stmt = m_sqlManager.getPreparedStatement(conn, projectId, "C_OFFLINE_FILE_CONTENT_DELETE");
                     stmt.setString(1, resource.getResourceId().toString());
                     stmt.executeUpdate();
+                    
+                    m_driverManager.getFileContentDriver(resource).removeContent(dbc, false, resource.getResourceId());
                 }
             }
         } catch (SQLException e) {
@@ -2981,9 +3046,9 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsVfsDriver#replaceResource(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, byte[], int)
+     * @see org.opencms.db.I_CmsVfsDriver#replaceResource(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, InputStream, int)
      */
-    public void replaceResource(CmsDbContext dbc, CmsResource newResource, byte[] resContent, int newResourceType)
+    public void replaceResource(CmsDbContext dbc, CmsResource newResource, InputStream resContent, int newResourceType)
     throws CmsDataAccessException {
 
         if (resContent == null) {
@@ -2993,14 +3058,16 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
         Connection conn = null;
         PreparedStatement stmt = null;
         try {
-            // write the file content
-            writeContent(dbc, newResource.getResourceId(), resContent);
+            // get length at first,
+            int length = CmsFileUtil.getLength(resContent);
+            // write content first
+            writeContent(dbc, newResource, resContent);
 
             // update the resource record
             conn = m_sqlManager.getConnection(dbc);
             stmt = m_sqlManager.getPreparedStatement(conn, dbc.currentProject(), "C_RESOURCE_REPLACE");
             stmt.setInt(1, newResourceType);
-            stmt.setInt(2, resContent.length);
+            stmt.setInt(2, length);
             stmt.setLong(3, System.currentTimeMillis());
             stmt.setString(4, newResource.getResourceId().toString());
             stmt.executeUpdate();
@@ -3165,23 +3232,29 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsVfsDriver#writeContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, byte[])
+     * @see org.opencms.db.I_CmsVfsDriver#writeContent(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, java.io.InputStream)
      */
-    public void writeContent(CmsDbContext dbc, CmsUUID resourceId, byte[] content) throws CmsDataAccessException {
+    public void writeContent(CmsDbContext dbc, CmsResource resource, InputStream content) throws CmsDataAccessException {
 
         Connection conn = null;
         PreparedStatement stmt = null;
 
         try {
+            // write content by external driver
+            byte[] externalInfo = m_driverManager.getFileContentDriver(resource)
+                .writeContent(dbc, resource.getResourceId(), content);
+            if (null == externalInfo)
+                externalInfo = CmsFileUtil.EMPTY_BLOB;
+
             conn = m_sqlManager.getConnection(dbc);
             stmt = m_sqlManager.getPreparedStatement(conn, dbc.currentProject(), "C_OFFLINE_CONTENTS_UPDATE");
-            // update the file content in the database.
-            if (content.length < 2000) {
-                stmt.setBytes(1, content);
-            } else {
-                stmt.setBinaryStream(1, new ByteArrayInputStream(content), content.length);
-            }
-            stmt.setString(2, resourceId.toString());
+
+            // store the externalInfo, and use it to restore file contents from external driver
+            if (externalInfo.length < 2000)
+                stmt.setBytes(1, externalInfo);
+            else stmt.setBinaryStream(1, new ByteArrayInputStream(externalInfo), externalInfo.length);
+
+            stmt.setString(2, resource.getResourceId().toString());
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new CmsDbSqlException(

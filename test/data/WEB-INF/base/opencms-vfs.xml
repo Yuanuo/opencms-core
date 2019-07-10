@@ -816,5 +816,18 @@
 					defaultwidget="org.opencms.widgets.CmsSerialDateWidget" />
 			</schematypes>
 		</xmlcontent>
+
+		<filecontent>
+			<handle>
+				<driver class="org.opencms.file.content.refs.CmsFileContentDriver">
+					<param name="refs.marker">REFS-DISK1</param>
+					<param name="refs.storage">../REFS-DISK1</param>
+				</driver>
+				<minlength value="50"/>
+			</handle>
+			<handle>
+				<driver class="org.opencms.file.content.CmsFileContentDriver" />
+			</handle>
+		</filecontent>
 	</vfs>
 </opencms>

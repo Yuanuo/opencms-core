@@ -55,9 +55,12 @@ import org.opencms.file.history.I_CmsHistoryResource;
 import org.opencms.main.CmsLog;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.security.I_CmsPrincipal;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -260,6 +263,9 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
             stmt.setString(1, resource.getResourceId().toString());
             stmt.setInt(2, minResPublishTagToKeep);
             stmt.executeUpdate();
+            
+            m_driverManager.getFileContentDriver(resource.getResourceId().toString(), resource.getRootPath(), -1)
+                .removeHistoryContent(dbc, resource.getResourceId(), minResPublishTagToKeep);
 
             // make sure the statement and the result is closed
             m_sqlManager.closeAll(dbc, conn, stmt, res);
@@ -425,7 +431,7 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
         }
 
         m_sqlManager = initSqlManager(classname);
-        m_sqlManager.init(I_CmsHistoryDriver.DRIVER_TYPE_ID, poolUrl);
+        m_sqlManager.init(I_CmsHistoryDriver.DRIVER_TYPE_ID, poolUrl, driverManager);
 
         m_driverManager = driverManager;
 
@@ -580,15 +586,37 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
     }
 
     /**
-     * @see org.opencms.db.I_CmsHistoryDriver#readContent(org.opencms.db.CmsDbContext, org.opencms.util.CmsUUID, int)
+     * @see org.opencms.db.I_CmsHistoryDriver#readContent(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, int)
      */
-    public byte[] readContent(CmsDbContext dbc, CmsUUID resourceId, int publishTag) throws CmsDataAccessException {
+    public byte[] readContent(CmsDbContext dbc, CmsResource resource, int publishTag) throws CmsDataAccessException {
+
+        InputStream stream = readContentAsStream(dbc, resource, publishTag);
+        try {
+            return CmsFileUtil.toBytesAgain(stream);
+        } finally {
+            if (null != stream)
+                try {
+                    stream.close();
+                } catch (IOException e) {
+                    //ignore
+                }
+        }
+    }
+
+    /**
+     * @see org.opencms.db.I_CmsHistoryDriver#readContentAsStream(org.opencms.db.CmsDbContext, org.opencms.file.CmsResource, int)
+     */
+    @SuppressWarnings("resource")
+    public InputStream readContentAsStream(CmsDbContext dbc, CmsResource resource, int publishTag)
+    throws CmsDataAccessException {
 
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet res = null;
         byte[] content = null;
+		CmsUUID resourceId = resource.getResourceId();
 
+        // *** read base info from main db
         try {
             conn = m_sqlManager.getConnection(dbc);
             stmt = m_sqlManager.getPreparedStatement(conn, "C_HISTORY_READ_CONTENT");
@@ -610,7 +638,13 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
         } finally {
             m_sqlManager.closeAll(dbc, conn, stmt, res);
         }
-        return content;
+
+        // *** read file contents from external driver
+        // only read content when query success
+        if (null != content) {
+            return m_driverManager.getFileContentDriver(resource).readContent(dbc, resourceId, content);
+        }
+        return null;
     }
 
     /**
@@ -1438,7 +1472,7 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
                             // so that the history contains the last state of the file
                             m_driverManager.getVfsDriver(dbc).createOnlineContent(
                                 dbc,
-                                resource.getResourceId(),
+                                resource,
                                 ((CmsFile)resource).getContents(),
                                 publishTag,
                                 false,
@@ -1452,7 +1486,7 @@ public class CmsHistoryDriver implements I_CmsDriver, I_CmsHistoryDriver {
                                 // (unless another sibling with status "changed" or "new" is published)
                                 m_driverManager.getVfsDriver(dbc).createOnlineContent(
                                     dbc,
-                                    resource.getResourceId(),
+                                    resource,
                                     ((CmsFile)resource).getContents(),
                                     publishTag,
                                     true,

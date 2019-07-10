@@ -28,6 +28,8 @@
 package org.opencms.db.generic;
 
 import org.opencms.db.CmsDbContext;
+import org.opencms.db.CmsDbPool;
+import org.opencms.db.CmsDriverManager;
 import org.opencms.file.CmsProject;
 import org.opencms.main.CmsLog;
 import org.opencms.main.CmsRuntimeException;
@@ -295,12 +297,13 @@ public class CmsSqlManager extends org.opencms.db.CmsSqlManager {
      *
      * @param driverType the type ID of the driver (vfs,user,project or history) from where this SQL manager is referenced
      * @param poolUrl the pool URL to get connections from the JDBC driver manager
+     * @param driverManager TODO
      */
-    public void init(int driverType, String poolUrl) {
+    public void init(int driverType, String poolUrl, CmsDriverManager driverManager) {
 
         m_driverType = driverType;
         m_poolUrl = poolUrl;
-
+        this.setDriverManager(driverManager);
     }
 
     /**

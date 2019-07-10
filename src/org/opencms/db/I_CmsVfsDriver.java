@@ -41,6 +41,7 @@ import org.opencms.relations.CmsRelationFilter;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.util.CmsUUID;
 
+import java.io.InputStream;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
@@ -92,12 +93,12 @@ public interface I_CmsVfsDriver {
      *
      * @param dbc the current database context
      * @param projectId the id of the current project
-     * @param resourceId the resource id of the resource to create the content for
+     * @param resource the resource to create the content for
      * @param content the content to write
      *
      * @throws CmsDataAccessException if something goes wrong
      */
-    void createContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId, byte[] content)
+    void createContent(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, InputStream content)
     throws CmsDataAccessException;
 
     /**
@@ -139,7 +140,7 @@ public interface I_CmsVfsDriver {
      * Creates a new content in the offline project.<p>
      *
      * @param dbc the current database context
-     * @param resourceId the resource id of the content to write
+     * @param resource the content to write
      * @param contents the content to publish
      * @param publishTag the publish tag
      * @param keepOnline if the content is online or has to be put in the history
@@ -149,7 +150,7 @@ public interface I_CmsVfsDriver {
      */
     void createOnlineContent(
         CmsDbContext dbc,
-        CmsUUID resourceId,
+        CmsResource resource,
         byte[] contents,
         int publishTag,
         boolean keepOnline,
@@ -198,11 +199,13 @@ public interface I_CmsVfsDriver {
      * @throws CmsDataAccessException if something goes wrong
      *
      * @see org.opencms.file.types.I_CmsResourceType#createResource(org.opencms.file.CmsObject, CmsSecurityManager, String, byte[], List)
+     * @see org.opencms.file.types.I_CmsResourceType#createResourceByStream(org.opencms.file.CmsObject, CmsSecurityManager, String, InputStream, List)
      * @see org.opencms.file.types.I_CmsResourceType#importResource(org.opencms.file.CmsObject, CmsSecurityManager, String, CmsResource, byte[], List)
-     * @see org.opencms.file.CmsObject#createResource(String, int, byte[], List)
+     * @see org.opencms.file.CmsObject#createResource(String, org.opencms.file.types.I_CmsResourceType, byte[], List)
+     * @see org.opencms.file.CmsObject#createResourceByStream(String, org.opencms.file.types.I_CmsResourceType, InputStream, List)
      * @see org.opencms.file.CmsObject#importResource(String, CmsResource, byte[], List)
      */
-    CmsResource createResource(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, byte[] content)
+    CmsResource createResource(CmsDbContext dbc, CmsUUID projectId, CmsResource resource, InputStream content)
     throws CmsDataAccessException;
 
     /**
@@ -452,8 +455,9 @@ public interface I_CmsVfsDriver {
         boolean getFiles) throws CmsDataAccessException;
 
     /**
-     * Reads the content of a file specified by it's resource ID.<p>
-     *
+     * Reads the "Original" content of a file specified by it's resource ID.<p>
+     * Content is not decided to be the actual data, we must use FileContentDriver to deal with.
+     * 
      * @param dbc the current database context
      * @param projectId the ID of the current project
      * @param resourceId the id of the resource
@@ -462,7 +466,35 @@ public interface I_CmsVfsDriver {
      *
      * @throws CmsDataAccessException if something goes wrong
      */
-    byte[] readContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId) throws CmsDataAccessException;
+    byte[] readOriginalContent(CmsDbContext dbc, CmsUUID projectId, CmsUUID resourceId) throws CmsDataAccessException;
+
+    /**
+     * Reads the content of a file specified by it's resource ID.<p>
+     *
+     * @param dbc the current database context
+     * @param projectId the ID of the current project
+     * @param resource the resource
+     *
+     * @return the file content
+     *
+     * @throws CmsDataAccessException if something goes wrong
+     */
+    byte[] readContent(CmsDbContext dbc, CmsUUID projectId, CmsResource resource) throws CmsDataAccessException;
+
+    /**
+     * Reads the content of a file specified by it's resource ID.<p>
+     *
+     * @param dbc the current database context
+     * @param projectId the ID of the current project
+     * @param resource the resource
+     *
+     * @return the file content
+     *
+     * @throws CmsDataAccessException if something goes wrong
+     * 
+     * @see #readContent(CmsDbContext, CmsUUID, CmsUUID)
+     */
+    InputStream readContentAsStream(CmsDbContext dbc, CmsUUID projectId, CmsResource resource) throws CmsDataAccessException;
 
     /**
      * Reads a folder specified by it's structure ID.<p>
@@ -826,7 +858,7 @@ public interface I_CmsVfsDriver {
      *
      * @throws CmsDataAccessException if something goes wrong
      */
-    void replaceResource(CmsDbContext dbc, CmsResource newResource, byte[] newResourceContent, int newResourceType)
+    void replaceResource(CmsDbContext dbc, CmsResource newResource, InputStream newResourceContent, int newResourceType)
     throws CmsDataAccessException;
 
     /**
@@ -905,12 +937,12 @@ public interface I_CmsVfsDriver {
      * Writes the resource content with the specified resource id.<p>
      *
      * @param dbc the current database context
-     * @param resourceId the id of the resource used to identify the content to update
+     * @param resource the content to update
      * @param content the new content of the file
      *
      * @throws CmsDataAccessException if something goes wrong
      */
-    void writeContent(CmsDbContext dbc, CmsUUID resourceId, byte[] content) throws CmsDataAccessException;
+    void writeContent(CmsDbContext dbc, CmsResource resource, InputStream content) throws CmsDataAccessException;
 
     /**
      * Writes the "last-modified-in-project" ID of a resource.<p>

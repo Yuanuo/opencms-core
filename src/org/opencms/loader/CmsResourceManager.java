@@ -27,6 +27,8 @@
 
 package org.opencms.loader;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.CmsResourceTypeConfig;
 import org.opencms.cache.CmsVfsMemoryObjectCache;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.configuration.CmsVfsConfiguration;
@@ -52,6 +54,7 @@ import org.opencms.relations.CmsRelationType;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
 import org.opencms.util.CmsDefaultSet;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsHtmlConverter;
 import org.opencms.util.CmsHtmlConverterJTidy;
 import org.opencms.util.CmsHtmlConverterOption;
@@ -946,6 +949,80 @@ public class CmsResourceManager {
         throw new CmsLoaderException(Messages.get().container(Messages.ERR_UNKNOWN_RESTYPE_NAME_REQ_1, typeName));
     }
 
+    /**
+     * Returns the resource type name for the given resource rootPath.<p>
+     * 
+     * @param cms CmsObject
+     * @param rootPath the path of the resource type to get
+     * 
+     * @return resource type name for the given path
+     */
+    public String getResourceTypeByFolder(CmsObject cms, String rootPath) {
+        if(CmsStringUtil.isEmptyOrWhitespaceOnly(rootPath))
+            return null;
+        return OpenCms.getADEManager().getParentFolderType(cms, rootPath);
+    }
+    
+    /**
+     * Returns the initialized resource type instance for the given resource path.<p>
+     * 
+     * @param cms CmsObject
+     * @param rootPath the path of the resource type to get
+     * 
+     * @return resource type instance for the given path
+     * 
+     * @throws CmsException something was wrong
+     */
+    public I_CmsResourceType getDefaultTypeForPath(CmsObject cms, String rootPath) throws CmsException {
+
+        I_CmsResourceType resType = null;
+        //Get it from the full path first
+        String typeName = getResourceTypeByFolder(cms, CmsResource.getFolderPath(rootPath));
+        if (null != typeName)
+            resType = getResourceType(typeName);
+        
+        //Try to check what type it is from the file extension
+        if (null != resType) {
+            String nameExt = CmsFileUtil.getExtension(rootPath);
+            typeName = getExtensionMapping().get(nameExt);
+            if (null != typeName) {
+                I_CmsResourceType typeByName = getResourceType(typeName);
+                if (null != typeByName && resType.getClass() != typeByName.getClass())
+                    resType = typeByName;
+            }
+        }
+        
+        //Try to get type from filename
+        if (null == resType)
+            resType = getDefaultTypeForName(rootPath);
+
+        return resType;
+    }
+    
+    /**
+     * Returns the resource type name for given file name, determine by file name pattern.
+     * 
+     * For example, the article resource pattern "article_% (number) .xml" is defined,
+     * and the article type can be judged for the resource type "article_00001.xml"
+     * when obtaining the data type.
+     * 
+     * @param name the file name
+     * 
+     * @return the resource type name for given file name
+     */
+    public String getResourceTypeByNamePattern(String name) {
+
+        CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(null, null);
+        for (CmsResourceTypeConfig typeConfig : config.getResourceTypes()) {
+            String namePattern = typeConfig.getNamePattern(true);
+            namePattern = namePattern.replaceAll("\\.", "\\\\.");
+            namePattern = namePattern.replaceAll("%\\(number.*\\)", "\\.\\*");
+            if (name.matches(namePattern))
+                return typeConfig.getTypeName();
+        }
+        return null;
+    }
+    
     /**
      * Returns the (unmodifiable) list with all initialized resource types.<p>
      *

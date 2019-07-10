@@ -36,6 +36,7 @@ import org.opencms.db.CmsSqlManager;
 import org.opencms.db.CmsSubscriptionManager;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
+import org.opencms.file.content.CmsFileContentManager;
 import org.opencms.flex.CmsFlexCache;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.importexport.CmsImportExportManager;
@@ -119,14 +120,6 @@ public final class OpenCms {
 
     /** Runlevel 4: Final runlevel where database and servlet are initialized. */
     public static final int RUNLEVEL_4_SERVLET_ACCESS = 4;
-
-    /**
-     * The public contructor is hidden to prevent generation of instances of this class.<p>
-     */
-    private OpenCms() {
-
-        // empty
-    }
 
     /**
      * Add a cms event listener that listens to all events.<p>
@@ -263,6 +256,16 @@ public final class OpenCms {
     public static Set<CmsExportPoint> getExportPoints() {
 
         return OpenCmsCore.getInstance().getExportPoints();
+    }
+
+    /**
+     * Returns the filecontent manager.<p>
+     *
+     * @return the filecontent manager
+     */
+    public static CmsFileContentManager getFileContentManager() {
+
+        return OpenCmsCore.getInstance().getFileContentManager();
     }
 
     /**
@@ -786,5 +789,13 @@ public final class OpenCms {
     public static void writeConfiguration(Class<?> clazz) {
 
         OpenCmsCore.getInstance().writeConfiguration(clazz);
+    }
+
+    /**
+     * The public contructor is hidden to prevent generation of instances of this class.<p>
+     */
+    private OpenCms() {
+
+        // empty
     }
 }

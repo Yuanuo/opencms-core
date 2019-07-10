@@ -573,5 +573,25 @@
 					defaultwidget="org.opencms.widgets.CmsSerialDateWidget" />
 			</schematypes>
 		</xmlcontent>
+
+
+		<filecontent>
+			<handle>
+				<driver class="org.opencms.file.content.refs.CmsFileContentDriver">
+					<param name="refs.marker">REFS::</param>
+					<param name="refs.storage">../REFS-DISK1</param>
+				</driver>
+
+				<extension value=".mp3"/>
+				<extension value=".mp4"/>
+				<extension value=".rar"/>
+				<extension value=".zip"/>
+				<extension value=".exe"/>
+				<extension value=".pdf"/>
+			</handle>
+			<handle>
+				<driver class="org.opencms.file.content.CmsFileContentDriver" />
+			</handle>
+		</filecontent>
 	</vfs>
 </opencms>

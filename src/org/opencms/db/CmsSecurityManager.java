@@ -54,6 +54,7 @@ import org.opencms.file.history.CmsHistoryPrincipal;
 import org.opencms.file.history.CmsHistoryProject;
 import org.opencms.file.history.I_CmsHistoryResource;
 import org.opencms.file.types.CmsResourceTypeJsp;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.shared.alias.CmsAliasImportResult;
 import org.opencms.gwt.shared.alias.CmsAliasMode;
 import org.opencms.i18n.CmsMessageContainer;
@@ -93,6 +94,7 @@ import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -1082,7 +1084,8 @@ public final class CmsSecurityManager {
         CmsResource newResource = null;
         try {
             checkOfflineProject(dbc);
-            newResource = m_driverManager.createResource(dbc, resourcePath, resource, content, properties, false);
+            newResource = m_driverManager.createResource(dbc, resourcePath, resource,
+                CmsFileUtil.toStream(content), properties, false);
         } catch (Exception e) {
             dbc.report(
                 null,
@@ -1114,8 +1117,8 @@ public final class CmsSecurityManager {
     public synchronized CmsResource createResource(
         CmsRequestContext context,
         String resourcename,
-        int type,
-        byte[] content,
+        I_CmsResourceType type,
+        InputStream content,
         List<CmsProperty> properties)
     throws CmsException {
 
@@ -3261,7 +3264,8 @@ public final class CmsSecurityManager {
         CmsResource newResource = null;
         try {
             checkOfflineProject(dbc);
-            newResource = m_driverManager.createResource(dbc, resourcePath, resource, content, properties, importCase);
+            newResource = m_driverManager.createResource(dbc, resourcePath, resource, 
+                CmsFileUtil.toStream(content), properties, importCase);
         } catch (Exception e) {
             dbc.report(
                 null,
@@ -4265,6 +4269,41 @@ public final class CmsSecurityManager {
         CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
         try {
             result = m_driverManager.readFile(dbc, resource);
+        } catch (Exception e) {
+            if (resource instanceof I_CmsHistoryResource) {
+                dbc.report(
+                    null,
+                    Messages.get().container(
+                        Messages.ERR_READ_FILE_HISTORY_2,
+                        context.getSitePath(resource),
+                        new Integer(resource.getVersion())),
+                    e);
+            } else {
+                dbc.report(null, Messages.get().container(Messages.ERR_READ_FILE_1, context.getSitePath(resource)), e);
+            }
+        } finally {
+            dbc.clear();
+        }
+        return result;
+    }
+
+    /**
+     * Read the binary content of the file as input stream,
+     * in order to achieve such as the provision of large file downloads.
+     * 
+     * @param context the current request context
+     * @param resource the resource to be read
+     * 
+     * @return resource's content
+     * 
+     * @throws CmsException when something wrong
+     */
+    public InputStream readFileContentAsStream(CmsRequestContext context, CmsResource resource) throws CmsException {
+        
+        InputStream result = null;
+        CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
+        try {
+            result = m_driverManager.readFileContentAsStream(dbc, resource);
         } catch (Exception e) {
             if (resource instanceof I_CmsHistoryResource) {
                 dbc.report(
@@ -5712,8 +5751,8 @@ public final class CmsSecurityManager {
     public void replaceResource(
         CmsRequestContext context,
         CmsResource resource,
-        int type,
-        byte[] content,
+        I_CmsResourceType type,
+        InputStream content,
         List<CmsProperty> properties)
     throws CmsException, CmsSecurityException {
 
@@ -5721,7 +5760,7 @@ public final class CmsSecurityManager {
         try {
             checkOfflineProject(dbc);
             checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_WRITE, true, CmsResourceFilter.ALL);
-            if (CmsResourceTypeJsp.isJspTypeId(type)) {
+            if (CmsResourceTypeJsp.isJspTypeId(type.getTypeId())) {
                 // security check preventing the creation of a jsp file without permissions
                 checkRoleForResource(dbc, CmsRole.VFS_MANAGER, resource);
             }

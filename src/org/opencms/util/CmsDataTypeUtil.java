@@ -68,6 +68,8 @@ public final class CmsDataTypeUtil {
      * @throws ClassNotFoundException if the serialized object fails
      */
     public static Object dataDeserialize(byte[] data, String type) throws IOException, ClassNotFoundException {
+        if (null == data)
+            return null;
 
         // check the type of the stored data
         Class<?> clazz = Class.forName(type);

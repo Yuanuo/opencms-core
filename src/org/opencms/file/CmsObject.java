@@ -39,6 +39,8 @@ import org.opencms.file.CmsResource.CmsResourceDeleteMode;
 import org.opencms.file.history.CmsHistoryPrincipal;
 import org.opencms.file.history.CmsHistoryProject;
 import org.opencms.file.history.I_CmsHistoryResource;
+import org.opencms.file.types.CmsResourceTypeFolder;
+import org.opencms.file.types.CmsResourceTypePlain;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.i18n.CmsLocaleGroupService;
 import org.opencms.lock.CmsLock;
@@ -62,11 +64,13 @@ import org.opencms.security.CmsRoleViolationException;
 import org.opencms.security.CmsSecurityException;
 import org.opencms.security.I_CmsPermissionHandler;
 import org.opencms.security.I_CmsPrincipal;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsPair;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.xml.content.CmsNumberSuffixNameSequence;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -2517,6 +2521,31 @@ public final class CmsObject {
     }
 
     /**
+     * Read the binary content of the file as input stream,
+     * in order to achieve such as the provision of large file downloads.
+     * 
+     * @param resource cms file resource
+     * 
+     * @return resource's content
+     * 
+     * @throws CmsException when something wrong
+     */
+    public InputStream readFileContentAsStream(CmsResource resource) throws CmsException {
+        
+        // test if we already have a file
+        if (resource instanceof CmsFile) {
+            // resource is already a file
+            CmsFile file = (CmsFile)resource;
+            if ((file.getContents() != null) && (file.getContents().length > 0)) {
+                // file has the contents already available
+                return CmsFileUtil.toStream(file.getContents());
+            }
+        }
+        
+        return m_securityManager.readFileContentAsStream(m_context, resource);
+    }
+
+    /**
      * Reads a file resource (including it's binary content) from the VFS,
      * using the <code>{@link CmsResourceFilter#DEFAULT}</code> filter.<p>
      *
@@ -4333,6 +4362,124 @@ public final class CmsObject {
         }
         CmsResource resource = readResource(resourcename, CmsResourceFilter.ALL);
         getResourceType(resource).lockResource(this, m_securityManager, resource, type);
+    }
+
+    /**
+     * Tool method for creating Folder resource
+     * @param resName the name of the resource
+     * @return Resource with type Folder
+     * @throws CmsException something wrong
+     * @throws CmsIllegalArgumentException if resName null or empty
+     * 
+     * @see #createFolder(String, List)
+     */
+    public CmsResource createFolder(String resName) throws CmsException, CmsIllegalArgumentException {
+
+        return createFolder(resName, new ArrayList<CmsProperty>(0));
+    }
+
+    /**
+     * Tool method for creating Folder resource
+     * @param resName the name of the resource
+     * @param properties resource properties
+     * @return Resource with type Folder
+     * @throws CmsException something wrong
+     * @throws CmsIllegalArgumentException if resName null or empty
+     */
+    public CmsResource createFolder(String resName, List<CmsProperty> properties)
+    throws CmsException, CmsIllegalArgumentException {
+
+        I_CmsResourceType folderType = getResourceType(CmsResourceTypeFolder.getStaticTypeId());
+        return createResource(resName, folderType, null, properties);
+    }
+
+    /**
+     * Tool method for creating Plain data
+     * @param resName the name of the resource
+     * @return Resource with type plain
+     * @throws CmsException something wrong
+     * @throws CmsIllegalArgumentException if resName null or empty
+     * 
+     * @see #createPlain(String, byte[], List)
+     */
+    public CmsResource createPlain(String resName) throws CmsException, CmsIllegalArgumentException {
+
+        return createPlain(resName, new ArrayList<CmsProperty>(0));
+    }
+
+    /**
+     * Tool method for creating Plain data
+     * @param resName the name of the resource
+     * @param properties resource properties
+     * @return Resource with type plain
+     * @throws CmsException something wrong
+     * @throws CmsIllegalArgumentException if resName null or empty
+     * 
+     * @see #createPlain(String, byte[], List)
+     */
+    public CmsResource createPlain(String resName, List<CmsProperty> properties)
+    throws CmsException, CmsIllegalArgumentException {
+
+        return createPlain(resName, null, properties);
+    }
+
+    /**
+     * Tool method for creating Plain data
+     * @param resName the name of the resource
+     * @param content content data
+     * @param properties resource properties
+     * @return Resource with type plain
+     * @throws CmsException something wrong
+     * @throws CmsIllegalArgumentException if resName null or empty
+     */
+    public CmsResource createPlain(String resName, byte[] content, List<CmsProperty> properties)
+    throws CmsException, CmsIllegalArgumentException {
+
+        I_CmsResourceType folderType = getResourceType(CmsResourceTypePlain.getStaticTypeId());
+        return createResource(resName, folderType, content, properties);
+    }
+
+    /**
+     * Create a resource, use the input stream as the data content,
+     * support for large files more convenient
+     * 
+     * @param resName the name of the resource
+     * @param type resource type
+     * @param content content data
+     * @param properties resource properties
+     * 
+     * @return the resource created
+     * 
+     * @throws CmsException when something wrong
+     */
+    public CmsResource createResourceByStream(
+        String resName,
+        I_CmsResourceType type,
+        InputStream content,
+        List<CmsProperty> properties)
+        throws CmsException {
+
+        return type.createResourceByStream(this, m_securityManager, resName, content, properties);
+    }
+
+    /**
+     * Replace the resource's data content, data from inputstream,
+     * @param resName the name of the resource
+     * @param type resource type
+     * @param content content data
+     * @param properties resource properties
+     * 
+     * @throws CmsException when something wrong
+     */
+    public void replaceResourceByStream(
+        String resName,
+        I_CmsResourceType type,
+        InputStream content,
+        List<CmsProperty> properties)
+        throws CmsException {
+
+        CmsResource resource = readResource(resName, CmsResourceFilter.IGNORE_EXPIRATION);
+        getResourceType(resource).replaceResourceByStream(this, m_securityManager, resource, type, content, properties);
     }
 
 }

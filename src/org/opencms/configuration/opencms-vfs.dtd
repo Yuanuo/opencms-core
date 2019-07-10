@@ -14,7 +14,8 @@
 	defaultfiles,
 	translations?, 
 	
-	xmlcontent?)>
+	xmlcontent?,
+	filecontent)>
 
 <!ELEMENT resources (
 	resourceloaders, 
@@ -185,3 +186,23 @@
 -->
 <!ENTITY % opencms-resourcetypes SYSTEM "http://www.opencms.org/dtd/6.0/opencms-resourcetypes.dtd"> 
 %opencms-resourcetypes;
+
+
+<!--
+# XML content definitions that are used to build file content drivers.
+-->
+<!ELEMENT filecontent (handle*)>
+
+<!ELEMENT handle (driver, extension*, minlength?, maxlength?)>
+
+<!ELEMENT driver (param*)>
+<!ATTLIST driver class CDATA #REQUIRED>
+
+<!ELEMENT extension EMPTY>
+<!ATTLIST extension value CDATA #REQUIRED>
+
+<!ELEMENT minlength EMPTY>
+<!ATTLIST minlength value CDATA #REQUIRED>
+
+<!ELEMENT maxlength EMPTY>
+<!ATTLIST maxlength value CDATA #REQUIRED>

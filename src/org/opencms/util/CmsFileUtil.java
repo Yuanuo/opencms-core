@@ -27,6 +27,7 @@
 
 package org.opencms.util;
 
+import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
@@ -43,6 +44,7 @@ import org.opencms.staticexport.CmsLinkManager;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -50,7 +52,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -61,7 +66,10 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Locale;
 
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.commons.collections.Closure;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 
 /**
@@ -70,6 +78,12 @@ import org.apache.commons.logging.Log;
  * @since 6.0.0
  */
 public final class CmsFileUtil {
+
+    /** empty binary content. */
+    public static final byte[] EMPTY_BLOB = new byte[0];
+
+    /** empty binary stream content. */
+    public static final CmsByteArrayInputStream EMPTY_STREAM = new CmsByteArrayInputStream(EMPTY_BLOB);
 
     /**
      * Data bean which walkFileSystem passes to its callback.<p>
@@ -207,14 +221,46 @@ public final class CmsFileUtil {
         FileInputStream in = new FileInputStream(inputFile);
         FileOutputStream out = new FileOutputStream(outputFile);
 
-        // transfer bytes from in to out
-        byte[] buf = new byte[1024];
-        int len;
-        while ((len = in.read(buf)) > 0) {
-            out.write(buf, 0, len);
+        try {
+            copy(in, out);
+        } finally {
+            in.close();
+            out.close();
         }
-        in.close();
-        out.close();
+    }
+
+    public static void copy(InputStream content, File outputFile) throws IOException {
+
+        if (!outputFile.getParentFile().isDirectory()) {
+            outputFile.getParentFile().mkdirs();
+        }
+        FileOutputStream out = new FileOutputStream(outputFile);
+
+        try {
+            IOUtils.copy(null == content ? EMPTY_STREAM : content, out);
+        } finally {
+            if (null != content)
+                content.close();
+            out.close();
+        }
+    }
+
+    /**
+     * Simply version of a 1:1 binary stream copy.<p>
+     *
+     * @param fromStream the input of the stream to copy
+     * @param toStream the output of the target stream
+     * @throws IOException if any IO error occurs during the copy operation
+     */
+    public static void copy(InputStream fromStream, OutputStream toStream) throws IOException {
+
+        //        // transfer bytes from in to out
+        //        byte[] buf = new byte[1024];
+        //        int len;
+        //        while ((len = fromStream.read(buf)) > 0) {
+        //            toStream.write(buf, 0, len);
+        //        }
+        IOUtils.copy(null == fromStream ? EMPTY_STREAM : fromStream, toStream);
     }
 
     /**
@@ -392,6 +438,9 @@ public final class CmsFileUtil {
             }
         }
         File[] dirContent = file.listFiles();
+        if (null == dirContent)
+            return ret;
+
         for (int i = 0; i < dirContent.length; i++) {
             File f = dirContent[i];
             if (filter.accept(f)) {
@@ -667,13 +716,19 @@ public final class CmsFileUtil {
         ByteArrayOutputStream out = new ByteArrayOutputStream(xfer.length);
 
         // transfer data from input to output in xfer-sized chunks.
-        for (int bytesRead = in.read(xfer, 0, xfer.length); bytesRead >= 0; bytesRead = in.read(xfer, 0, xfer.length)) {
-            if (bytesRead > 0) {
-                out.write(xfer, 0, bytesRead);
+        try {
+            for (int bytesRead = in.read(xfer, 0, xfer.length); bytesRead >= 0; bytesRead = in.read(
+                xfer,
+                0,
+                xfer.length)) {
+                if (bytesRead > 0) {
+                    out.write(xfer, 0, bytesRead);
+                }
             }
-        }
-        if (closeInputStream) {
-            in.close();
+        } finally {
+            if (closeInputStream) {
+                in.close();
+            }
         }
         out.close();
         return out.toByteArray();
@@ -975,4 +1030,147 @@ public final class CmsFileUtil {
         }
         return new FileWalkState(file, dirs, files);
     }
+
+    public static boolean isEmpty(InputStream content) {
+
+        return null == content || getLength(content) < 1;
+    }
+
+    /**
+     * get length for given content stream
+     * 
+     * @param content stream content
+     * 
+     * @return the content length
+     */
+    public static int getLength(InputStream content) {
+
+        try {
+            return null == content ? -1 : content.available();
+        } catch (IOException e) {
+            return -1;
+        }
+    }
+
+    public static byte[] toBytes(ByteArrayInputStream stream) {
+
+        if (stream instanceof CmsByteArrayInputStream)
+            return ((CmsByteArrayInputStream)stream).getByteArray();
+
+        try {
+            Field field = ByteArrayInputStream.class.getDeclaredField("buf");
+            field.setAccessible(true);
+            return (byte[])field.get(stream);
+        } catch (Exception e) {
+            //should never happen
+            e.printStackTrace();
+        }
+        return EMPTY_BLOB;
+    }
+
+    /**
+     * transfer a stram to byte array
+     * 
+     * @param stream the stream content
+     * 
+     * @return not null byte array
+     */
+    static byte[] toBytes(InputStream stream) {
+
+        if (null == stream)
+            return EMPTY_BLOB;
+
+        //read byte array from stream it need do a copy,try to get direct
+        if (stream instanceof ByteArrayInputStream) {
+            return toBytes((ByteArrayInputStream)stream);
+        }
+
+        try {
+            return CmsFileUtil.readFully(stream);
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        return EMPTY_BLOB;
+    }
+
+    public static byte[] toBytesAgain(InputStream stream) {
+
+        if (null == stream)
+            return EMPTY_BLOB;
+
+        try {
+            stream.reset();
+        } catch (IOException e) {
+        }
+        return toBytes(stream);
+    }
+
+    public static CmsByteArrayInputStream toStream(OutputStream stream) {
+
+        if (stream instanceof ByteArrayOutputStream) {
+            return new CmsByteArrayInputStream(((ByteArrayOutputStream)stream).toByteArray());
+        }
+
+        throw new IllegalArgumentException();
+    }
+
+    public static CmsByteArrayInputStream toStream(byte[] bytes) {
+
+//        if (null == bytes)
+//            return EMPTY_STREAM;
+
+        return null == bytes ? null : new CmsByteArrayInputStream(bytes);
+    }
+
+    public static InputStream toStream(File file) {
+
+        try {
+            return new FileInputStream(file);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+            //ignored
+        }
+        return EMPTY_STREAM;
+    }
+
+    public static InputStream toStream2(File file) throws IOException {
+        
+        return new FileInputStream(file);
+    }
+
+    public static void closeQuietly(final Closeable... closeables) {
+
+        if (closeables == null || closeables.length == 0) {
+            return;
+        }
+        for (final Closeable closeable : closeables) {
+            if (null != closeable)
+                try {
+                    closeable.close();
+                } catch (Throwable e) {
+                    //do nothing
+                }
+        }
+    }
+
+    /**
+     * Support set long length for response content-length
+     * @param response
+     * @param length
+     */
+    public static void setContentLength(HttpServletResponse response, long length) {
+
+        if (length <= Integer.MAX_VALUE) {
+            response.setContentLength((int)length);
+        } else {
+            response.addHeader("Content-Length", Long.toString(length));
+        }
+    }
+
+    public static void setContentLength(HttpServletResponse response, InputStream content) {
+
+        setContentLength(response, getLength(content));
+    }
+
 }

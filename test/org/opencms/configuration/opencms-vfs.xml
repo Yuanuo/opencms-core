@@ -699,6 +699,28 @@
 				<schematype class="org.opencms.xml.types.CmsXmlVfsFileValue" defaultwidget="org.opencms.widgets.CmsVfsFileWidget" />
 				<schematype class="org.opencms.xml.types.CmsXmlVfsImageValue" defaultwidget="org.opencms.widgets.CmsVfsImageWidget" />
 			</schematypes>
-		</xmlcontent>		
+		</xmlcontent>
+
+		<filecontent>
+			<handle>
+				<driver class="org.opencms.file.content.refs.CmsFileContentDriver">
+					<param name="refs.marker">REFS-DISK1</param>
+					<param name="refs.storage">../REFS-DISK1</param>
+				</driver>
+
+				<extension value=".mp3"/>
+				<extension value=".mp4"/>
+				<extension value=".rar"/>
+				<extension value=".zip"/>
+				<extension value=".exe"/>
+				<extension value=".pdf"/>
+				
+				<minlength value="50"/>
+				<maxlength value="-1"/>
+			</handle>
+			<handle>
+				<driver class="org.opencms.file.content.CmsFileContentDriver" />
+			</handle>
+		</filecontent>
 	</vfs>
 </opencms>

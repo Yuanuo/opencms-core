@@ -56,7 +56,9 @@ import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.CmsWorkplaceException;
 import org.opencms.workplace.CmsWorkplaceSettings;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -736,8 +738,6 @@ public class CmsNewResourceUpload extends CmsNewResource {
                             Messages.ERR_UPLOAD_FILE_SIZE_TOO_HIGH_1,
                             new Long(maxFileSizeBytes / 1024)));
                 }
-                byte[] content = fi.get();
-                fi.delete();
 
                 if (unzipFile) {
                     // zip file upload
@@ -751,10 +751,24 @@ public class CmsNewResourceUpload extends CmsNewResource {
                         currentFolder = computeCurrentFolder();
                     }
                     getJsp().getRequest().getSession().setAttribute(ATTR_UPLOAD_FOLDER, currentFolder);
-                    // import the zip contents
-                    CmsImportFolder importFolder = new CmsImportFolder(content, currentFolder, getCms(), false);
-                    for (CmsResource importedResource : importFolder.getImportedResources()) {
-                        m_uploadedFiles.add(importedResource.getStructureId().toString());
+                    // import the zip contents 
+                    InputStream inputStream = null;
+                    try {
+                        inputStream = new BufferedInputStream(fi.getInputStream());
+                        CmsImportFolder importFolder = new CmsImportFolder(inputStream, currentFolder, getCms(), false);
+                        for (CmsResource importedResource : importFolder.getImportedResources()) {
+                            m_uploadedFiles.add(importedResource.getStructureId().toString());
+                        }
+                    } catch (IOException e) {
+                        throw new CmsWorkplaceException(
+                            Messages.get().container(Messages.ERR_UPLOAD_FILE_NOT_FOUND_0));
+                    } finally {
+                        if(null != inputStream)
+                            try {
+                                inputStream.close();
+                            } catch (Exception e) {//
+                            }
+                        fi.delete();
                     }
                 } else {
                     // single file upload
@@ -783,6 +797,10 @@ public class CmsNewResourceUpload extends CmsNewResource {
                         CmsResourceTypePlain.getStaticTypeName()).getTypeId();
                     String uploadFolder = CmsResource.getParentFolder(getParamResource());
                     getJsp().getRequest().getSession().setAttribute(ATTR_UPLOAD_FOLDER, uploadFolder);
+
+                    byte[] content = fi.get();
+                    fi.delete();
+                    
                     if (!getCms().existsResource(getParamResource(), CmsResourceFilter.IGNORE_EXPIRATION)) {
                         try {
                             // create the resource

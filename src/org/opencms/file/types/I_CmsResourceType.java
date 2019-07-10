@@ -40,6 +40,7 @@ import org.opencms.main.CmsException;
 import org.opencms.main.CmsIllegalArgumentException;
 import org.opencms.xml.containerpage.CmsFormatterConfiguration;
 
+import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -932,4 +933,47 @@ public interface I_CmsResourceType extends I_CmsConfigurationParameterHandler {
         CmsSecurityManager securityManager,
         CmsResource resource,
         List<CmsProperty> properties) throws CmsException;
+
+    /**
+     * Create a resource, use the input stream as the data content,
+     * support for large files more convenient
+     * 
+     * @param cms the current cms context
+     * @param securityManager the initialized OpenCms security manager
+     * @param resName resource name
+     * @param content resource content data
+     * @param properties the list of properties to write
+     * 
+     * @return the resource created
+     * 
+     * @throws CmsException when something wrong
+     */
+    CmsResource createResourceByStream(
+        CmsObject cms,
+        CmsSecurityManager securityManager,
+        String resName,
+        InputStream content,
+        List<CmsProperty> properties) throws CmsException;
+
+    /**
+     * Replace the resource's data content, data from inputstream,
+     * 
+     * @param cms the current cms context
+     * @param securityManager the initialized OpenCms security manager
+     * @param resource the resource to write the properties for
+     * @param properties the list of properties to write
+     * @param type resource type
+     * 
+     * @param content resource content data
+     * 
+     * @throws CmsException when something wrong
+     */
+    void replaceResourceByStream(
+        CmsObject cms,
+        CmsSecurityManager securityManager,
+        CmsResource resource,
+        I_CmsResourceType type,
+        InputStream content,
+        List<CmsProperty> properties) throws CmsException;
+
 }

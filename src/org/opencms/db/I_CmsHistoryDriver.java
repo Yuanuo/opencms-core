@@ -37,6 +37,7 @@ import org.opencms.file.history.I_CmsHistoryResource;
 import org.opencms.security.I_CmsPrincipal;
 import org.opencms.util.CmsUUID;
 
+import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -162,16 +163,36 @@ public interface I_CmsHistoryDriver {
     /**
      * Reads the content of the historical version of the resource
      * identified by its structure id.<p>
+     * 
+     * if possible, please use {@link #readContentAsStream(CmsDbContext, CmsResource, int)} as first.
      *
      * @param dbc the current database context
-     * @param resourceId the resource id of the resource to read the content for
+     * @param resource the resource to read the content for
      * @param publishTag the publish tag of the version
      *
      * @return the content if found
      *
      * @throws CmsDataAccessException if something goes wrong
+     * 
+     * @see #readContentAsStream(CmsDbContext, CmsResource, int)
      */
-    byte[] readContent(CmsDbContext dbc, CmsUUID resourceId, int publishTag) throws CmsDataAccessException;
+    byte[] readContent(CmsDbContext dbc, CmsResource resource, int publishTag) throws CmsDataAccessException;
+
+    /**
+     * Reads the content of the historical version of the resource
+     * identified by its structure id.<p>
+     *
+     * @param dbc the current database context
+     * @param resource the resource to read the content for
+     * @param publishTag the publish tag of the version
+     *
+     * @return the content if found
+     *
+     * @throws CmsDataAccessException if something goes wrong
+     * 
+     * @see #readContent(CmsDbContext, CmsResource, int)
+     */
+    InputStream readContentAsStream(CmsDbContext dbc, CmsResource resource, int publishTag) throws CmsDataAccessException;
 
     /**
      * Reads all deleted (historical) resources below the given path, that the given user deleted by itself.<p>

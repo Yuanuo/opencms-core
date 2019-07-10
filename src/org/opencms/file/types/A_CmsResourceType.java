@@ -54,6 +54,7 @@ import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.xml.containerpage.CmsFormatterConfiguration;
 
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -346,6 +347,19 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
         byte[] content,
         List<CmsProperty> properties) throws CmsException {
 
+        return createResourceByStream(cms, securityManager, resourcename, CmsFileUtil.toStream(content), properties);
+    }
+
+    /**
+     * @see org.opencms.file.types.I_CmsResourceType#createResourceByStream(org.opencms.file.CmsObject, org.opencms.db.CmsSecurityManager, java.lang.String, java.io.InputStream, java.util.List)
+     */
+    public CmsResource createResourceByStream(
+        CmsObject cms,
+        CmsSecurityManager securityManager,
+        String resourcename,
+        InputStream content,
+        List<CmsProperty> properties) throws CmsException {
+
         // initialize a macro resolver with the current user OpenCms context
         CmsMacroResolver resolver = getMacroResolver(cms, resourcename);
 
@@ -355,7 +369,7 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
         CmsResource result = securityManager.createResource(
             cms.getRequestContext(),
             cms.getRequestContext().addSiteRoot(resourcename),
-            getTypeId(),
+            this,
             content,
             newProperties);
 
@@ -797,8 +811,7 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
         byte[] content,
         List<CmsProperty> properties) throws CmsException {
 
-        // TODO: Refactor driver layer to use resource type id classes (or names) instead of int
-        replaceResource(cms, securityManager, resource, type.getTypeId(), content, properties);
+        replaceResourceByStream(cms, securityManager, resource, type, CmsFileUtil.toStream(content), properties);
     }
 
     /**
@@ -816,6 +829,22 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
         CmsResource resource,
         int type,
         byte[] content,
+        List<CmsProperty> properties) throws CmsException {
+
+        replaceResourceByStream(cms, securityManager, resource,
+            OpenCms.getResourceManager().getResourceType(type),
+            CmsFileUtil.toStream(content), properties);
+    }
+
+    /**
+     * @see org.opencms.file.types.I_CmsResourceType#replaceResourceByStream(org.opencms.file.CmsObject, org.opencms.db.CmsSecurityManager, org.opencms.file.CmsResource, org.opencms.file.types.I_CmsResourceType, java.io.InputStream, java.util.List)
+     */
+    public void replaceResourceByStream(
+        CmsObject cms,
+        CmsSecurityManager securityManager,
+        CmsResource resource,
+        I_CmsResourceType type,
+        InputStream content,
         List<CmsProperty> properties) throws CmsException {
 
         securityManager.replaceResource(cms.getRequestContext(), resource, type, content, properties);

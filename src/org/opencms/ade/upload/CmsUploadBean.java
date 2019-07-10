@@ -36,6 +36,7 @@ import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypePlain;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.shared.I_CmsUploadConstants;
 import org.opencms.i18n.CmsMessages;
 import org.opencms.json.JSONArray;
@@ -53,7 +54,10 @@ import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
@@ -71,7 +75,9 @@ import org.apache.commons.fileupload.FileUploadBase.FileSizeLimitExceededExcepti
 import org.apache.commons.fileupload.FileUploadBase.SizeLimitExceededException;
 import org.apache.commons.fileupload.disk.DiskFileItemFactory;
 import org.apache.commons.fileupload.servlet.ServletFileUpload;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.apache.commons.logging.Log;
 
 /**
@@ -233,11 +239,66 @@ public class CmsUploadBean extends CmsJspBean {
     }
 
     /**
+     * In order to set a meaningful Title for each uploaded file, 
+     * this feature allows a text file called "env.txt" to be provided in the upload queue.
+     * The format of each file in the file must be "filename[TAB or SPACE]fileTitle".
+     * 
+     * For example, mass production of data,
+     * the need to generate a large number of articles uploaded to the system,
+     * The file name likes "article_00001.xml ~ article_00100.xml",
+     * If by default, the file "article_00001.xml" shows Title "article_00001",
+     * Very inconvenient when managing resources.
+     * 
+     * So, if you provide a title definition in "env.txt," for example:
+     *  article_00001.xml Some Title For Article1
+     *  article_00002.xml Some Title For Article2
+     *  ...
+     * , This time to create a resource,
+     * the file "article_00001.xml" display Title "Some Title For Article1",
+     * so that it will be very convenient in the management of resources.
+     * 
+     * For the directory can also be:
+     *  folder Articles
+     *  folder\subfolder Category1 of Articles
+     * 
+     * @return the envMap with fileName-preSetString
+     */
+    private Map<String, String> prepareEnvSet() {
+
+        FileItem preEnvItem = null;
+        for (FileItem fileItem : m_multiPartFileItems) {
+            if("env.txt".equalsIgnoreCase(fileItem.getName())) {
+                preEnvItem = fileItem;
+                break;
+            }
+        }
+        Map<String, String> envMap = new HashMap<>();
+        if(null != preEnvItem) {
+            try (InputStream inStream = preEnvItem.getInputStream()) {
+                IOUtils.lineIterator(inStream, "UTF-8").forEachRemaining(line -> {
+                    String[] arr = line.split("\t", 2);
+                    if(arr.length != 2)
+                        arr = line.split(" ", 2);
+                    if(arr.length == 2)
+                        envMap.put(arr[0].trim(), arr[1].trim());
+                });
+            } catch (Exception e) {
+                //do nothing
+            }
+            //The env.txt file does not need to be stored, remove from the file queue.
+            m_multiPartFileItems.remove(preEnvItem);
+            //delete from disk
+            preEnvItem.delete();
+        }
+        return envMap;
+    }
+
+    /**
      * Creates the resources.<p>
      * @param listener the listener
      *
      * @throws CmsException if something goes wrong
-     * @throws UnsupportedEncodingException in case the encoding is not supported
+     * @throws UnsupportedEncodingException
      */
     private void createResources(CmsUploadListener listener) throws CmsException, UnsupportedEncodingException {
 
@@ -252,13 +313,15 @@ public class CmsUploadBean extends CmsJspBean {
 
         List<String> filesToUnzip = getFilesToUnzip();
 
+        //Try to find and parse env.txt
+        final Map<String, String> envMap = prepareEnvSet();
+        //If bulk upload some kind of data, 
+        //you can specify typeid in env.txt,
+        //so you can not judge for each file should be what type of data.
+        final int typeidByEnv = NumberUtils.toInt(envMap.get("typeid"), -1);
         // iterate over the list of files to upload and create each single resource
         for (FileItem fileItem : m_multiPartFileItems) {
             if ((fileItem != null) && (!fileItem.isFormField())) {
-                // read the content of the file
-                byte[] content = fileItem.get();
-                fileItem.delete();
-
                 // determine the new resource name
                 String fileName = m_parameterMap.get(
                     fileItem.getFieldName() + I_CmsUploadConstants.UPLOAD_FILENAME_ENCODED_SUFFIX)[0];
@@ -267,9 +330,23 @@ public class CmsUploadBean extends CmsJspBean {
                 if (filesToUnzip.contains(CmsResource.getName(fileName.replace('\\', '/')))) {
                     // import the zip
                     CmsImportFolder importZip = new CmsImportFolder();
+                    InputStream inputStream = null;
                     try {
-                        importZip.importZip(content, targetFolder, cms, false);
+                        // Uploaded files are already stored on disk, 
+                        // and reading streams directly is better than reading as a byte[].
+                        inputStream = new BufferedInputStream(fileItem.getInputStream());
+                        // put envMap in current context
+                        cms.getRequestContext().setAttribute("envMap", envMap);
+                        importZip.importZip(inputStream, targetFolder, cms, false);
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     } finally {
+                        if(null != inputStream)
+                            try {
+                                inputStream.close();
+                            } catch (Exception e) {//
+                            }
+                        fileItem.delete();
                         // get the created resource names
                         for (CmsResource importedResource : importZip.getImportedResources()) {
                             m_resourcesCreated.put(
@@ -278,10 +355,28 @@ public class CmsUploadBean extends CmsJspBean {
                         }
                     }
                 } else {
-                    // create the resource
-                    CmsResource importedResource = createSingleResource(cms, fileName, targetFolder, content);
-                    // add the name of the created resource to the list of successful created resources
-                    m_resourcesCreated.put(importedResource.getStructureId().toString(), importedResource.getName());
+					//For this upload action,the file is already stored in disk,so don't need read it all bytes in memeory.
+                    InputStream content = null;
+                    try {
+                        content = fileItem.getInputStream();
+                        //get displayTitle from prepare set, by filename
+                        final String titleByEnv = envMap.get(fileItem.getName());
+                        // create the resource
+                        CmsResource importedResource = createSingleResource(cms, fileName,
+                            titleByEnv, typeidByEnv, targetFolder, content);
+                        // add the name of the created resource to the list of successful created resources
+                        m_resourcesCreated.put(importedResource.getStructureId().toString(), importedResource.getName());
+                    } catch (IOException e) {
+                        //logicly, this should be never happen
+                    } finally {
+                        if(null != content)
+                            try {
+                                content.close();
+                            } catch (IOException e) {
+                                //ignored
+                            }
+                        fileItem.delete();
+                    }
                 }
 
                 if (listener.isCanceled()) {
@@ -296,6 +391,8 @@ public class CmsUploadBean extends CmsJspBean {
      *
      * @param cms the CMS context to use
      * @param fileName the name of the resource to create
+     * @param titleByEnv predefined displayTitle
+     * @param typeidByEnv predefined id of the resourcetype 
      * @param targetFolder the folder to store the new resource
      * @param content the content of the resource to create
      *
@@ -305,15 +402,18 @@ public class CmsUploadBean extends CmsJspBean {
      * @throws CmsLoaderException if something goes wrong
      * @throws CmsDbSqlException if something goes wrong
      */
-    @SuppressWarnings("deprecation")
-    private CmsResource createSingleResource(CmsObject cms, String fileName, String targetFolder, byte[] content)
+    private CmsResource createSingleResource(CmsObject cms, String fileName,
+        String titleByEnv, int typeidByEnv, String targetFolder, InputStream content)
     throws CmsException, CmsLoaderException, CmsDbSqlException {
 
         String newResname = getNewResourceName(cms, fileName, targetFolder);
         CmsResource createdResource = null;
 
+        String title = titleByEnv;
         // determine Title property value to set on new resource
-        String title = fileName;
+        // If there is no predefined displayTitle, the file name is used
+        if(null == title || title.isEmpty())
+            title = fileName;
         if (title.lastIndexOf('.') != -1) {
             title = title.substring(0, title.lastIndexOf('.'));
         }
@@ -342,15 +442,24 @@ public class CmsUploadBean extends CmsJspBean {
         }
         properties.add(titleProp);
 
-        int plainId = OpenCms.getResourceManager().getResourceType(
-            CmsResourceTypePlain.getStaticTypeName()).getTypeId();
         if (!cms.existsResource(newResname, CmsResourceFilter.IGNORE_EXPIRATION)) {
             // if the resource does not exist, create it
 
             try {
+                I_CmsResourceType resType = null;
+				// Prefer to use predefined TypeId
+                if (typeidByEnv != -1) {
+                    try {
+                        resType = OpenCms.getResourceManager().getResourceType(typeidByEnv);
+                    } catch (Exception ex) {
+                        resType = null;
+                    }
+                }
+				//If it is in a multilevel subdirectory, determine the data type from the entire directory.
+                if (null == resType)
+                    resType = OpenCms.getResourceManager().getDefaultTypeForPath(cms, newResname);
                 // create the resource
-                int resTypeId = OpenCms.getResourceManager().getDefaultTypeForName(newResname).getTypeId();
-                createdResource = cms.createResource(newResname, resTypeId, content, properties);
+                createdResource = cms.createResourceByStream(newResname, resType, content, properties);
                 try {
                     cms.unlockResource(newResname);
                 } catch (CmsLockException e) {
@@ -358,7 +467,9 @@ public class CmsUploadBean extends CmsJspBean {
                 }
             } catch (CmsSecurityException e) {
                 // in case of not enough permissions, try to create a plain text file
-                createdResource = cms.createResource(newResname, plainId, content, properties);
+                I_CmsResourceType plainType = OpenCms.getResourceManager().getResourceType(
+                    CmsResourceTypePlain.getStaticTypeName());
+                createdResource = cms.createResourceByStream(newResname, plainType, content, properties);
                 cms.unlockResource(newResname);
             } catch (CmsDbSqlException sqlExc) {
                 // SQL error, probably the file is too large for the database settings, delete file
@@ -384,7 +495,8 @@ public class CmsUploadBean extends CmsJspBean {
                 CmsFile file = cms.readFile(res);
                 byte[] contents = file.getContents();
                 try {
-                    cms.replaceResource(newResname, res.getTypeId(), content, null);
+                    cms.replaceResourceByStream(newResname,
+                        OpenCms.getResourceManager().getResourceType(res.getTypeId()), content, null);
                     createdResource = res;
                 } catch (CmsDbSqlException sqlExc) {
                     // SQL error, probably the file is too large for the database settings, restore content

@@ -58,6 +58,15 @@ public class CmsSqlManager {
 
         m_driverManager = driverManager;
     }
+    
+    
+    /**
+     * @param driverManager the low level database driver manager
+     */
+    public void setDriverManager(CmsDriverManager driverManager) {
+
+        m_driverManager = driverManager;
+    }
 
     /**
      * Returns the number of active connections managed by a pool.<p>

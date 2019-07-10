@@ -36,20 +36,30 @@ import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsVfsException;
 import org.opencms.file.types.CmsResourceTypeFolder;
 import org.opencms.file.types.CmsResourceTypePlain;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.main.CmsException;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsSecurityException;
+import org.opencms.util.CmsBoundedInputStream;
 import org.opencms.util.CmsFileUtil;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.function.Function;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 
 /**
  * Allows to import resources from the filesystem or a ZIP file into the OpenCms VFS.<p>
@@ -98,7 +108,7 @@ public class CmsImportFolder {
      *
      * @throws CmsException if something goes wrong
      */
-    public CmsImportFolder(byte[] content, String importPath, CmsObject cms, boolean noSubFolder)
+    public CmsImportFolder(InputStream content, String importPath, CmsObject cms, boolean noSubFolder)
     throws CmsException {
 
         importZip(content, importPath, cms, noSubFolder);
@@ -174,13 +184,13 @@ public class CmsImportFolder {
      *
      * @throws CmsException if something goes wrong
      */
-    public void importZip(byte[] content, String importPath, CmsObject cms, boolean noSubFolder) throws CmsException {
+    public void importZip(InputStream content, String importPath, CmsObject cms, boolean noSubFolder) throws CmsException {
 
         m_importPath = importPath;
         m_cms = cms;
         try {
             // open the import resource
-            m_zipStreamIn = new ZipInputStream(new ByteArrayInputStream(content));
+            m_zipStreamIn = new ZipInputStream(content);
             m_cms.readFolder(importPath, CmsResourceFilter.IGNORE_EXPIRATION);
             // import the resources
             importZipResource(m_zipStreamIn, m_importPath, noSubFolder);
@@ -233,30 +243,32 @@ public class CmsImportFolder {
         String[] diskFiles = folder.list();
         File currentFile;
 
+        I_CmsResourceType plainType = OpenCms.getResourceManager().getResourceType(
+            CmsResourceTypePlain.getStaticTypeName());
         for (int i = 0; i < diskFiles.length; i++) {
             currentFile = new File(folder, diskFiles[i]);
 
             if (currentFile.isDirectory()) {
                 // create directory in cms
                 m_importedResources.add(
-                    m_cms.createResource(importPath + currentFile.getName(), CmsResourceTypeFolder.RESOURCE_TYPE_ID));
+                    m_cms.createFolder(importPath + currentFile.getName()));
                 importResources(currentFile, importPath + currentFile.getName() + "/");
             } else {
                 // import file into cms
-                int type = OpenCms.getResourceManager().getDefaultTypeForName(currentFile.getName()).getTypeId();
-                byte[] content = CmsFileUtil.readFile(currentFile);
+                I_CmsResourceType type = OpenCms.getResourceManager().getDefaultTypeForName(currentFile.getName());
+                InputStream content = new FileInputStream(currentFile);
                 // create the file
                 try {
                     m_importedResources.add(
-                        m_cms.createResource(importPath + currentFile.getName(), type, content, null));
+                        m_cms.createResourceByStream(importPath + currentFile.getName(), type, content, null));
                 } catch (CmsSecurityException e) {
                     // in case of not enough permissions, try to create a plain text file
-                    int plainId = OpenCms.getResourceManager().getResourceType(
-                        CmsResourceTypePlain.getStaticTypeName()).getTypeId();
                     m_importedResources.add(
-                        m_cms.createResource(importPath + currentFile.getName(), plainId, content, null));
+                        m_cms.createResourceByStream(importPath + currentFile.getName(), plainType, content, null));
+                } finally {
+                    content.close();
+                    content = null;
                 }
-                content = null;
             }
         }
     }
@@ -279,9 +291,61 @@ public class CmsImportFolder {
         boolean isFolder = false;
         int j, r, stop, size;
         int entries = 0;
-        byte[] buffer = null;
         boolean resourceExists;
+        
+        
+        // determine if envMap support
+        final Map<String, String> envMap = (Map<String, String>)m_cms.getRequestContext().getAttribute("envMap");
+        //predefined typeid
+        final int typeIdByEnv = null == envMap ? -1 : NumberUtils.toInt(envMap.get("typeid"), -1);
+        //function for get displayTitle from envMap
+        final Function<String, String> funcTitlesGetter = new Function<String, String>() {
+            public String apply(String namePath) {
+                if(null==envMap)
+                    return null;
+                //determine file or path by extension
+                String ext = FilenameUtils.getExtension(namePath);
+                if(null != ext && !ext.isEmpty()) { //file
+                    String name = FilenameUtils.getName(namePath);
+                    return envMap.get(name);
+                } else {//path
+                    //for path,this support get displayTitle from parent path
+                    //example,for "a\b\c",if no title defined for "c",will try to get title from "a\b"
+                    String path = "";
+                    String parent = namePath;
+                    while(true) {
+                        parent = parent.replaceAll("/$", "");
+                        path = FilenameUtils.getName(parent) + (path.isEmpty() ? "" : ("/" + path));
+                        String title = envMap.get(path);
+                        if(null != title)
+                            return title;
+                        parent = FilenameUtils.getPathNoEndSeparator(parent);
+                        if(!parent.contains("/"))
+                            break;
+                    }
+                }
+                return null;
+            }
+        };
+        //Avoid creating directories repeatedly
+        final Set<String> pathsChecked = new HashSet<>();
 
+        
+        //Only need to initialize it once.
+        final I_CmsResourceType folderType = OpenCms.getResourceManager()
+                .getResourceType(CmsResourceTypeFolder.RESOURCE_TYPE_NAME);
+        final I_CmsResourceType plainType = OpenCms.getResourceManager()
+                .getResourceType(CmsResourceTypePlain.getStaticTypeName());
+        I_CmsResourceType resType = null;
+        // Prefer to use predefined TypeId
+        if (typeIdByEnv != -1) {
+            try {
+                resType = OpenCms.getResourceManager().getResourceType(typeIdByEnv);
+            } catch (Exception ex) {
+                resType = null;
+            }
+        }
+        
         while (true) {
             // handle the single entries ...
             j = 0;
@@ -293,7 +357,6 @@ public class CmsImportFolder {
             }
             entries++; // count number of entries in zip
             String actImportPath = importPath;
-            String title = CmsResource.getName(entry.getName());
             String filename = m_cms.getRequestContext().getFileTranslator().translateResource(entry.getName());
             // separate path in directories an file name ...
             StringTokenizer st = new StringTokenizer(filename, "/\\");
@@ -317,25 +380,60 @@ public class CmsImportFolder {
             }
             // now write the folders ...
             for (r = 0; r < stop; r++) {
-                try {
-                    CmsResource createdFolder = m_cms.createResource(
-                        actImportPath + path[r],
-                        CmsResourceTypeFolder.RESOURCE_TYPE_ID);
-                    m_importedResources.add(createdFolder);
-                } catch (CmsException e) {
-                    // of course some folders did already exist!
-                }
                 actImportPath += path[r];
+                //only create folder resource once
+                if(!pathsChecked.contains(actImportPath)) {
+                    try {
+                        //Used if the display title is predefined for the directory
+                        String title = funcTitlesGetter.apply(actImportPath);
+                        List<CmsProperty> properties = new ArrayList<CmsProperty>(1);
+                        //set property_title
+                        if(StringUtils.isNotBlank(title)) {
+                            CmsProperty titleProp = new CmsProperty();
+                            titleProp.setName(CmsPropertyDefinition.PROPERTY_TITLE);
+                            if (OpenCms.getWorkplaceManager().isDefaultPropertiesOnStructure()) {
+                                titleProp.setStructureValue(title);
+                            } else {
+                                titleProp.setResourceValue(title);
+                            }
+                            properties.add(titleProp);
+                        }
+                        
+                        m_importedResources.add(m_cms.createFolder(actImportPath, properties));
+                    } catch (CmsException e) {
+                        // of course some folders did already exist!
+                    }
+                    pathsChecked.add(actImportPath);
+                }
                 actImportPath += "/";
             }
             if (!isFolder) {
+                //Used if the display title is predefined for the file
+                String title = funcTitlesGetter.apply(filename);
+                List<CmsProperty> properties = new ArrayList<CmsProperty>(1);
+                //Used default title(filename) as property_title when no env title set
+                if(StringUtils.isBlank(title))
+                    title = FilenameUtils.getName(filename);//
+                //set property_title
+                if(StringUtils.isNotBlank(title)) {
+                    CmsProperty titleProp = new CmsProperty();
+                    titleProp.setName(CmsPropertyDefinition.PROPERTY_TITLE);
+                    if (OpenCms.getWorkplaceManager().isDefaultPropertiesOnStructure()) {
+                        titleProp.setStructureValue(title);
+                    } else {
+                        titleProp.setResourceValue(title);
+                    }
+                    properties.add(titleProp);
+                }
+                
                 // import file into cms
-                int type = OpenCms.getResourceManager().getDefaultTypeForName(path[path.length - 1]).getTypeId();
+                // I_CmsResourceType type = OpenCms.getResourceManager().getDefaultTypeForName(path[path.length - 1]);
                 size = new Long(entry.getSize()).intValue();
+                CmsBoundedInputStream content = null;
                 if (size == -1) {
-                    buffer = CmsFileUtil.readFully(zipStreamIn, false);
+                    content = new CmsBoundedInputStream(zipStreamIn);
                 } else {
-                    buffer = CmsFileUtil.readFully(zipStreamIn, size, false);
+                    content = new CmsBoundedInputStream(zipStreamIn, size);
                 }
                 filename = actImportPath + path[path.length - 1];
 
@@ -347,44 +445,35 @@ public class CmsImportFolder {
                     resourceExists = false;
                 }
 
-                int plainId = OpenCms.getResourceManager().getResourceType(
-                    CmsResourceTypePlain.getStaticTypeName()).getTypeId();
                 if (resourceExists) {
                     CmsResource res = m_cms.readResource(filename, CmsResourceFilter.ALL);
                     CmsFile file = m_cms.readFile(res);
-                    byte[] contents = file.getContents();
+                    //byte[] contents = file.getContents();
                     try {
-                        m_cms.replaceResource(filename, res.getTypeId(), buffer, new ArrayList<CmsProperty>(0));
+                        m_cms.replaceResourceByStream(filename, 
+                            OpenCms.getResourceManager().getResourceType(res.getTypeId()), 
+                            content, new ArrayList<>(0));
                         m_importedResources.add(res);
                     } catch (CmsSecurityException e) {
                         // in case of not enough permissions, try to create a plain text file
-                        m_cms.replaceResource(filename, plainId, buffer, new ArrayList<CmsProperty>(0));
+                        m_cms.replaceResourceByStream(filename, plainType, content, new ArrayList<>(0));
                         m_importedResources.add(res);
                     } catch (CmsDbSqlException sqlExc) {
                         // SQL error, probably the file is too large for the database settings, restore content
-                        file.setContents(contents);
+                        file.setContents(file.getContents());
                         m_cms.writeFile(file);
                         throw sqlExc;
                     }
                 } else {
                     String newResName = actImportPath + path[path.length - 1];
-                    if (title.lastIndexOf('.') != -1) {
-                        title = title.substring(0, title.lastIndexOf('.'));
-                    }
-                    List<CmsProperty> properties = new ArrayList<CmsProperty>(1);
-                    CmsProperty titleProp = new CmsProperty();
-                    titleProp.setName(CmsPropertyDefinition.PROPERTY_TITLE);
-                    if (OpenCms.getWorkplaceManager().isDefaultPropertiesOnStructure()) {
-                        titleProp.setStructureValue(title);
-                    } else {
-                        titleProp.setResourceValue(title);
-                    }
-                    properties.add(titleProp);
+					//If it is in a multilevel subdirectory, determine the data type from the entire directory.
+                    if (null == resType)
+                        resType = OpenCms.getResourceManager().getDefaultTypeForPath(m_cms, newResName);
                     try {
-                        m_importedResources.add(m_cms.createResource(newResName, type, buffer, properties));
+                        m_importedResources.add(m_cms.createResourceByStream(newResName, resType, content, properties));
                     } catch (CmsSecurityException e) {
                         // in case of not enough permissions, try to create a plain text file
-                        m_importedResources.add(m_cms.createResource(newResName, plainId, buffer, properties));
+                        m_importedResources.add(m_cms.createResourceByStream(newResName, plainType, content, properties));
                     } catch (CmsDbSqlException sqlExc) {
                         // SQL error, probably the file is too large for the database settings, delete file
                         m_cms.lockResource(newResName);
