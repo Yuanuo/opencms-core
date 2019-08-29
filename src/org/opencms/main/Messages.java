@@ -40,7 +40,7 @@ public final class Messages extends A_CmsMessageBundle {
     /** The copyright message for OpenCms. */
     public static final String[] COPYRIGHT_BY_ALKACON = {
         "",
-        "Copyright (c) 2002 - 2018 Alkacon Software GmbH & Co. KG",
+        "Copyright (c) 2002 - 2019 Alkacon Software GmbH & Co. KG",
         "OpenCms comes with ABSOLUTELY NO WARRANTY",
         "This is free software, and you are welcome to",
         "redistribute it under certain conditions.",
@@ -272,9 +272,6 @@ public final class Messages extends A_CmsMessageBundle {
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_SOLR_NOT_LOGGED_IN_0 = "GUI_SOLR_NOT_LOGGED_IN_0";
-
-    /** Message constant for key in the resource bundle. */
-    public static final String GUI_SOLR_UNEXPECTED_ERROR_0 = "GUI_SOLR_UNEXPECTED_ERROR_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String INIT_ADDED_REQUEST_HANDLER_2 = "INIT_ADDED_REQUEST_HANDLER_2";

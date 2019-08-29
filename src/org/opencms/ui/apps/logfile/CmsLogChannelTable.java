@@ -36,6 +36,7 @@ import org.opencms.ui.contextmenu.CmsContextMenu;
 import org.opencms.ui.contextmenu.CmsContextMenu.ContextMenuItem;
 import org.opencms.ui.contextmenu.CmsContextMenu.ContextMenuItemClickEvent;
 import org.opencms.ui.contextmenu.CmsContextMenu.ContextMenuItemClickListener;
+import org.opencms.util.CmsLog4jUtil;
 import org.opencms.util.CmsStringUtil;
 
 import java.io.File;
@@ -54,15 +55,15 @@ import org.apache.logging.log4j.core.appender.FileAppender.Builder;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 
+import com.vaadin.event.MouseEvents;
+import com.vaadin.server.Resource;
+import com.vaadin.shared.MouseEventDetails.MouseButton;
 import com.vaadin.v7.data.Item;
 import com.vaadin.v7.data.util.IndexedContainer;
 import com.vaadin.v7.data.util.filter.Or;
 import com.vaadin.v7.data.util.filter.SimpleStringFilter;
 import com.vaadin.v7.event.ItemClickEvent;
 import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
-import com.vaadin.event.MouseEvents;
-import com.vaadin.server.Resource;
-import com.vaadin.shared.MouseEventDetails.MouseButton;
 import com.vaadin.v7.ui.Table;
 
 /**
@@ -366,6 +367,23 @@ public class CmsLogChannelTable extends Table {
     }
 
     /**
+     * Adds a container item for the given logger.<p>
+     *
+     * @param logger the logger for which to generate a container item
+     */
+    public void addItemForLogger(Logger logger) {
+
+        Item item = m_container.addItem(logger);
+        if (item != null) {
+            item.getItemProperty(TableColumn.Channel).setValue(logger.getName());
+            Logger parent = logger.getParent();
+            item.getItemProperty(TableColumn.ParentChannel).setValue(parent != null ? parent.getName() : "none");
+            item.getItemProperty(TableColumn.File).setValue(getLogFiles(logger));
+            item.getItemProperty(TableColumn.Level).setValue(LoggerLevel.fromLogger(logger));
+        }
+    }
+
+    /**
      * Filters the table according to given search string.<p>
      *
      * @param search string to be looked for.
@@ -490,7 +508,13 @@ public class CmsLogChannelTable extends Table {
             LoggerContext context = logger.getContext();
             Configuration config = context.getConfiguration();
             LoggerConfig loggerConfig = config.getLoggerConfig(logger.getName());
-            loggerConfig.setLevel(clickedLevel.getLevel());
+            LoggerConfig specificConfig = loggerConfig;
+            if (!loggerConfig.getName().equals(logger.getName())) {
+                specificConfig = new LoggerConfig(logger.getName(), clickedLevel.getLevel(), true);
+                specificConfig.setParent(loggerConfig);
+                config.addLogger(logger.getName(), specificConfig);
+            }
+            specificConfig.setLevel(clickedLevel.getLevel());
             context.updateLoggers();
         }
         updateLevel();
@@ -587,17 +611,13 @@ public class CmsLogChannelTable extends Table {
     /**
      * Populate table.<p>
      */
+    @SuppressWarnings("deprecation")
     private void fillTable() {
 
-        List<Logger> loggerList = CmsLogFileApp.getLoggers();
-
+        removeAllItems();
+        List<Logger> loggerList = CmsLog4jUtil.getAllLoggers();
         for (Logger logger : loggerList) {
-            Item item = m_container.addItem(logger);
-            item.getItemProperty(TableColumn.Channel).setValue(logger.getName());
-            item.getItemProperty(TableColumn.ParentChannel).setValue(
-                logger.getParent() != null ? logger.getParent().getName() : "none");
-            item.getItemProperty(TableColumn.File).setValue(getLogFiles(logger));
-            item.getItemProperty(TableColumn.Level).setValue(LoggerLevel.fromLogger(logger));
+            addItemForLogger(logger);
         }
     }
 

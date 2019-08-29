@@ -270,12 +270,14 @@ public final class CmsContainerpageController {
                 null,
                 m_currentContainer.getWidth(),
                 m_currentContainer.getMaxElements(),
+                m_currentContainer.isDetailViewContainer(),
                 m_currentContainer.isDetailView(),
                 true,
                 m_currentElements,
                 m_currentContainer.getParentContainerName(),
-                m_currentContainer.getParentInstanceId());
-            container.setDeatilOnly(m_currentContainer.isDetailOnly());
+                m_currentContainer.getParentInstanceId(),
+                m_currentContainer.getSettingPresets());
+            container.setDetailOnly(m_currentContainer.isDetailOnly());
             container.setRootContainer(isRootContainer(m_currentContainer));
             m_resultContainers.add(container);
         }
@@ -352,11 +354,13 @@ public final class CmsContainerpageController {
                 null,
                 m_currentContainer.getWidth(),
                 m_currentContainer.getMaxElements(),
+                m_currentContainer.isDetailViewContainer(),
                 m_currentContainer.isDetailView(),
                 true,
                 m_currentElements,
                 m_currentContainer.getParentContainerName(),
-                m_currentContainer.getParentInstanceId());
+                m_currentContainer.getParentInstanceId(),
+                m_currentContainer.getSettingPresets());
 
             container.setRootContainer(isRootContainer(m_currentContainer));
             m_resultContainers.add(container);
@@ -455,7 +459,6 @@ public final class CmsContainerpageController {
                     getRequestParams(),
                     m_clientIds,
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     false,
                     null,
                     getLocale(),
@@ -515,7 +518,6 @@ public final class CmsContainerpageController {
                 getRequestParams(),
                 m_clientIds,
                 getPageState(),
-                !isGroupcontainerEditing(),
                 false,
                 null,
                 getLocale(),
@@ -558,6 +560,9 @@ public final class CmsContainerpageController {
             } else {
                 if (reloadMarkerFound) {
                     CmsContainerpageController.get().reloadPage();
+                } else {
+                    long loadTime = result.values().iterator().next().getLoadTime();
+                    setLoadTime(Long.valueOf(loadTime));
                 }
             }
             m_handler.updateClipboard(result);
@@ -614,7 +619,6 @@ public final class CmsContainerpageController {
                 getRequestParams(),
                 clientIds,
                 getPageState(),
-                !isGroupcontainerEditing(),
                 m_alwaysCopy,
                 m_dndContainer,
                 getLocale(),
@@ -639,6 +643,8 @@ public final class CmsContainerpageController {
 
             if (result != null) {
                 addElements(result);
+                long loadTime = result.get(m_clientId).getLoadTime();
+                setLoadTime(Long.valueOf(loadTime));
                 m_callback.execute(result.get(m_clientId));
             }
         }
@@ -710,6 +716,9 @@ public final class CmsContainerpageController {
     /** Flag indicating that a content element is being edited. */
     private boolean m_isContentEditing;
 
+    /** The container page load time. */
+    private long m_loadTime;
+
     /** The lock error message. */
     private String m_lockErrorMessage;
 
@@ -733,9 +742,6 @@ public final class CmsContainerpageController {
 
     /** Handler for small elements. */
     private CmsSmallElementsHandler m_smallElementsHandler;
-
-    /** The container page load time. */
-    private long m_loadTime;
 
     /**
      * Constructor.<p>
@@ -959,7 +965,11 @@ public final class CmsContainerpageController {
             public void execute() {
 
                 start(200, false);
-                getContainerpageService().copyElement(CmsCoreProvider.get().getStructureId(), new CmsUUID(id), this);
+                getContainerpageService().copyElement(
+                    CmsCoreProvider.get().getStructureId(),
+                    new CmsUUID(id),
+                    getData().getLocale(),
+                    this);
             }
 
             @Override
@@ -1544,7 +1554,6 @@ public final class CmsContainerpageController {
                     clientId,
                     containerId,
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
 
@@ -1604,7 +1613,6 @@ public final class CmsContainerpageController {
                     clientId,
                     settings,
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
 
@@ -1709,6 +1717,7 @@ public final class CmsContainerpageController {
             }
 
             public void endContainer() {
+
                 // do nothing
             }
 
@@ -1741,7 +1750,6 @@ public final class CmsContainerpageController {
                     getRequestParams(),
                     resourceType,
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
             }
@@ -2096,10 +2104,12 @@ public final class CmsContainerpageController {
         AsyncCallback<Void> doNothing = new AsyncCallback<Void>() {
 
             public void onFailure(Throwable caught) {
+
                 // nothing to do
             }
 
             public void onSuccess(Void result) {
+
                 // nothing to do
             }
         };
@@ -2112,6 +2122,10 @@ public final class CmsContainerpageController {
         }
 
         updateGalleryData(false, null);
+        addContainerpageEventHandler(event -> {
+            updateDetailPreviewStyles();
+        });
+        updateDetailPreviewStyles();
     }
 
     /**
@@ -2273,7 +2287,6 @@ public final class CmsContainerpageController {
                     CmsCoreProvider.get().getStructureId(),
                     getData().getDetailId(),
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
             }
@@ -2312,7 +2325,6 @@ public final class CmsContainerpageController {
                     CmsCoreProvider.get().getStructureId(),
                     getData().getDetailId(),
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
             }
@@ -2576,7 +2588,6 @@ public final class CmsContainerpageController {
                                     clientId,
                                     settings,
                                     getPageState(),
-                                    !isGroupcontainerEditing(),
                                     getLocale(),
                                     this);
                             }
@@ -2760,7 +2771,6 @@ public final class CmsContainerpageController {
                     elementWidget.getId(),
                     elementId,
                     getPageState(),
-                    !isGroupcontainerEditing(),
                     getLocale(),
                     this);
             }
@@ -2822,7 +2832,9 @@ public final class CmsContainerpageController {
 
         return element.hasViewPermission()
             && (!element.hasModelGroupParent() || getData().isModelGroup())
-            && (matchRootView(element.getElementView()) || isGroupcontainerEditing())
+            && (matchRootView(element.getElementView())
+                || isGroupcontainerEditing()
+                || shouldShowModelgroupOptionBar(element))
             && isContainerEditable(dragParent)
             && matchesCurrentEditLevel(dragParent);
     }
@@ -3593,10 +3605,11 @@ public final class CmsContainerpageController {
         }
         element.setId(newElementData.getClientId());
         element.setSitePath(newElementData.getSitePath());
-
-        setPageChanged();
+        if (!isGroupcontainerEditing()) {
+            setPageChanged();
+        }
         getHandler().hidePageOverlay();
-        getHandler().openEditorForElement(element, inline);
+        getHandler().openEditorForElement(element, inline, true);
     }
 
     /**
@@ -3639,7 +3652,7 @@ public final class CmsContainerpageController {
                 nativeEvent.stopPropagation();
                 m_handler.leavePage(Window.Location.getHref());
             }
-            if (nativeEvent.getCtrlKey()) {
+            if (nativeEvent.getCtrlKey() || nativeEvent.getMetaKey()) {
                 // look for short cuts
                 if (keyCode == KeyCodes.KEY_E) {
                     if (nativeEvent.getShiftKey()) {
@@ -4067,6 +4080,27 @@ public final class CmsContainerpageController {
     }
 
     /**
+     * Checks whether given element is a model group and it's option bar edit points should be visible.<p>
+     *
+     * @param element the element to check
+     *
+     * @return <code>true</code> in case the current page is not a model group page,
+     *  the given element is a model group and it is inside a view visible to the current user
+     */
+    private boolean shouldShowModelgroupOptionBar(CmsContainerPageElementPanel element) {
+
+        if (!getData().isModelGroup() && element.isModelGroup()) {
+            for (CmsElementViewInfo info : getData().getElementViews()) {
+                if (info.getElementViewId().equals(element.getElementView())) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Updates the container level info on the present containers.<p>
      */
     private void updateContainerLevelInfo() {
@@ -4097,5 +4131,47 @@ public final class CmsContainerpageController {
             }
             progress = containers.size() > size;
         }
+    }
+
+    /**
+     * Sets the oc-detail-preview class on first container elements of an appropriate type in detail containers,
+     * if we are currently not showing a detail content.
+     */
+    private void updateDetailPreviewStyles() {
+
+        Set<String> detailTypes = getData().getDetailTypes();
+        if ((getData().getDetailId() != null) || detailTypes.isEmpty()) {
+            return;
+        }
+        for (Element elem : CmsDomUtil.getElementsByClass(CmsGwtConstants.CLASS_DETAIL_PREVIEW)) {
+            elem.removeClassName(CmsGwtConstants.CLASS_DETAIL_PREVIEW);
+        }
+
+        processPageContent(new I_PageContentVisitor() {
+
+            boolean m_first = true;
+            boolean m_isdetail = false;
+
+            public boolean beginContainer(String name, CmsContainer container) {
+
+                m_isdetail = container.isDetailViewContainer();
+                m_first = true;
+                return true;
+            }
+
+            public void endContainer() {
+
+                // do nothing
+            }
+
+            public void handleElement(CmsContainerPageElementPanel element) {
+
+                if (m_first && m_isdetail && detailTypes.contains(element.getResourceType())) {
+                    element.addStyleName(CmsGwtConstants.CLASS_DETAIL_PREVIEW);
+                }
+                m_first = false;
+            }
+        });
+
     }
 }

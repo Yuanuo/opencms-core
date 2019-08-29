@@ -32,6 +32,22 @@ package org.opencms.gwt.shared;
  */
 public final class CmsGwtConstants {
 
+    /** Parameters for favorite dialog. */
+    public static final class Favorites {
+
+        /** Request parameter. */
+        public static final String PARAM_DETAIL = "detail";
+
+        /** Request parameter. */
+        public static final String PARAM_PAGE = "page";
+
+        /** Request parameter. */
+        public static final String PARAM_PROJECT = "project";
+
+        /** Request parameter. */
+        public static final String PARAM_SITE = "site";
+    }
+
     /**
      * Quick launcher constants.<p>
      */
@@ -81,6 +97,9 @@ public final class CmsGwtConstants {
     /** Context menu action id. */
     public static final String ACTION_VIEW_ONLINE = "viewonline";
 
+    /** Attribute for container id. */
+    public static final String ATTR_CONTAINER_ID = "ATTR_CONTAINER_ID";
+
     /** Collector data attribute name. */
     public static final String ATTR_DATA_COLLECTOR = "data-oc-collector";
 
@@ -99,6 +118,12 @@ public final class CmsGwtConstants {
     /** Entity id data attribute name. */
     public static final String ATTR_DATA_ID = "data-oc-id";
 
+    /** Key for the element id attribute. */
+    public static final String ATTR_ELEMENT_ID = "ATTR_ELEMENT_ID";
+
+    /** Key for the page root path attribute. */
+    public static final String ATTR_PAGE_ROOT_PATH = "ATTR_PAGE_ROOT_PATH";
+
     /** Name of the Javascript callback used to handle property changes triggered from the locale compare view. */
     public static final String CALLBACK_HANDLE_CHANGED_PROPERTIES = "cmsHandleChangedProperties";
 
@@ -107,6 +132,9 @@ public final class CmsGwtConstants {
 
     /** The CSS class name used for the DOM elements containing collector information. */
     public static final String CLASS_COLLECTOR_INFO = "oc-collector-info";
+
+    /** CSS class for elements in detail containers which are used to transfer their settings to the detail eleemnt. */
+    public static final String CLASS_DETAIL_PREVIEW = "oc-detail-preview";
 
     /** The CSS class name for data elements which precede the direct editable elements. */
     public static final String CLASS_EDITABLE = "oc-editable";

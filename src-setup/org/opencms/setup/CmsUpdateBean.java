@@ -27,8 +27,10 @@
 
 package org.opencms.setup;
 
+import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.configuration.CmsConfigurationManager;
 import org.opencms.configuration.CmsModuleConfiguration;
+import org.opencms.configuration.CmsParameterConfiguration;
 import org.opencms.file.CmsProject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.types.I_CmsResourceType;
@@ -48,9 +50,11 @@ import org.opencms.report.CmsShellReport;
 import org.opencms.report.I_CmsReport;
 import org.opencms.security.CmsRole;
 import org.opencms.setup.db.CmsUpdateDBThread;
+import org.opencms.setup.xml.CmsXmlConfigUpdater;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.workplace.threads.CmsXmlContentRepairSettings;
 import org.opencms.workplace.threads.CmsXmlContentRepairThread;
+import org.opencms.workplace.tools.CmsIdentifiableObjectContainer;
 import org.opencms.xml.CmsXmlException;
 
 import java.io.File;
@@ -67,6 +71,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarInputStream;
@@ -88,8 +93,8 @@ public class CmsUpdateBean extends CmsSetupBean {
     /** The empty jar marker attribute key. */
     public static final String EMPTY_JAR_ATTRIBUTE_KEY = "OpenCms-empty-jar";
 
-    /** name of the update folder. */
-    public static final String FOLDER_UPDATE = "update" + File.separatorChar;
+    /** The static log object for this class. */
+    static final Log LOG = CmsLog.getLog(CmsUpdateBean.class);
 
     /** replace pattern constant for the cms script. */
     private static final String C_ADMIN_GROUP = "@ADMIN_GROUP@";
@@ -100,17 +105,20 @@ public class CmsUpdateBean extends CmsSetupBean {
     /** replace pattern constant for the cms script. */
     private static final String C_ADMIN_USER = "@ADMIN_USER@";
 
+    /** Folder constant name.<p> */
+    public static final String FOLDER_UPDATE = "WEB-INF/updatedata" + File.separatorChar;
+
     /** replace pattern constant for the cms script. */
     private static final String C_UPDATE_PROJECT = "@UPDATE_PROJECT@";
 
     /** replace pattern constant for the cms script. */
     private static final String C_UPDATE_SITE = "@UPDATE_SITE@";
 
-    /** The static log object for this class. */
-    static final Log LOG = CmsLog.getLog(CmsUpdateBean.class);
+    /** New MySQL JDBC driver class name. */
+    private static final String MYSQL_DRIVER_CLASS_NEW = "com.mysql.cj.jdbc.Driver";
 
-    /** Static flag to indicate if all modules should be updated regardless of their version number. */
-    private static final boolean UPDATE_ALL_MODULES = false;
+    /** Old MySQL JDBC driver class name. */
+    private static final String MYSQL_DRIVER_CLASS_OLD = "org.gjt.mm.mysql.Driver";
 
     /** The obsolete modules that should be removed. */
     private static String[] OBSOLETE_MODULES = new String[] {
@@ -124,6 +132,12 @@ public class CmsUpdateBean extends CmsSetupBean {
         "org.opencms.ade.publish",
         "org.opencms.ade.sitemap",
         "org.opencms.ade.upload",
+        "org.opencms.editors.codemirror",
+        "org.opencms.editors.tinymce",
+        "org.opencms.editors",
+        "org.opencms.gwt",
+        "org.opencms.jquery",
+        "org.opencms.jsp.search",
         "org.opencms.locale.cs",
         "org.opencms.locale.da",
         "org.opencms.locale.de",
@@ -134,12 +148,35 @@ public class CmsUpdateBean extends CmsSetupBean {
         "org.opencms.locale.zh",
         "org.opencms.ugc",
         "org.opencms.workplace",
+        "org.opencms.workplace.administration",
+        "org.opencms.workplace.categories",
+        "org.opencms.workplace.explorer",
+        "org.opencms.workplace.galleries",
         "org.opencms.workplace.handler",
+        "org.opencms.workplace.spellcheck",
+        "org.opencms.workplace.tools.accounts",
+        "org.opencms.workplace.tools.cache",
+        "org.opencms.workplace.tools.content",
+        "org.opencms.workplace.tools.database",
+        "org.opencms.workplace.tools.galleryoverview",
+        "org.opencms.workplace.tools.git",
+        "org.opencms.workplace.tools.history",
         "org.opencms.workplace.tools.link",
+        "org.opencms.workplace.tools.modules",
+        "org.opencms.workplace.tools.projects",
+        "org.opencms.workplace.tools.publishqueue",
+        "org.opencms.workplace.tools.scheduler",
+        "org.opencms.workplace.tools.searchindex",
+        "org.opencms.workplace.tools.sites",
+        "org.opencms.workplace.tools.workplace",
+        "org.opencms.workplace.traditional",
         "org.opencms.workplace.help.de",
         "org.opencms.workplace.help.en",
         "org.opencms.workplace.help",
         "org.opencms.workplace.tools.git"};
+
+    /** Static flag to indicate if all modules should be updated regardless of their version number. */
+    private static final boolean UPDATE_ALL_MODULES = false;
 
     /** The new logging offset in the database update thread. */
     protected int m_newLoggingDBOffset;
@@ -156,6 +193,9 @@ public class CmsUpdateBean extends CmsSetupBean {
     /** The used admin user name. */
     private String m_adminUser = "Admin";
 
+    /** The XML updater instance (lazily initialized). */
+    private CmsXmlConfigUpdater m_configUpdater;
+
     /** The update database thread. */
     private CmsUpdateDBThread m_dbUpdateThread;
 
@@ -168,6 +208,9 @@ public class CmsUpdateBean extends CmsSetupBean {
     /** List of module to be updated. */
     private List<String> m_modulesToUpdate;
 
+    /** The list of modules that should keep their libs. */
+    private List<String> m_preserveLibModules;
+
     /** the update project. */
     private String m_updateProject = "_tmpUpdateProject" + (System.currentTimeMillis() % 1000);
 
@@ -179,9 +222,6 @@ public class CmsUpdateBean extends CmsSetupBean {
 
     /** The workplace import thread. */
     private CmsUpdateThread m_workplaceUpdateThread;
-
-    /** The list of modules that should keep their libs. */
-    private List<String> m_preserveLibModules;
 
     /**
      * Default constructor.<p>
@@ -330,6 +370,16 @@ public class CmsUpdateBean extends CmsSetupBean {
     }
 
     /**
+     * Gets the folder for config files.
+     *
+     * @return the folder for config files
+     */
+    public File getConfigFolder() {
+
+        return new File(getWebAppRfsPath() + "WEB-INF/config");
+    }
+
+    /**
      * Returns the detected mayor version, based on DB structure.<p>
      *
      * @return the detected mayor version
@@ -387,6 +437,12 @@ public class CmsUpdateBean extends CmsSetupBean {
 
         if (m_modulesToUpdate == null) {
             getUptodateModules();
+            m_components = new CmsIdentifiableObjectContainer<CmsSetupComponent>(true, true);
+            try {
+                addComponentsFromPath(m_webAppRfsPath + FOLDER_UPDATE);
+            } catch (CmsConfigurationException e) {
+                //
+            }
         }
         return m_modulesToUpdate;
     }
@@ -462,6 +518,30 @@ public class CmsUpdateBean extends CmsSetupBean {
     public CmsUpdateThread getWorkplaceUpdateThread() {
 
         return m_workplaceUpdateThread;
+    }
+
+    /**
+     * Gets the XML updater (lazily create it if it hasn't been created yet).
+     *
+     * @return the XML updater
+     */
+    public CmsXmlConfigUpdater getXmlConfigUpdater() {
+
+        if (m_configUpdater == null) {
+            m_configUpdater = new CmsXmlConfigUpdater(getXmlUpdateFolder(), getConfigFolder());
+        }
+        return m_configUpdater;
+    }
+
+    /**
+     * Gets the folder for XML update files.
+     *
+     * @return the folder for XML update files
+     */
+    public File getXmlUpdateFolder() {
+
+        return new File(new File(getWebAppRfsPath()), "WEB-INF/updatedata/xmlupdate");
+
     }
 
     /**
@@ -573,7 +653,9 @@ public class CmsUpdateBean extends CmsSetupBean {
      */
     public void prepareUpdateStep1() {
 
-        // nothing to do jet
+        // the MySQL driver class name has changed with OpenCms 11.0.0
+        // it needs to be updated before any database access
+        //updateDBDriverClassName();
     }
 
     /**
@@ -868,6 +950,54 @@ public class CmsUpdateBean extends CmsSetupBean {
                 + "]");
         System.out.println();
         System.out.println();
+    }
+
+    /**
+     * Updates the JDBC driver class names.<p>
+     * Needs to be executed before any database access.<p>
+     */
+    public void updateDBDriverProperties() {
+
+        Map<String, String> modifiedElements = new HashMap<String, String>();
+        // replace MySQL JDBC driver class name
+        CmsParameterConfiguration properties = getProperties();
+        for (Entry<String, String> propertyEntry : properties.entrySet()) {
+            if (MYSQL_DRIVER_CLASS_OLD.equals(propertyEntry.getValue())) {
+                modifiedElements.put(propertyEntry.getKey(), MYSQL_DRIVER_CLASS_NEW);
+            }
+        }
+
+        if (properties.containsValue(MYSQL_DRIVER_CLASS_NEW) || properties.containsValue(MYSQL_DRIVER_CLASS_OLD)) {
+            for (Entry<String, String> propertyEntry : properties.entrySet()) {
+                if (MYSQL_DRIVER_CLASS_OLD.equals(propertyEntry.getValue())
+                    || MYSQL_DRIVER_CLASS_NEW.equals(propertyEntry.getValue())) {
+
+                    String mysqlkey = propertyEntry.getKey().substring(0, propertyEntry.getKey().lastIndexOf("."));
+                    String parameterKey = mysqlkey + ".jdbcUrl.params";
+                    String currentParameter = properties.get(parameterKey);
+                    if (currentParameter == null) {
+                        currentParameter = "";
+                    }
+                    if (!currentParameter.contains("serverTimezone")) {
+                        String parameterSeperator = "?";
+                        if (currentParameter.contains("?")) {
+                            parameterSeperator = "&";
+                        }
+                        modifiedElements.put(
+                            parameterKey,
+                            currentParameter + parameterSeperator + "serverTimezone=UTC");
+                    }
+                }
+            }
+        }
+
+        for (String key : modifiedElements.keySet()) {
+            properties.put(key, modifiedElements.get(key));
+        }
+
+        if (!modifiedElements.isEmpty()) {
+            saveProperties(properties, CmsSystemInfo.FILE_PROPERTIES, false, modifiedElements.keySet());
+        }
     }
 
     /**

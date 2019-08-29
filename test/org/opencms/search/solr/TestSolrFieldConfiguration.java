@@ -35,10 +35,11 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
+import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypeBinary;
 import org.opencms.file.types.CmsResourceTypeFolder;
 import org.opencms.json.JSONObject;
-import org.opencms.main.CmsException;
+import org.opencms.lock.CmsLockUtil;
 import org.opencms.main.OpenCms;
 import org.opencms.report.CmsShellReport;
 import org.opencms.search.CmsSearchException;
@@ -50,7 +51,6 @@ import org.opencms.test.OpenCmsTestCase;
 import org.opencms.test.OpenCmsTestProperties;
 import org.opencms.util.CmsRequestUtil;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -60,7 +60,6 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.apache.solr.client.solrj.SolrQuery;
-import org.apache.solr.common.SolrInputDocument;
 
 import junit.extensions.TestSetup;
 import junit.framework.Test;
@@ -95,6 +94,7 @@ public class TestSolrFieldConfiguration extends OpenCmsTestCase {
         TestSuite suite = new TestSuite();
         suite.setName(TestSolrFieldConfiguration.class.getName());
         suite.addTest(new TestSolrFieldConfiguration("testAppinfoSolrField"));
+        suite.addTest(new TestSolrFieldConfiguration("testAppinfoSearchTypeContent"));
         suite.addTest(new TestSolrFieldConfiguration("testContentLocalesField"));
         suite.addTest(new TestSolrFieldConfiguration("testDependencies"));
         suite.addTest(new TestSolrFieldConfiguration("testLanguageDetection"));
@@ -121,6 +121,42 @@ public class TestSolrFieldConfiguration extends OpenCmsTestCase {
         };
 
         return wrapper;
+    }
+
+    /**
+     * Tests if the search content type "content" works correctly.<p>
+     *
+     * We check if the content is indexed correctly and if cyclic dependencies are correctly handled.
+     *
+     * '@see /sites/default/extractLinked/extract-linked.xsd'
+     *
+     * @throws Throwable if something goes wrong
+     */
+    public void testAppinfoSearchTypeContent() throws Throwable {
+
+        CmsSolrIndex index = OpenCms.getSearchManager().getIndexSolr(AllTests.SOLR_ONLINE);
+        CmsSolrQuery squery = new CmsSolrQuery(
+            null,
+            CmsRequestUtil.createParameterMap("q=path:\"/sites/default/extractLinked/el1.xml\""));
+        CmsSolrResultList results = index.search(getCmsObject(), squery);
+
+        // Test the result count
+        AllTests.printResults(getCmsObject(), results, false);
+        assertEquals(1, results.size());
+
+        // Test if the result contains the expected resource
+        CmsSearchResource res = results.get(0);
+        assertEquals("/sites/default/extractLinked/el1.xml", res.getRootPath());
+
+        ////////////////
+        // FIELD TEST //
+        ////////////////
+        String contentFieldValue = res.getField("content_en");
+        assertNotNull(contentFieldValue);
+        assertTrue(
+            "Field should contain 'Hund' and 'Rind', i.e. the values of el1.xml and el2.xml",
+            contentFieldValue.contains("Hund") && contentFieldValue.contains("Rind"));
+
     }
 
     /**
@@ -186,7 +222,6 @@ public class TestSolrFieldConfiguration extends OpenCmsTestCase {
         assertTrue(fieldValue.equals("Homepage n.a."));
         fieldValue = res.getField("ahomepage_en");
         assertTrue(fieldValue.contains("/sites/default/index.html"));
-
 
         //////////////////
         // MAPPING TEST //
@@ -520,16 +555,22 @@ public class TestSolrFieldConfiguration extends OpenCmsTestCase {
 
     /**
      * Checks if the extra fields for list sort options are index correctly.
-     *
-     * @throws CmsException thrown if module import fails
-     * @throws IOException thrown if module import fails
-     * @throws InterruptedException thrown if module import fails
+     * @throws Exception should not happen
      */
-    public void testListSortOptionFields() throws CmsException, IOException, InterruptedException {
+    public void testListSortOptionFields() throws Exception {
 
         CmsObject cms = getCmsObject();
         cms.getRequestContext().setSiteRoot("/");
         importModule(getCmsObject(), "org.opencms.test.modules.solr.additionalsortfields");
+        CmsResource g = cms.readResource("/sites/default/files/g.txt", CmsResourceFilter.ALL);
+        CmsResource g1 = cms.readResource("/sites/default/files/1/g.txt", CmsResourceFilter.ALL);
+        try (AutoCloseable c = CmsLockUtil.withLockedResources(cms, g, g1)) {
+            cms.setDateExpired(g, System.currentTimeMillis() + 10000, false);
+            cms.setDateExpired(g1, System.currentTimeMillis() + 10000, false);
+        }
+        OpenCms.getPublishManager().publishResource(cms, g.getRootPath());
+        OpenCms.getPublishManager().publishResource(cms, g1.getRootPath());
+        OpenCms.getPublishManager().waitWhileRunning();
 
         String query = "q=*:*&fq=parent-folders:\"/sites/default/files/\"&rows=20";
         CmsSolrIndex index = OpenCms.getSearchManager().getIndexSolr(CmsSolrIndex.DEFAULT_INDEX_NAME_ONLINE);

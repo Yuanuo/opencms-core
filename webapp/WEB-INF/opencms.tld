@@ -318,6 +318,22 @@
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
         </attribute>
+        <attribute>
+            <description><![CDATA[
+                The encoding used to encode URL parameters . 
+            ]]></description>
+            <name>paramEncoding</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description><![CDATA[
+                The file name to use for the download link. 
+            ]]></description>
+            <name>filename</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
     </tag>
 
    <tag>
@@ -2037,6 +2053,14 @@
             <rtexprvalue>true</rtexprvalue>
         </attribute>
         <attribute>
+           <description><![CDATA[
+			    A map containing setting presets for elements in this container. If settings are passed in this map, they will not be user-editable on elements in the container.
+            ]]></description>
+            <name>settings</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
             <description><![CDATA[
                 A type assigned to the container, e.g. "content" or "top-wide" or "left".</P>
                 The type can be used to select the formatter that is used to render a content in the container.
@@ -2265,6 +2289,16 @@
             <rtexprvalue>true</rtexprvalue>
             <type>java.lang.String</type>
         </attribute>
+        <attribute>
+             <description><![CDATA[
+                Change the URI of the request context used for formatter lookup to the provided value.<p>
+                This is useful when using the display tag in JSPs called via AJAX and you want to use the default display formatter for the current page.
+            ]]></description>
+            <name>baseUri</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        
     </tag>
         <tag>
         <description><![CDATA[
@@ -2371,7 +2405,7 @@
             <rtexprvalue>true</rtexprvalue>
             <type>java.lang.String</type>
         </attribute>
-        
+
     </tag>
     <tag>
         <description><![CDATA[
@@ -2712,12 +2746,13 @@
         </attribute>
         <attribute>
             <description><![CDATA[
-                VFS-URI of the search form configuration file (either a JSON file or an XML content of type <code>jsp-search-form</code>.
+                Value specifying the search form configuration file (either a JSON file or an XML content of type <code>jsp-search-form</code>.
+                You can provide path, structure id or resource object to identify the file.
             ]]></description>
             <name>configFile</name>
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
-            <type>java.lang.String</type>
+            <type>java.lang.Object</type>
         </attribute>
         <attribute>
                 <description><![CDATA[
@@ -2797,12 +2832,12 @@
         </attribute>
         <attribute>
             <description><![CDATA[
-                VFS-URI of the search form configuration file of type <code>listconfig</code>.
+                VFS-URI, structure id, or resource object identifying the search form configuration file of type <code>listconfig</code>.
             ]]></description>
             <name>configFile</name>
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
-            <type>java.lang.String</type>
+            <type>java.lang.Object</type>
         </attribute>
         <attribute>
             <description><![CDATA[
@@ -2899,6 +2934,21 @@
         <name>addparams</name>
         <tag-class>org.opencms.jsp.CmsJspTagAddParams</tag-class>
         <body-content>JSP</body-content>
+    </tag>
+
+      <tag>
+        <description><![CDATA[Can be used to create a java.util.Map with string keys and values using nested <cms:param> tags.]]></description>
+        <name>map</name>
+        <tag-class>org.opencms.jsp.CmsJspTagMap</tag-class>
+        <body-content>JSP</body-content>
+        <attribute>
+            <description><![CDATA[
+                The page context variable to store the map in.
+            ]]></description>
+            <name>var</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
     </tag>
 
     <function>
@@ -3247,6 +3297,17 @@
 
     <function>
         <description><![CDATA[
+             Returns whether the given value is an instance of <code>A_CmsJspValueWrapper</code>.
+        ]]></description>
+        <name>isWrapper</name>
+        <function-class>org.opencms.jsp.util.CmsJspElFunctions</function-class>
+        <function-signature>
+            boolean isWrapper(java.lang.Object)
+        </function-signature>
+    </function>
+
+    <function>
+        <description><![CDATA[
             Adds leading and trailing slashes to a path,
             if the path does not already start or end with a slash.
         ]]></description>
@@ -3468,4 +3529,6 @@
             boolean validateRegex(java.lang.String, java.lang.String)
         </function-signature>
     </function>
+
+
 </taglib>

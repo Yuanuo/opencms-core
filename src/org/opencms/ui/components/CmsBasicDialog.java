@@ -32,6 +32,7 @@ import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.Messages;
 import org.opencms.ui.components.extensions.CmsMaxHeightExtension;
+import org.opencms.util.CmsStringUtil;
 
 import java.util.List;
 
@@ -43,17 +44,18 @@ import com.vaadin.event.Action.Handler;
 import com.vaadin.server.Page;
 import com.vaadin.server.Page.BrowserWindowResizeEvent;
 import com.vaadin.server.Page.BrowserWindowResizeListener;
+import com.vaadin.shared.Registration;
 import com.vaadin.ui.Alignment;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Component;
+import com.vaadin.ui.HorizontalLayout;
 import com.vaadin.ui.Layout;
 import com.vaadin.ui.Panel;
+import com.vaadin.ui.VerticalLayout;
 import com.vaadin.ui.Window;
 import com.vaadin.ui.Window.CloseEvent;
 import com.vaadin.ui.Window.CloseListener;
 import com.vaadin.ui.declarative.DesignContext;
-import com.vaadin.v7.ui.HorizontalLayout;
-import com.vaadin.v7.ui.VerticalLayout;
 
 /**
  * Basic dialog class with a content panel and button bar.<p>
@@ -79,6 +81,9 @@ public class CmsBasicDialog extends VerticalLayout {
     /** Serial version id. */
     private static final long serialVersionUID = 1L;
 
+    /** The window resize listener registration. */
+    Registration m_resizeListenerRegistration;
+
     /** The shortcut action handler. */
     private Handler m_actionHandler;
 
@@ -103,11 +108,11 @@ public class CmsBasicDialog extends VerticalLayout {
     /** Extension used to regulate max height. */
     private CmsMaxHeightExtension m_maxHeightExtension;
 
-    /** The window resize listener. */
-    private BrowserWindowResizeListener m_windowResizeListener;
-
     /** Maximum recorded height. */
     private int m_maxRecordedHeight = Integer.MIN_VALUE;
+
+    /** The window resize listener. */
+    private BrowserWindowResizeListener m_windowResizeListener;
 
     /**
      * Creates new instance.<p>
@@ -235,11 +240,53 @@ public class CmsBasicDialog extends VerticalLayout {
     }
 
     /**
+     * Creates an 'Cancel' button.<p>
+     *
+     * @return the button
+     */
+    public Button createButtonCancel() {
+
+        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_CANCEL_0));
+    }
+
+    /**
+     * Creates an 'Cancel' button.<p>
+     *
+     * @return the button
+     */
+    public Button createButtonClose() {
+
+        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_CLOSE_0));
+    }
+
+    /**
+     * Creates an 'OK' button.<p>
+     *
+     * @return the button
+     */
+    public Button createButtonOK() {
+
+        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_OK_0));
+    }
+
+    /**
      * Displays the resource infos panel.<p>
      *
      * @param resources the resources
      */
     public void displayResourceInfo(List<CmsResource> resources) {
+
+        displayResourceInfo(resources, Messages.GUI_SELECTED_0);
+
+    }
+
+    /**
+     * Display the resource indos panel with panel message.<p>
+     *
+     * @param resources to show info for
+     * @param messageKey of the panel
+     */
+    public void displayResourceInfo(List<CmsResource> resources, String messageKey) {
 
         m_infoResources = Lists.newArrayList(resources);
         if (m_infoComponent != null) {
@@ -252,7 +299,7 @@ public class CmsBasicDialog extends VerticalLayout {
                 m_mainPanel.addComponent(m_infoComponent, 0);
             } else {
                 m_infoComponent = createResourceListPanel(
-                    Messages.get().getBundle(A_CmsUI.get().getLocale()).key(Messages.GUI_SELECTED_0),
+                    messageKey == null ? null : Messages.get().getBundle(A_CmsUI.get().getLocale()).key(messageKey),
                     resources);
                 m_mainPanel.addComponent(m_infoComponent, 0);
                 m_mainPanel.setExpandRatio(m_infoComponent, 1);
@@ -430,6 +477,16 @@ public class CmsBasicDialog extends VerticalLayout {
     }
 
     /**
+     * Sets the visibility of the content panel.<o>
+     *
+     * @param visible visibility of the content.
+     */
+    public void setContentVisibility(boolean visible) {
+
+        m_contentPanel.setVisible(visible);
+    }
+
+    /**
      * Sets the window which contains this dialog to full height with a given minimal height in pixel.<p>
      *
      * @param minHeight minimal height in pixel
@@ -447,36 +504,6 @@ public class CmsBasicDialog extends VerticalLayout {
     }
 
     /**
-     * Creates an 'Cancel' button.<p>
-     *
-     * @return the button
-     */
-    protected Button createButtonCancel() {
-
-        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_CANCEL_0));
-    }
-
-    /**
-     * Creates an 'Cancel' button.<p>
-     *
-     * @return the button
-     */
-    protected Button createButtonClose() {
-
-        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_CLOSE_0));
-    }
-
-    /**
-     * Creates an 'OK' button.<p>
-     *
-     * @return the button
-     */
-    protected Button createButtonOK() {
-
-        return new Button(CmsVaadinUtils.getMessageText(org.opencms.workplace.Messages.GUI_DIALOG_BUTTON_OK_0));
-    }
-
-    /**
      * Creates a resource list panel.<p>
      *
      * @param caption the caption to use
@@ -486,7 +513,12 @@ public class CmsBasicDialog extends VerticalLayout {
      */
     protected Panel createResourceListPanel(String caption, List<CmsResource> resources) {
 
-        Panel result = new Panel(caption);
+        Panel result = null;
+        if (CmsStringUtil.isEmptyOrWhitespaceOnly(caption)) {
+            result = new Panel();
+        } else {
+            result = new Panel(caption);
+        }
         result.addStyleName("v-scrollable");
         result.setSizeFull();
         VerticalLayout resourcePanel = new VerticalLayout();
@@ -526,32 +558,9 @@ public class CmsBasicDialog extends VerticalLayout {
     }
 
     /**
-     * Removes the action handler.<p>
-     *
-     * @param window the window the action handler is attached to
-     */
-    void clearActionHandler(Window window) {
-
-        if (m_actionHandler != null) {
-            window.removeActionHandler(m_actionHandler);
-        }
-    }
-
-    /**
-     * Calculates max dialog height given the window height.<p>
-     *
-     * @param windowHeight the window height
-     * @return the maximal dialog height
-     */
-    private int calculateMaxHeight(int windowHeight) {
-
-        return (int)((0.95 * windowHeight) - 40);
-    }
-
-    /**
      * Adds the max height extension to the dialog panel.<p>
      */
-    private void enableMaxHeight() {
+    protected void enableMaxHeight() {
 
         // use the window height minus an offset for the window header and some spacing
         int maxHeight = calculateMaxHeight(A_CmsUI.get().getPage().getBrowserWindowHeight());
@@ -576,10 +585,12 @@ public class CmsBasicDialog extends VerticalLayout {
 
             private static final long serialVersionUID = 1L;
 
-            @SuppressWarnings("synthetic-access")
             public void detach(DetachEvent event) {
 
-                A_CmsUI.get().getPage().removeBrowserWindowResizeListener(m_windowResizeListener);
+                if (m_resizeListenerRegistration != null) {
+                    m_resizeListenerRegistration.remove();
+                    m_resizeListenerRegistration = null;
+                }
             }
         });
 
@@ -595,7 +606,30 @@ public class CmsBasicDialog extends VerticalLayout {
                 m_maxHeightExtension.updateMaxHeight(calculateMaxHeight(newHeight));
             }
         };
-        A_CmsUI.get().getPage().addBrowserWindowResizeListener(m_windowResizeListener);
+        m_resizeListenerRegistration = A_CmsUI.get().getPage().addBrowserWindowResizeListener(m_windowResizeListener);
 
+    }
+
+    /**
+     * Removes the action handler.<p>
+     *
+     * @param window the window the action handler is attached to
+     */
+    void clearActionHandler(Window window) {
+
+        if (m_actionHandler != null) {
+            window.removeActionHandler(m_actionHandler);
+        }
+    }
+
+    /**
+     * Calculates max dialog height given the window height.<p>
+     *
+     * @param windowHeight the window height
+     * @return the maximal dialog height
+     */
+    private int calculateMaxHeight(int windowHeight) {
+
+        return (int)((0.95 * windowHeight) - 40);
     }
 }

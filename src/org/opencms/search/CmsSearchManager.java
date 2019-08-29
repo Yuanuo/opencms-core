@@ -50,6 +50,7 @@ import org.opencms.main.OpenCms;
 import org.opencms.main.OpenCmsSolrHandler;
 import org.opencms.relations.CmsRelation;
 import org.opencms.relations.CmsRelationFilter;
+import org.opencms.relations.CmsRelationType;
 import org.opencms.report.CmsLogReport;
 import org.opencms.report.I_CmsReport;
 import org.opencms.scheduler.I_CmsScheduledJob;
@@ -68,6 +69,7 @@ import org.opencms.search.solr.CmsSolrFieldConfiguration;
 import org.opencms.search.solr.CmsSolrIndex;
 import org.opencms.search.solr.I_CmsSolrIndexWriter;
 import org.opencms.search.solr.spellchecking.CmsSolrSpellchecker;
+import org.opencms.search.solr.spellchecking.CmsSpellcheckDictionaryIndexer;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
 import org.opencms.util.A_CmsModeStringEnumeration;
@@ -260,7 +262,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     cms = OpenCms.initCmsObject(m_adminCms);
                     cms.getRequestContext().setCurrentProject(offline);
                 }
-                findRelatedContainerPages(cms, result);
+                addAdditionallyAffectedResources(cms, result);
             } catch (CmsException e) {
                 LOG.error(e.getLocalizedMessage(), e);
             }
@@ -1433,26 +1435,15 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
     /**
      * Return singleton instance of the OpenCms spellchecker.<p>
      *
-     * @param cms the cms object.
-     *
      * @return instance of CmsSolrSpellchecker.
      */
-    public CmsSolrSpellchecker getSolrDictionary(CmsObject cms) {
+    public CmsSolrSpellchecker getSolrDictionary() {
 
         // get the core container that contains one core for each configured index
         if (m_coreContainer == null) {
             m_coreContainer = createCoreContainer();
         }
-        SolrCore spellcheckCore = m_coreContainer.getCore(CmsSolrSpellchecker.SPELLCHECKER_INDEX_CORE);
-        if (spellcheckCore == null) {
-            LOG.error(
-                Messages.get().getBundle().key(
-                    Messages.ERR_SPELLCHECK_CORE_NOT_AVAILABLE_1,
-                    CmsSolrSpellchecker.SPELLCHECKER_INDEX_CORE));
-            return null;
-        } else {
-            return CmsSolrSpellchecker.getInstance(m_coreContainer, spellcheckCore);
-        }
+        return CmsSolrSpellchecker.getInstance(m_coreContainer);
     }
 
     /**
@@ -1552,6 +1543,33 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
         m_offlineIndexes = offlineIndexes;
         m_offlineHandler.initialize();
 
+    }
+
+    /**
+     * Initializes the spell check index.<p>
+     *
+     * @param adminCms the ROOT_ADMIN cms context
+     */
+    public void initSpellcheckIndex(CmsObject adminCms) {
+
+        if (CmsSpellcheckDictionaryIndexer.updatingIndexNecessesary(adminCms)) {
+            final CmsSolrSpellchecker spellchecker = OpenCms.getSearchManager().getSolrDictionary();
+            if (spellchecker != null) {
+
+                Runnable initRunner = new Runnable() {
+
+                    public void run() {
+
+                        try {
+                            spellchecker.parseAndAddDictionaries(adminCms);
+                        } catch (CmsRoleViolationException e) {
+                            LOG.error(e.getLocalizedMessage(), e);
+                        }
+                    }
+                };
+                new Thread(initRunner).start();
+            }
+        }
     }
 
     /**
@@ -2346,6 +2364,66 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
     }
 
     /**
+     * Collects the resources whose indexed document depends on one of the updated resources.<p>
+     * We take transitive dependencies into account and handle cyclic dependencies correctly as well.
+     *
+     * @param adminCms an OpenCms user context with Admin permissions
+     * @param updateResources the resources to be re-indexed
+     *
+     * @return the updated list of resource to re-index
+     */
+    protected List<CmsPublishedResource> addAdditionallyAffectedResources(
+        CmsObject adminCms,
+        List<CmsPublishedResource> updateResources) {
+
+        Set<CmsPublishedResource> updateResourceSet = new HashSet<>(updateResources);
+        Collection<CmsPublishedResource> resourcesToCheck = updateResourceSet;
+        Collection<CmsPublishedResource> additionalResources = Collections.emptySet();
+        do {
+            additionalResources = findRelatedContainerPages(adminCms, updateResourceSet, resourcesToCheck);
+            additionalResources.addAll(addIndexContentRelatedResources(adminCms, updateResourceSet, resourcesToCheck));
+            updateResources.addAll(additionalResources);
+            updateResourceSet.addAll(additionalResources);
+            resourcesToCheck = additionalResources;
+        } while (resourcesToCheck.size() > 0);
+        return updateResources;
+    }
+
+    /**
+     * Collects the resources whose indexed document depends on one of the updated resources.<p>
+     *
+     * @param adminCms an OpenCms user context with Admin permissions
+     * @param updateResources the resources to be re-indexed
+     * @param updateResourcesToCheck the resources to check additionally affected resources for, subset of updateResources
+     *
+     * @return the list of resources that need to be additionally re-index
+     */
+    protected Collection<CmsPublishedResource> addIndexContentRelatedResources(
+        CmsObject adminCms,
+        Collection<CmsPublishedResource> updateResources,
+        Collection<CmsPublishedResource> updateResourcesToCheck) {
+
+        Collection<CmsPublishedResource> additionalUpdateResources = new HashSet<>();
+        for (CmsPublishedResource checkedRes : updateResourcesToCheck) {
+            try {
+                CmsRelationFilter filter = CmsRelationFilter.relationsToStructureId(checkedRes.getStructureId());
+                filter = filter.filterType(CmsRelationType.INDEX_CONTENT);
+                List<CmsRelation> relations = adminCms.readRelations(filter);
+                for (CmsRelation relation : relations) {
+                    CmsResource res = relation.getSource(adminCms, CmsResourceFilter.ALL);
+                    CmsPublishedResource additionalPubRes = new CmsPublishedResource(res);
+                    if (!updateResources.contains(additionalPubRes)) {
+                        additionalUpdateResources.add(additionalPubRes);
+                    }
+                }
+            } catch (CmsException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
+        return additionalUpdateResources;
+    }
+
+    /**
      * Cleans up the extraction result cache.<p>
      */
     protected void cleanExtractionCache() {
@@ -2359,12 +2437,16 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
      *
      * @param adminCms an OpenCms user context with Admin permissions
      * @param updateResources the resources to be re-indexed
+     * @param updateResourcesToCheck the resources to check additionally affected resources for, subset of updateResources
      *
-     * @return the updated list of resource to re-index
+     * @return the list of resources that need to be additionally re-index
      */
-    protected List<CmsPublishedResource> findRelatedContainerPages(
+    protected Collection<CmsPublishedResource> findRelatedContainerPages(
         CmsObject adminCms,
-        List<CmsPublishedResource> updateResources) {
+        Collection<CmsPublishedResource> updateResources,
+        Collection<CmsPublishedResource> updateResourcesToCheck) {
+
+        Collection<CmsPublishedResource> additionalUpdateResources = new HashSet<>();
 
         Set<CmsResource> elementGroups = new HashSet<CmsResource>();
         Set<CmsResource> containerPages = new HashSet<CmsResource>();
@@ -2376,7 +2458,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
             LOG.info(e.getLocalizedMessage(), e);
         }
         if (containerPageTypeId != -1) {
-            for (CmsPublishedResource pubRes : updateResources) {
+            for (CmsPublishedResource pubRes : updateResourcesToCheck) {
                 try {
                     if (OpenCms.getResourceManager().getResourceType(
                         pubRes.getType()) instanceof CmsResourceTypeXmlContent) {
@@ -2434,11 +2516,11 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                 CmsPublishedResource pubCont = new CmsPublishedResource(page);
                 if (!updateResources.contains(pubCont)) {
                     // ensure container page is added only once
-                    updateResources.add(pubCont);
+                    additionalUpdateResources.add(pubCont);
                 }
             }
         }
-        return updateResources;
+        return additionalUpdateResources;
     }
 
     /**
@@ -2705,7 +2787,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                 }
             }
 
-            findRelatedContainerPages(adminCms, updateResources);
+            addAdditionallyAffectedResources(adminCms, updateResources);
             if (!updateResources.isEmpty()) {
                 // sort the resource to update
                 Collections.sort(updateResources);

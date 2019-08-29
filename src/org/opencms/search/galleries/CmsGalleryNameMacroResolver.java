@@ -48,9 +48,12 @@ import org.opencms.xml.A_CmsXmlDocument;
 import org.opencms.xml.types.I_CmsXmlContentValue;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -86,6 +89,12 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
     public static final String PAGE_TITLE = "page_title";
 
     /** Macro name. */
+    public static final String PAGE_ROOTPATH = "page_rootpath";
+
+    /** Macro name. */
+    public static final String PAGE_SITEPATH = "page_sitepath";
+
+    /** Macro name. */
     public static final String PAGE_NAV = "page_nav";
 
     /** Macro prefix. */
@@ -100,8 +109,19 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
     /** The XML content to use for the gallery name mapping. */
     private A_CmsXmlDocument m_content;
 
+    /** Collection of pages the content is placed on. */
+    private Collection<CmsResource> m_pages;
+
     /** The locale in the XML content. */
     private Locale m_contentLocale;
+
+    /** The default string template source. */
+    private final Function<String, String> m_defaultStringTemplateSource = s -> {
+        return m_content.getHandler().getParameter(s);
+    };
+
+    /** The current string template source. */
+    private Function<String, String> m_stringTemplateSource = m_defaultStringTemplateSource;
 
     /**
      * Creates a new instance.<p>
@@ -142,6 +162,10 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
             return getContainerPageProperty(CmsPropertyDefinition.PROPERTY_TITLE);
         } else if (macro.equals(PAGE_NAV)) {
             return getContainerPageProperty(CmsPropertyDefinition.PROPERTY_NAVTEXT);
+        } else if (macro.equals(PAGE_ROOTPATH)) {
+            return getContainerPagePath(false);
+        } else if (macro.equals(PAGE_SITEPATH)) {
+            return getContainerPagePath(true);
         } else if (macro.startsWith(PREFIX_STRINGTEMPLATE)) {
             return resolveStringTemplate(macro.substring(PREFIX_STRINGTEMPLATE.length()));
         } else if (macro.startsWith(NO_PREFIX)) {
@@ -159,6 +183,9 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
     @Override
     public String resolveMacros(String input) {
 
+        if (input == null) {
+            return null;
+        }
         // We are overriding this method to implement the no_prefix macro. This is because
         // we only know what the no_prefix macro should expand to after resolving all other
         // macros (there could be an arbitrary number of macros before it which might potentially
@@ -176,6 +203,51 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
         return result;
     }
 
+    public void setStringTemplateSource(Function<String, String> stringtemplateSource) {
+
+        if (stringtemplateSource == null) {
+            stringtemplateSource = m_defaultStringTemplateSource;
+        }
+        m_stringTemplateSource = stringtemplateSource;
+    }
+
+    /**
+     * Returns the site path of the page the resource is on, iff it is on exactly one page per locale.
+     * @return the site path of the page the resource is on, iff it is on exactly one page per locale.
+     */
+    protected String getContainerPagePath(boolean isSitePath) {
+
+        Collection<CmsResource> pages = getContainerPages();
+        if (pages.isEmpty()) {
+            return null;
+        }
+        Map<Locale, String> pagePathByLocale = Maps.newHashMap();
+        for (CmsResource page : pages) {
+            Locale pageLocale = OpenCms.getLocaleManager().getDefaultLocale(m_cms, page);
+            String pagePathCandidate = page.getRootPath();
+            if (isSitePath) {
+                pagePathCandidate = OpenCms.getSiteManager().getSiteForRootPath(pagePathCandidate).getSitePath(
+                    pagePathCandidate);
+            }
+            if (pagePathCandidate != null) {
+                if (pagePathByLocale.get(pageLocale) == null) {
+                    pagePathByLocale.put(pageLocale, pagePathCandidate);
+                } else {
+                    return ""; // more than one container page per locale is referencing this content.
+                }
+            }
+        }
+        Locale matchingLocale = OpenCms.getLocaleManager().getBestMatchingLocale(
+            m_contentLocale,
+            OpenCms.getLocaleManager().getDefaultLocales(),
+            Lists.newArrayList(pagePathByLocale.keySet()));
+        String result = pagePathByLocale.get(matchingLocale);
+        if (result == null) {
+            result = "";
+        }
+        return result;
+    }
+
     /**
      * Gets the given property of the container page referencing this content.<p>
      *
@@ -187,23 +259,22 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
      */
     protected String getContainerPageProperty(String propName) {
 
+        Collection<CmsResource> pages = getContainerPages();
+        if (pages.isEmpty()) {
+            return "";
+        }
         try {
-            Collection<CmsRelation> relations = m_cms.readRelations(
-                CmsRelationFilter.relationsToStructureId(m_content.getFile().getStructureId()));
             Map<Locale, String> pagePropsByLocale = Maps.newHashMap();
-            for (CmsRelation relation : relations) {
-                CmsResource source = relation.getSource(m_cms, CmsResourceFilter.IGNORE_EXPIRATION);
-                if (CmsResourceTypeXmlContainerPage.isContainerPage(source)) {
-                    List<CmsProperty> pagePropertiesList = m_cms.readPropertyObjects(source, true);
-                    Map<String, CmsProperty> pageProperties = CmsProperty.toObjectMap(pagePropertiesList);
-                    Locale pageLocale = OpenCms.getLocaleManager().getDefaultLocale(m_cms, source);
-                    CmsProperty pagePropCandidate = pageProperties.get(propName);
-                    if (pagePropCandidate != null) {
-                        if (pagePropsByLocale.get(pageLocale) == null) {
-                            pagePropsByLocale.put(pageLocale, pagePropCandidate.getValue());
-                        } else {
-                            return ""; // more than one container page per locale is referencing this content.
-                        }
+            for (CmsResource page : pages) {
+                List<CmsProperty> pagePropertiesList = m_cms.readPropertyObjects(page, true);
+                Map<String, CmsProperty> pageProperties = CmsProperty.toObjectMap(pagePropertiesList);
+                Locale pageLocale = OpenCms.getLocaleManager().getDefaultLocale(m_cms, page);
+                CmsProperty pagePropCandidate = pageProperties.get(propName);
+                if (pagePropCandidate != null) {
+                    if (pagePropsByLocale.get(pageLocale) == null) {
+                        pagePropsByLocale.put(pageLocale, pagePropCandidate.getValue());
+                    } else {
+                        return ""; // more than one container page per locale is referencing this content.
                     }
                 }
             }
@@ -218,8 +289,34 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
             return result;
         } catch (CmsException e) {
             LOG.warn(e.getLocalizedMessage(), e);
-            return null;
+            return "";
         }
+    }
+
+    /**
+     * Returns all container pages the content is placed on.
+     * @return all container pages the content is placed on.
+     */
+    Collection<CmsResource> getContainerPages() {
+
+        if (null != m_pages) {
+            return m_pages;
+        }
+        m_pages = new HashSet<CmsResource>();
+        try {
+            Collection<CmsRelation> relations = m_cms.readRelations(
+                CmsRelationFilter.relationsToStructureId(m_content.getFile().getStructureId()));
+            for (CmsRelation relation : relations) {
+                CmsResource source = relation.getSource(m_cms, CmsResourceFilter.IGNORE_EXPIRATION);
+                if (CmsResourceTypeXmlContainerPage.isContainerPage(source)) {
+                    m_pages.add(source);
+                }
+            }
+        } catch (CmsException e) {
+            LOG.warn(e.getLocalizedMessage(), e);
+            m_pages = Collections.emptySet();
+        }
+        return m_pages;
     }
 
     /**
@@ -230,7 +327,7 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
      */
     private String resolveStringTemplate(String stMacro) {
 
-        String template = m_content.getContentDefinition().getContentHandler().getParameter(stMacro);
+        String template = m_stringTemplateSource.apply(stMacro.trim());
         if (template == null) {
             return "";
         }

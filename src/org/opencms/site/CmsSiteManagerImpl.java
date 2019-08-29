@@ -497,7 +497,8 @@ public final class CmsSiteManagerImpl implements I_CmsEventListener {
                     }
                 }
             }
-
+            project = m_clone.readProject(CmsProject.ONLINE_PROJECT_ID);
+            m_clone.getRequestContext().setCurrentProject(project);
             Map<CmsSite, CmsSite> updateMap = new HashMap<CmsSite, CmsSite>();
 
             for (CmsPublishedResource r : foundSites) {
@@ -1673,13 +1674,17 @@ public final class CmsSiteManagerImpl implements I_CmsEventListener {
     private CmsProject getOfflineProject() {
 
         try {
-            for (CmsProject p : OpenCms.getOrgUnitManager().getAllAccessibleProjects(m_clone, "/", true)) {
-                if (!p.isOnlineProject()) {
-                    return p;
-                }
-            }
+            return m_clone.readProject("Offline");
         } catch (CmsException e) {
-            LOG.error("Unable to find an offline project", e);
+            try {
+                for (CmsProject p : OpenCms.getOrgUnitManager().getAllAccessibleProjects(m_clone, "/", true)) {
+                    if (!p.isOnlineProject()) {
+                        return p;
+                    }
+                }
+            } catch (CmsException e1) {
+                LOG.error("Unable to get ptoject", e);
+            }
         }
         return null;
     }

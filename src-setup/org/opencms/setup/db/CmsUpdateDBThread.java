@@ -33,6 +33,7 @@ import org.opencms.setup.CmsSetupLoggingThread;
 import org.opencms.setup.CmsUpdateBean;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PipedOutputStream;
 import java.io.PrintStream;
 
@@ -86,6 +87,11 @@ public class CmsUpdateDBThread extends Thread {
         return m_loggingThread;
     }
 
+    public OutputStream getOut() {
+
+        return m_pipedOut;
+    }
+
     /**
      * Returns the status of the logging thread.<p>
      *
@@ -113,13 +119,22 @@ public class CmsUpdateDBThread extends Thread {
     @Override
     public void run() {
 
+        run(new PrintStream(m_pipedOut));
+    }
+
+    /**
+     * @see java.lang.Runnable#run()
+     */
+
+    public void run(PrintStream out) {
+
         // save the original out and err stream
         m_tempOut = System.out;
         m_tempErr = System.err;
         try {
             // redirect the streams
-            System.setOut(new PrintStream(m_pipedOut));
-            System.setErr(new PrintStream(m_pipedOut));
+            System.setOut(out);
+            System.setErr(out);
 
             // start the logging thread
             m_loggingThread.start();
@@ -149,4 +164,5 @@ public class CmsUpdateDBThread extends Thread {
             System.setErr(m_tempErr);
         }
     }
+
 }

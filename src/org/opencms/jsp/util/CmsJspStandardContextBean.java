@@ -43,6 +43,7 @@ import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.history.CmsHistoryResourceHandler;
+import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.flex.CmsFlexController;
 import org.opencms.flex.CmsFlexRequest;
 import org.opencms.gwt.shared.CmsGwtConstants;
@@ -118,6 +119,15 @@ public final class CmsJspStandardContextBean {
 
         /** The wrapped element instance. */
         private CmsContainerElementBean m_wrappedElement;
+
+        /** Cache for the wrapped element settings. */
+        private Map<String, CmsJspElementSettingValueWrapper> m_wrappedSettings;
+
+        /** Cache for the wrapped element parent. */
+        private CmsContainerElementWrapper m_parent;
+
+        /** Cache for the wrapped element type name. */
+        private String m_resourceTypeName;
 
         /**
          * Constructor.<p>
@@ -209,8 +219,11 @@ public final class CmsJspStandardContextBean {
          */
         public CmsContainerElementWrapper getParent() {
 
-            CmsContainerElementBean parent = getParentElement(m_wrappedElement);
-            return parent != null ? new CmsContainerElementWrapper(getParentElement(m_wrappedElement)) : null;
+            if (m_parent == null) {
+                CmsContainerElementBean parent = getParentElement(m_wrappedElement);
+                m_parent = (parent != null) ? new CmsContainerElementWrapper(getParentElement(m_wrappedElement)) : null;
+            }
+            return m_parent;
         }
 
         /**
@@ -229,13 +242,16 @@ public final class CmsJspStandardContextBean {
          */
         public String getResourceTypeName() {
 
-            String result = "";
-            try {
-                result = OpenCms.getResourceManager().getResourceType(m_wrappedElement.getResource()).getTypeName();
-            } catch (Exception e) {
-                CmsJspStandardContextBean.LOG.error(e.getLocalizedMessage(), e);
+            if (m_resourceTypeName == null) {
+                m_resourceTypeName = "";
+                try {
+                    m_resourceTypeName = OpenCms.getResourceManager().getResourceType(
+                        m_wrappedElement.getResource()).getTypeName();
+                } catch (Exception e) {
+                    CmsJspStandardContextBean.LOG.error(e.getLocalizedMessage(), e);
+                }
             }
-            return result;
+            return m_resourceTypeName;
         }
 
         /**
@@ -247,7 +263,11 @@ public final class CmsJspStandardContextBean {
          */
         public Map<String, CmsJspElementSettingValueWrapper> getSetting() {
 
-            return CmsCollectionsGenericWrapper.createLazyMap(new SettingsTransformer(m_wrappedElement));
+            if (m_wrappedSettings == null) {
+                m_wrappedSettings = CmsCollectionsGenericWrapper.createLazyMap(
+                    new SettingsTransformer(m_wrappedElement));
+            }
+            return m_wrappedSettings;
         }
 
         /**
@@ -287,16 +307,17 @@ public final class CmsJspStandardContextBean {
         }
 
         /**
-         * @see org.opencms.xml.containerpage.CmsContainerElementBean#initSettings(org.opencms.file.CmsObject, org.opencms.xml.containerpage.I_CmsFormatterBean, java.util.Locale, javax.servlet.ServletRequest)
+         * @see org.opencms.xml.containerpage.CmsContainerElementBean#initSettings(org.opencms.file.CmsObject, org.opencms.xml.containerpage.I_CmsFormatterBean, java.util.Locale, javax.servlet.ServletRequest, java.util.Map)
          */
         @Override
         public void initSettings(
             CmsObject cms,
             I_CmsFormatterBean formatterBean,
             Locale locale,
-            ServletRequest request) {
+            ServletRequest request,
+            Map<String, String> settingPresets) {
 
-            m_wrappedElement.initSettings(cms, formatterBean, locale, request);
+            m_wrappedElement.initSettings(cms, formatterBean, locale, request, settingPresets);
         }
 
         /**
@@ -627,9 +648,9 @@ public final class CmsJspStandardContextBean {
         public Object transform(Object arg0) {
 
             String result = null;
-            CmsGalleryNameMacroResolver resolver = null;
-            if (m_metaMappings.containsKey(arg0)) {
+            if ((m_metaMappings != null) && m_metaMappings.containsKey(arg0)) {
                 MetaMapping mapping = m_metaMappings.get(arg0);
+                CmsGalleryNameMacroResolver resolver = null;
                 try {
                     CmsResourceFilter filter = getIsEditMode()
                     ? CmsResourceFilter.IGNORE_EXPIRATION
@@ -742,7 +763,7 @@ public final class CmsJspStandardContextBean {
     private CmsContainerPageBean m_page;
 
     /** The current container page resource, lazy initialized. */
-    private CmsResource m_pageResource;
+    private CmsJspResourceWrapper m_pageResource;
 
     /** The parent containers to the given element instance ids. */
     private Map<String, CmsContainerBean> m_parentContainers;
@@ -752,9 +773,6 @@ public final class CmsJspStandardContextBean {
 
     /** Lazily initialized map from the root path of a resource to all categories assigned to the resource. */
     private Map<String, CmsJspCategoryAccessBean> m_resourceCategories;
-
-    /** The resource wrapper for the current page. */
-    private CmsJspResourceWrapper m_resourceWrapper;
 
     /** Map from root paths to site relative paths. */
     private Map<String, String> m_sitePaths;
@@ -913,9 +931,9 @@ public final class CmsJspStandardContextBean {
      *
      * @return the current detail content, or <code>null</code> if no detail content is requested.<p>
      */
-    public CmsResource getDetailContent() {
+    public CmsJspResourceWrapper getDetailContent() {
 
-        return m_detailContentResource;
+        return CmsJspResourceWrapper.wrap(m_cms, m_detailContentResource);
     }
 
     /**
@@ -945,9 +963,9 @@ public final class CmsJspStandardContextBean {
      *
      * @return the detai function page
      */
-    public CmsResource getDetailFunctionPage() {
+    public CmsJspResourceWrapper getDetailFunctionPage() {
 
-        return m_detailFunctionPage;
+        return CmsJspResourceWrapper.wrap(m_cms, m_detailFunctionPage);
     }
 
     /**
@@ -968,6 +986,105 @@ public final class CmsJspStandardContextBean {
     public CmsContainerElementWrapper getElement() {
 
         return m_element != null ? new CmsContainerElementWrapper(m_element) : null;
+    }
+
+    /**
+     * Returns a lazy initialized map of wrapped container elements beans by container name suffix.<p>
+     *
+     * So in case there is more than one container where the name end with the given suffix,
+     * a joined list of container elements beans is returned.<p>
+     *
+     * @return a lazy initialized map of wrapped container elements beans by container name suffix
+     *
+     * @see #getElementsInContainer()
+     */
+    public Map<String, List<CmsContainerElementWrapper>> getElementBeansInContainers() {
+
+        return CmsCollectionsGenericWrapper.createLazyMap(obj -> {
+            if (obj instanceof String) {
+                List<CmsContainerElementBean> containerElements = new ArrayList<>();
+                for (CmsContainerBean container : getPage().getContainers().values()) {
+                    if (container.getName().endsWith("-" + obj)) {
+                        for (CmsContainerElementBean element : container.getElements()) {
+                            try {
+                                element.initResource(m_cms);
+                                containerElements.add(new CmsContainerElementWrapper(element));
+                            } catch (Exception e) {
+                                LOG.error(e.getLocalizedMessage(), e);
+                            }
+                        }
+                    }
+                }
+                return containerElements;
+            } else {
+                return null;
+            }
+        });
+
+    }
+
+    /**
+     * Returns a lazy initialized map of wrapped element resources by container name.<p>
+     *
+     * @return the lazy map of element resource wrappers
+     */
+    public Map<String, List<CmsJspResourceWrapper>> getElementsInContainer() {
+
+        return CmsCollectionsGenericWrapper.createLazyMap(obj -> {
+            if (obj instanceof String) {
+                List<CmsJspResourceWrapper> elements = new ArrayList<>();
+                CmsContainerBean container = getPage().getContainers().get(obj);
+                if (container != null) {
+                    for (CmsContainerElementBean element : container.getElements()) {
+                        try {
+                            element.initResource(m_cms);
+                            elements.add(CmsJspResourceWrapper.wrap(m_cms, element.getResource()));
+                        } catch (Exception e) {
+                            LOG.error(e.getLocalizedMessage(), e);
+                        }
+                    }
+                }
+                return elements;
+            } else {
+                return null;
+            }
+        });
+
+    }
+
+    /**
+     * Returns a lazy initialized map of wrapped element resources by container name suffix.<p>
+     *
+     * So in case there is more than one container where the name end with the given suffix,
+     * a joined list of elements is returned.<p>
+     *
+     * @return the lazy map of element resource wrappers
+     *
+     * @see #getElementBeansInContainers()
+     */
+    public Map<String, List<CmsJspResourceWrapper>> getElementsInContainers() {
+
+        return CmsCollectionsGenericWrapper.createLazyMap(obj -> {
+            if (obj instanceof String) {
+                List<CmsJspResourceWrapper> elements = new ArrayList<>();
+                for (CmsContainerBean container : getPage().getContainers().values()) {
+                    if (container.getName().endsWith("-" + obj)) {
+                        for (CmsContainerElementBean element : container.getElements()) {
+                            try {
+                                element.initResource(m_cms);
+                                elements.add(CmsJspResourceWrapper.wrap(m_cms, element.getResource()));
+                            } catch (Exception e) {
+                                LOG.error(e.getLocalizedMessage(), e);
+                            }
+                        }
+                    }
+                }
+                return elements;
+            } else {
+                return null;
+            }
+        });
+
     }
 
     /**
@@ -1149,8 +1266,8 @@ public final class CmsJspStandardContextBean {
      */
     public Map<String, CmsJspResourceWrapper> getLocaleResource() {
 
-        Map<String, CmsJspResourceWrapper> result = getResourceWrapperForPage().getLocaleResource();
-        List<Locale> locales = CmsLocaleGroupService.getPossibleLocales(m_cms, getContainerPage());
+        Map<String, CmsJspResourceWrapper> result = getPageResource().getLocaleResource();
+        List<Locale> locales = CmsLocaleGroupService.getPossibleLocales(m_cms, getPageResource());
         for (Locale locale : locales) {
             if (!result.containsKey(locale.toString())) {
                 result.put(locale.toString(), null);
@@ -1166,7 +1283,7 @@ public final class CmsJspStandardContextBean {
      */
     public Locale getMainLocale() {
 
-        return getResourceWrapperForPage().getMainLocale();
+        return getPageResource().getMainLocale();
     }
 
     /**
@@ -1188,6 +1305,82 @@ public final class CmsJspStandardContextBean {
     public CmsContainerPageBean getPage() {
 
         return m_page;
+    }
+
+    /**
+     * Returns the container page bean for the give page and locale.<p>
+     *
+     * @param page the container page resource as id, path or already as resource
+     * @param locale the content locale as locale or string
+     *
+     * @return the container page bean
+     */
+    public CmsContainerPageBean getPage(Object page, Object locale) {
+
+        CmsResource pageResource = null;
+        CmsContainerPageBean result = null;
+        if (m_cms != null) {
+            try {
+                pageResource = CmsJspElFunctions.convertRawResource(m_cms, page);
+                Locale l = CmsJspElFunctions.convertLocale(locale);
+                result = getPage(pageResource);
+                if (result != null) {
+                    CmsADEConfigData adeConfig = OpenCms.getADEManager().lookupConfiguration(
+                        m_cms,
+                        pageResource.getRootPath());
+                    for (CmsContainerBean container : result.getContainers().values()) {
+                        for (CmsContainerElementBean element : container.getElements()) {
+                            boolean isGroupContainer = element.isGroupContainer(m_cms);
+                            boolean isInheritedContainer = element.isInheritedContainer(m_cms);
+                            I_CmsFormatterBean formatterConfig = null;
+                            if (!isGroupContainer && !isInheritedContainer) {
+                                element.initResource(m_cms);
+                                // ensure that the formatter configuration id is added to the element settings, so it will be persisted on save
+                                formatterConfig = CmsJspTagContainer.getFormatterConfigurationForElement(
+                                    m_cms,
+                                    element,
+                                    adeConfig,
+                                    container.getName(),
+                                    "",
+                                    0);
+                                if (formatterConfig != null) {
+                                    element.initSettings(m_cms, formatterConfig, l, m_request, null);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn(e.getLocalizedMessage(), e);
+            }
+
+        }
+        return result;
+    }
+
+    /**
+     * Returns the current container page resource.<p>
+     *
+     * @return the current container page resource
+     */
+    public CmsJspResourceWrapper getPageResource() {
+
+        try {
+            if (m_pageResource == null) {
+                // get the container page itself, checking the history first
+                m_pageResource = CmsJspResourceWrapper.wrap(
+                    m_cms,
+                    (CmsResource)CmsHistoryResourceHandler.getHistoryResource(m_request));
+                if (m_pageResource == null) {
+                    m_pageResource = CmsJspResourceWrapper.wrap(
+                        m_cms,
+                        m_cms.readResource(m_cms.getRequestContext().getUri()));
+                }
+            }
+        } catch (CmsException e) {
+            LOG.error(e.getLocalizedMessage(), e);
+        }
+        return m_pageResource;
     }
 
     /**
@@ -1598,10 +1791,14 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * JSP EL accessor for wrapping an object with a CmsJspObjectValueWrapper, unless it
-     * already is a wrapper, in which case it is returned unchanged.<p>
+     * Returns an EL access wrapper map for the given object.<p>
      *
-     * @return the lazy map used to wrap its input
+     * If the object is a {@link CmsResource}, then a {@link CmsJspResourceWrapper} is returned.
+     * Otherwise the object is wrapped in a {@link CmsJspObjectValueWrapper}.<p>
+     *
+     * If the object is already is a wrapper, it is returned unchanged.<p>
+     *
+     * @return an EL access wrapper map for the given object
      */
     public Map<Object, Object> getWrap() {
 
@@ -1610,43 +1807,32 @@ public final class CmsJspStandardContextBean {
             if ((obj instanceof A_CmsJspValueWrapper) || (obj instanceof CmsJspResourceWrapper)) {
                 return obj;
             } else if (obj instanceof CmsResource) {
-                return new CmsJspResourceWrapper(m_cms, (CmsResource)obj);
+                return CmsJspResourceWrapper.wrap(m_cms, (CmsResource)obj);
             } else {
                 return CmsJspObjectValueWrapper.createWrapper(m_cms, obj);
             }
         });
-
     }
 
     /**
      * Initializes the requested container page.<p>
      *
-     * @param cms the cms context
-     * @param req the current request
-     *
      * @throws CmsException in case reading the requested resource fails
      */
-    public void initPage(CmsObject cms, HttpServletRequest req) throws CmsException {
+    public void initPage() throws CmsException {
 
-        if (m_page == null) {
-            String requestUri = cms.getRequestContext().getUri();
+        if ((m_page == null) && (m_cms != null)) {
+            String requestUri = m_cms.getRequestContext().getUri();
             // get the container page itself, checking the history first
-            CmsResource pageResource = (CmsResource)CmsHistoryResourceHandler.getHistoryResource(req);
+            CmsResource pageResource = (CmsResource)CmsHistoryResourceHandler.getHistoryResource(m_request);
             if (pageResource == null) {
-                pageResource = cms.readResource(requestUri);
+                pageResource = m_cms.readResource(requestUri);
             }
-            CmsXmlContainerPage xmlContainerPage = CmsXmlContainerPageFactory.unmarshal(cms, pageResource, req);
-            m_page = xmlContainerPage.getContainerPage(cms);
-            CmsModelGroupHelper modelHelper = new CmsModelGroupHelper(
-                cms,
-                OpenCms.getADEManager().lookupConfiguration(cms, cms.getRequestContext().getRootUri()),
-                CmsJspTagEditable.isEditableRequest(req) ? CmsADESessionCache.getCache(req, cms) : null,
-                CmsContainerpageService.isEditingModelGroups(cms, pageResource));
-            m_page = modelHelper.readModelGroups(xmlContainerPage.getContainerPage(cms));
-            m_page = CmsTemplateMapper.get(req).transformContainerpageBean(
-                cms,
+            m_page = getPage(pageResource);
+            m_page = CmsTemplateMapper.get(m_request).transformContainerpageBean(
+                m_cms,
                 m_page,
-                xmlContainerPage.getFile().getRootPath());
+                pageResource.getRootPath());
 
         }
     }
@@ -1664,13 +1850,13 @@ public final class CmsJspStandardContextBean {
             && !m_element.isInMemoryOnly()
             && (m_element.getResource() != null)) {
             try {
-                String detailPage = OpenCms.getADEManager().getDetailPageFinder().getDetailPage(
+                String detailPage = OpenCms.getADEManager().getDetailPageHandler().getDetailPage(
                     m_cms,
                     m_element.getResource().getRootPath(),
                     m_cms.getRequestContext().getUri(),
                     null);
                 result = detailPage != null;
-            } catch (CmsException e) {
+            } catch (Exception e) {
                 LOG.warn(e.getLocalizedMessage(), e);
             }
         }
@@ -1726,7 +1912,7 @@ public final class CmsJspStandardContextBean {
      */
     public boolean isModelGroupPage() {
 
-        CmsResource page = getContainerPage();
+        CmsResource page = getPageResource();
         return (page != null) && CmsContainerpageService.isEditingModelGroups(m_cms, page);
 
     }
@@ -1865,7 +2051,9 @@ public final class CmsJspStandardContextBean {
                     }
                     formatter = formatters.getDefaultSchemaFormatter(container.getType(), width);
                 } catch (CmsException e1) {
-                    LOG.error(e1.getLocalizedMessage(), e1);
+                    if (LOG.isWarnEnabled()) {
+                        LOG.warn(e1.getLocalizedMessage(), e1);
+                    }
                 }
             }
         }
@@ -2004,24 +2192,30 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * Returns the current container page resource.<p>
+     * Returns the container page bean for the give resource.<p>
      *
-     * @return the current container page resource
+     * @param pageResource the resource
+     *
+     * @return the container page bean
+     *
+     * @throws CmsException in case reading the page bean fails
      */
-    private CmsResource getContainerPage() {
+    private CmsContainerPageBean getPage(CmsResource pageResource) throws CmsException {
 
-        try {
-            if (m_pageResource == null) {
-                // get the container page itself, checking the history first
-                m_pageResource = (CmsResource)CmsHistoryResourceHandler.getHistoryResource(m_request);
-                if (m_pageResource == null) {
-                    m_pageResource = m_cms.readResource(m_cms.getRequestContext().getUri());
-                }
-            }
-        } catch (CmsException e) {
-            LOG.error(e.getLocalizedMessage(), e);
+        CmsContainerPageBean result = null;
+        if ((pageResource != null) && CmsResourceTypeXmlContainerPage.isContainerPage(pageResource)) {
+            CmsXmlContainerPage xmlContainerPage = CmsXmlContainerPageFactory.unmarshal(m_cms, pageResource, m_request);
+            result = xmlContainerPage.getContainerPage(m_cms);
+            CmsModelGroupHelper modelHelper = new CmsModelGroupHelper(
+                m_cms,
+                OpenCms.getADEManager().lookupConfiguration(m_cms, pageResource.getRootPath()),
+                CmsJspTagEditable.isEditableRequest(m_request) && (m_request instanceof HttpServletRequest)
+                ? CmsADESessionCache.getCache((HttpServletRequest)m_request, m_cms)
+                : null,
+                CmsContainerpageService.isEditingModelGroups(m_cms, pageResource));
+            result = modelHelper.readModelGroups(xmlContainerPage.getContainerPage(m_cms));
         }
-        return m_pageResource;
+        return result;
     }
 
     /**
@@ -2039,27 +2233,14 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * Gets the resource wrapper for the current page, initializing it if necessary.<p>
-     *
-     * @return the resource wrapper for the current page
-     */
-    private CmsJspResourceWrapper getResourceWrapperForPage() {
-
-        if (m_resourceWrapper != null) {
-            return m_resourceWrapper;
-        }
-        m_resourceWrapper = new CmsJspResourceWrapper(m_cms, getContainerPage());
-        return m_resourceWrapper;
-    }
-
-    /**
      * Initializes the mapping configuration.<p>
      */
     private void initMetaMappings() {
 
         if (m_metaMappings == null) {
+            m_metaMappings = new HashMap<String, MetaMapping>();
             try {
-                initPage(m_cms, (HttpServletRequest)m_request);
+                initPage();
                 CmsMacroResolver resolver = new CmsMacroResolver();
                 resolver.setKeepEmptyMacros(true);
                 resolver.setCmsObject(m_cms);
@@ -2067,7 +2248,6 @@ public final class CmsJspStandardContextBean {
                 CmsResourceFilter filter = getIsEditMode()
                 ? CmsResourceFilter.IGNORE_EXPIRATION
                 : CmsResourceFilter.DEFAULT;
-                m_metaMappings = new HashMap<String, MetaMapping>();
                 for (CmsContainerBean container : m_page.getContainers().values()) {
                     for (CmsContainerElementBean element : container.getElements()) {
                         String settingsKey = CmsFormatterConfig.getSettingsKeyForContainer(container.getName());
@@ -2080,7 +2260,9 @@ public final class CmsJspStandardContextBean {
                                 m_cms.getRequestContext().getCurrentProject().isOnlineProject()).getFormatters().get(
                                     new CmsUUID(formatterConfigId));
                         }
-                        if ((formatterBean != null) && m_cms.existsResource(element.getId(), filter)) {
+                        if ((formatterBean != null)
+                            && formatterBean.useMetaMappingsForNormalElements()
+                            && m_cms.existsResource(element.getId(), filter)) {
                             addMappingsForFormatter(formatterBean, element.getId(), resolver, false);
                         }
 

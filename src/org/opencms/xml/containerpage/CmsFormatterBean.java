@@ -76,6 +76,9 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     /** The description text for the formatter. */
     protected String m_description;
 
+    /** Provides the display type. If empty if this formatter should not be used by the display tag. */
+    protected String m_displayType;
+
     /** The id for this formatter. */
     protected String m_id;
 
@@ -90,9 +93,6 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
 
     /** True if this formatter can be used for detail views. */
     protected boolean m_isDetail;
-
-    /** True if this formatter should be used by the display tag. */
-    protected boolean m_isDisplay;
 
     /** Is the formatter from a formatter configuration file? */
     protected boolean m_isFromFormatterConfigFile;
@@ -124,9 +124,6 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     /** The formatter min width. */
     protected int m_minWidth;
 
-    /** Indicating if this formatter has nested containers. */
-    protected boolean m_nestedContainers;
-
     /** Indicates whether nested formatter settings should be displayed. */
     protected boolean m_nestedFormatterSettings;
 
@@ -147,6 +144,15 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
 
     /** Indicating if this formatter will always render all nested containers. */
     protected boolean m_strictContainers;
+
+    /** Indicates whether meta mappings should be applied for all elements. */
+    protected boolean m_useMetaMappingsForNormalElements;
+
+    /** Flag indicating this formatter allows settings to be edited in the content editor. */
+    private boolean m_isAllowsSettingsInEditor;
+
+    /** Map of attributes. */
+    private Map<String, String> m_attributes = Collections.emptyMap();
 
     /**
      * Constructor for creating a new formatter configuration with resource structure id.<p>
@@ -172,11 +178,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
      * @param isFromConfigFile <code>true</code> if configuration file based
      * @param isAutoEnabled <code>true</code> if auto enabled
      * @param isDetail <code>true</code> if detail formatter
-     * @param isDisplay the display flag
-     * @param nestedContainers <code>true</code> if this formatter has nested containers
+     * @param displayType the display type
+     * @param isAllowsSettingsInEditor whether this formatter allows settings to be edited in the content editor
      * @param strictContainers <code>true</code> if this formatter will always render all nested containers
      * @param nestedFormatterSettings indicates whether nested formatter settings should be displayed
      * @param metaMappings the meta mappings
+     * @param attributes the formatter attributes
+     * @param useMetaMappingsForNormalElements if true, meta mappings will be evaluated for normal container elements, not just detail elements
      */
     public CmsFormatterBean(
         Set<String> containerTypes,
@@ -200,11 +208,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         boolean isFromConfigFile,
         boolean isAutoEnabled,
         boolean isDetail,
-        boolean isDisplay,
-        boolean nestedContainers,
+        String displayType,
+        boolean isAllowsSettingsInEditor,
         boolean strictContainers,
         boolean nestedFormatterSettings,
-        List<CmsMetaMapping> metaMappings) {
+        List<CmsMetaMapping> metaMappings,
+        Map<String, String> attributes,
+        boolean useMetaMappingsForNormalElements) {
 
         m_jspRootPath = jspRootPath;
         m_jspStructureId = jspStructureId;
@@ -229,11 +239,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         m_isFromFormatterConfigFile = isFromConfigFile;
         m_isAutoEnabled = isAutoEnabled;
         m_isDetail = isDetail;
-        m_isDisplay = isDisplay;
-        m_nestedContainers = nestedContainers;
+        m_displayType = displayType;
         m_nestedFormatterSettings = nestedFormatterSettings;
         m_strictContainers = strictContainers;
         m_metaMappings = metaMappings;
+        m_useMetaMappingsForNormalElements = useMetaMappingsForNormalElements;
+        m_isAllowsSettingsInEditor = isAllowsSettingsInEditor;
+        m_attributes = attributes != null ? attributes : Collections.emptyMap();
     }
 
     /**
@@ -280,11 +292,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             false,
             false,
             true,
+            null,
             false,
             false,
             false,
-            false,
-            null);
+            null,
+            null,
+            false);
 
     }
 
@@ -374,11 +388,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             false,
             false,
             true,
+            null,
             false,
             false,
             false,
-            false,
-            null);
+            null,
+            Collections.emptyMap(),
+            false);
         m_matchAll = true;
     }
 
@@ -404,6 +420,14 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     private static boolean isWildcardType(String containerType) {
 
         return CmsStringUtil.isEmptyOrWhitespaceOnly(containerType) || WILDCARD_TYPE.equals(containerType);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAttributes()
+     */
+    public Map<String, String> getAttributes() {
+
+        return m_attributes;
     }
 
     /**
@@ -437,6 +461,14 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         CmsMacroResolver resolver = new CmsMacroResolver();
         resolver.setMessages(OpenCms.getWorkplaceManager().getMessages(locale));
         return resolver.resolveMacros(m_description);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getDisplayType()
+     */
+    public String getDisplayType() {
+
+        return m_displayType;
     }
 
     /**
@@ -579,19 +611,19 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     }
 
     /**
-     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#hasNestedContainers()
-     */
-    public boolean hasNestedContainers() {
-
-        return m_nestedContainers;
-    }
-
-    /**
      * @see org.opencms.xml.containerpage.I_CmsFormatterBean#hasNestedFormatterSettings()
      */
     public boolean hasNestedFormatterSettings() {
 
         return m_nestedFormatterSettings;
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#isAllowsSettingsInEditor()
+     */
+    public boolean isAllowsSettingsInEditor() {
+
+        return m_isAllowsSettingsInEditor;
     }
 
     /**
@@ -616,7 +648,7 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
      */
     public boolean isDisplayFormatter() {
 
-        return m_isDisplay;
+        return m_displayType != null;
     }
 
     /**
@@ -694,5 +726,14 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     public String toString() {
 
         return ToStringBuilder.reflectionToString(this);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#useMetaMappingsForNormalElements()
+     */
+    @Override
+    public boolean useMetaMappingsForNormalElements() {
+
+        return m_useMetaMappingsForNormalElements;
     }
 }

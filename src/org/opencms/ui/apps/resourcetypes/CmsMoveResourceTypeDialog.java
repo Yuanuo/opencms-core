@@ -63,7 +63,9 @@ import com.vaadin.v7.data.util.filter.Or;
 import com.vaadin.v7.data.util.filter.SimpleStringFilter;
 import com.vaadin.v7.event.FieldEvents.TextChangeEvent;
 import com.vaadin.v7.event.FieldEvents.TextChangeListener;
+import com.vaadin.v7.shared.ui.label.ContentMode;
 import com.vaadin.v7.ui.CheckBox;
+import com.vaadin.v7.ui.Label;
 import com.vaadin.v7.ui.Table;
 import com.vaadin.v7.ui.Table.RowHeaderMode;
 import com.vaadin.v7.ui.TextField;
@@ -89,8 +91,8 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
     /** vaadin component.*/
     private CheckBox m_moveAnyway;
 
-    /** vaadin component.*/
-    private VerticalLayout m_missingSchemaLayout;
+    /** Vaadin vomponent.*/
+    private Label m_warningIcon;
 
     /** vaadin component.*/
     private TextField m_filter;
@@ -98,11 +100,14 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
     /** Is schema ok.*/
     private boolean m_schemaOK = true;
 
-    /**resozurce type*/
+    /**Vaadin component. */
+    private VerticalLayout m_missingSchemaLayout;
+
+    /**resource type.*/
     private I_CmsResourceType m_type;
 
     /** type content.*/
-    private CmsResourceTypeXmlContent m_typeXML = null;
+    private CmsResourceTypeXmlContent m_typeXML;
 
     /**
      * Public constructor.<p>
@@ -112,6 +117,7 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
     public CmsMoveResourceTypeDialog(CmsNewResourceTypeDialog dialog) {
 
         init(null);
+        m_missingSchemaLayout.setVisible(false);
         m_ok.addClickListener(e -> dialog.setModule(getModuleName(), CmsMoveResourceTypeDialog.this));
         m_cancel.addClickListener(e -> CmsVaadinUtils.getWindow(CmsMoveResourceTypeDialog.this).close());
     }
@@ -136,7 +142,6 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
             if (!OpenCms.getModuleManager().getModule(m_type.getModuleName()).getResources().contains(
                 m_typeXML.getSchema())) {
                 m_schemaOK = false;
-                m_missingSchemaLayout.setVisible(true);
                 m_ok.setEnabled(false);
                 m_moveAnyway.addValueChangeListener(new ValueChangeListener() {
 
@@ -206,8 +211,8 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
 
         if (!((CmsModuleRow)m_table.getValue()).equals(
             new CmsModuleRow(OpenCms.getModuleManager().getModule(m_type.getModuleName())))) {
-            CmsModule newModule = (CmsModule)((CmsModuleRow)m_table.getValue()).getModule().clone();
-            CmsModule oldModule = (CmsModule)OpenCms.getModuleManager().getModule(m_type.getModuleName()).clone();
+            CmsModule newModule = ((CmsModuleRow)m_table.getValue()).getModule().clone();
+            CmsModule oldModule = OpenCms.getModuleManager().getModule(m_type.getModuleName()).clone();
 
             m_type.setModuleName(newModule.getName());
 
@@ -265,8 +270,8 @@ public class CmsMoveResourceTypeDialog extends CmsBasicDialog {
     private void init(final Window window) {
 
         CmsVaadinUtils.readAndLocalizeDesign(this, CmsVaadinUtils.getWpMessagesForCurrentLocale(), null);
-
-        m_missingSchemaLayout.setVisible(false);
+        m_warningIcon.setContentMode(ContentMode.HTML);
+        m_warningIcon.setValue(FontOpenCms.WARNING.getHtml());
         if (window != null) {
             m_cancel.addClickListener(e -> window.close());
         }

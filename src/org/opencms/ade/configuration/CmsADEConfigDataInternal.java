@@ -30,10 +30,13 @@ package org.opencms.ade.configuration;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.file.CmsResource;
+import org.opencms.util.CmsUUID;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Lists;
@@ -49,10 +52,13 @@ public class CmsADEConfigDataInternal {
 
     /** The "create contents locally" flag. */
     protected boolean m_createContentsLocally;
+
     /** Should inherited model pages be discarded? */
     protected boolean m_discardInheritedModelPages;
+
     /** Should inherited properties be discard? */
     protected boolean m_discardInheritedProperties;
+
     /** Should inherited types be discarded? */
     protected boolean m_discardInheritedTypes;
 
@@ -61,10 +67,19 @@ public class CmsADEConfigDataInternal {
 
     /** True if this is a module configuration, not a normal sitemap configuration. */
     protected boolean m_isModuleConfig;
-    /** The master configuration resource (possibly null). */
-    protected CmsResource m_masterConfig;
+
+    /** The master configuration structure ids. */
+    protected List<CmsUUID> m_masterConfigs;
+
     /** The base path of this configuration. */
     private String m_basePath;
+
+    /** the dynamic functions available. */
+    private Set<CmsUUID> m_dynamicFunctions;
+
+    /** True if detail contents outside the sitemap should not be used with detail pages in the sitemap. */
+    private boolean m_excludeExternalDetailContents;
+
     /** The list of configured function references. */
     private List<CmsFunctionReference> m_functionReferences = Lists.newArrayList();
 
@@ -83,6 +98,9 @@ public class CmsADEConfigDataInternal {
     /** True if detail pages from this sitemap should be preferred when linking to contents inside this sitemap. */
     private boolean m_preferDetailPagesForLocalContents;
 
+    /** Flag indicating whether all functions should be removed. */
+    private boolean m_removeAllFunctions;
+
     /** The resource from which the configuration data was read. */
     private CmsResource m_resource;
 
@@ -92,7 +110,7 @@ public class CmsADEConfigDataInternal {
      * @param resource the resource from which this configuration data was read
      * @param isModuleConfig true if this is a module configuration
      * @param basePath the base path
-     * @param masterConfig the master configuration resource (possibly null)
+     * @param masterConfigs structure ids of master configuration files
      * @param resourceTypeConfig the resource type configuration
      * @param discardInheritedTypes the "discard inherited types" flag
      * @param propertyConfig the property configuration
@@ -103,13 +121,16 @@ public class CmsADEConfigDataInternal {
      * @param discardInheritedModelPages the "discard  inherited model pages" flag
      * @param createContentsLocally the "create contents locally" flag
      * @param preferDetailPagesForLocalContents the "preferDetailPagesForLocalContents" flag
+     * @param excludeExternalDetailContents the "excludeExternalDetailContents" flag
      * @param formatterChangeSet the formatter changes
+     * @param removeAllFunctions flag indicating whether all functions should be removed
+     * @param functionIds the dynamic functions available
      */
     public CmsADEConfigDataInternal(
         CmsResource resource,
         boolean isModuleConfig,
         String basePath,
-        CmsResource masterConfig,
+        List<CmsUUID> masterConfigs,
         List<CmsResourceTypeConfig> resourceTypeConfig,
         boolean discardInheritedTypes,
         List<CmsPropertyConfig> propertyConfig,
@@ -120,7 +141,10 @@ public class CmsADEConfigDataInternal {
         boolean discardInheritedModelPages,
         boolean createContentsLocally,
         boolean preferDetailPagesForLocalContents,
-        CmsFormatterChangeSet formatterChangeSet) {
+        boolean excludeExternalDetailContents,
+        CmsFormatterChangeSet formatterChangeSet,
+        boolean removeAllFunctions,
+        Set<CmsUUID> functionIds) {
 
         m_resource = resource;
         m_basePath = basePath;
@@ -130,7 +154,10 @@ public class CmsADEConfigDataInternal {
         m_ownDetailPages = detailPageInfos;
         m_functionReferences = functionReferences;
         m_isModuleConfig = isModuleConfig;
-        m_masterConfig = masterConfig;
+        m_masterConfigs = masterConfigs;
+        if (m_masterConfigs == null) {
+            m_masterConfigs = Collections.emptyList();
+        }
 
         m_discardInheritedTypes = discardInheritedTypes;
         m_discardInheritedProperties = discardInheritedProperties;
@@ -138,6 +165,9 @@ public class CmsADEConfigDataInternal {
         m_createContentsLocally = createContentsLocally;
         m_preferDetailPagesForLocalContents = preferDetailPagesForLocalContents;
         m_formatterChangeSet = formatterChangeSet;
+        m_dynamicFunctions = functionIds;
+        m_removeAllFunctions = removeAllFunctions;
+        m_excludeExternalDetailContents = excludeExternalDetailContents;
     }
 
     /**
@@ -173,6 +203,19 @@ public class CmsADEConfigDataInternal {
     }
 
     /**
+     * Returns the set of configured dynamic functions, regardless of whether the 'remove all formatters' option is enabled.
+     *
+     * @return the dynamic functions
+     */
+    public Collection<CmsUUID> getDynamicFunctions() {
+
+        if (m_dynamicFunctions == null) {
+            return Collections.emptySet();
+        }
+        return Collections.unmodifiableSet(m_dynamicFunctions);
+    }
+
+    /**
      * Gets the formatter change set.<p>
      *
      * @return the formatter change set.<p>
@@ -194,13 +237,13 @@ public class CmsADEConfigDataInternal {
     }
 
     /**
-     * Gets the master configuration resource (may be null).<p>
+     * Gets the structure ids of the master configuration files.
      *
-     * @return the master configuration resource
+     * @return the structure ids of the master configurations
      */
-    public CmsResource getMasterConfig() {
+    public List<CmsUUID> getMasterConfigs() {
 
-        return m_masterConfig;
+        return Collections.unmodifiableList(m_masterConfigs);
     }
 
     /**
@@ -294,6 +337,16 @@ public class CmsADEConfigDataInternal {
     }
 
     /**
+     * Returns true if detail pages inside this subsite (and descendant subsites) should not be used for contents outside the subsite (and descendant subsites).<p>
+     *
+     * @return true if external detail contents should be excluded
+     */
+    public boolean isExcludeExternalDetailContents() {
+
+        return m_excludeExternalDetailContents;
+    }
+
+    /**
      * Returns the isModuleConfig.<p>
      *
      * @return the isModuleConfig
@@ -311,6 +364,16 @@ public class CmsADEConfigDataInternal {
     public boolean isPreferDetailPagesForLocalContents() {
 
         return m_preferDetailPagesForLocalContents;
+    }
+
+    /**
+     * True if all functions should be removed by this sitemap configuration.
+     *
+     * @return true if all functions should be removed
+     */
+    public boolean isRemoveAllFunctions() {
+
+        return m_removeAllFunctions;
     }
 
     /**
@@ -361,6 +424,8 @@ public class CmsADEConfigDataInternal {
             parentFunctionRefs,
             m_functionReferences,
             false);
+
+        // dynamic functions are not used in module configurations, so we do not need to merge them here
     }
 
     /**

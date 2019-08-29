@@ -42,6 +42,13 @@ import java.util.Set;
 public interface I_CmsFormatterBean {
 
     /**
+     * Gets the map of attributes.<p>
+     *
+     * @return the attribute map
+     */
+    Map<String, String> getAttributes();
+
+    /**
      * Returns the formatter container type.<p>
      *
      * If this is "*", then the formatter is a width based formatter.<p>
@@ -68,6 +75,13 @@ public interface I_CmsFormatterBean {
      * @return the formatter description
      */
     String getDescription(Locale locale);
+
+    /**
+     * The display type of this formatter or <code>null</code> in case this is not a display formatter.<p>
+     *
+     * @return the display type
+     */
+    String getDisplayType();
 
     /**
      * Returns the id of this formatter.<p>
@@ -180,18 +194,18 @@ public interface I_CmsFormatterBean {
     Map<String, CmsXmlContentProperty> getSettings();
 
     /**
-     * Returns if this formatter has nested containers.<p>
-     *
-     * @return <code>true</code> if this formatter has nested containers
-     */
-    boolean hasNestedContainers();
-
-    /**
      * Returns if nested formatter settings should be displayed.<p>
      *
      * @return <code>true</code> if nested formatter settings should be displayed
      */
     boolean hasNestedFormatterSettings();
+
+    /**
+     * Returns whether this formatter allows settings to be edited in the content editor.<p>
+     *
+     * @return <code>true</code> in case editing the settings is allowed in the content editor
+     */
+    boolean isAllowsSettingsInEditor();
 
     /**
      * Returns true if the formatter is automatically enabled.<p>
@@ -257,5 +271,12 @@ public interface I_CmsFormatterBean {
      * @param structureId the jsp structure id
      */
     void setJspStructureId(CmsUUID structureId);
+
+    /**
+     * Returns true if meta mappings should be evaluated for normal container elements using this formatter, not just detail elements.<p>
+     *
+     * @return true if meta mappings should be evaluated for normal container elements
+     */
+    boolean useMetaMappingsForNormalElements();
 
 }

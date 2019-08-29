@@ -102,7 +102,9 @@ import org.opencms.site.CmsSiteMatcher;
 import org.opencms.staticexport.CmsDefaultLinkSubstitutionHandler;
 import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.staticexport.CmsStaticExportManager;
+import org.opencms.ugc.CmsUgcSessionFactory;
 import org.opencms.ui.apps.CmsWorkplaceAppManager;
+import org.opencms.ui.dialogs.CmsPublishScheduledDialog;
 import org.opencms.ui.error.CmsErrorUI;
 import org.opencms.ui.login.CmsLoginHelper;
 import org.opencms.ui.login.CmsLoginUI;
@@ -175,6 +177,9 @@ import cryptix.jce.provider.CryptixCrypto;
  * @since 6.0.0
  */
 public final class OpenCmsCore {
+
+    /** Parameter to control whether generated links should always include the host. */
+    public static final String PARAM_FORCE_ABSOLUTE_LINKS = "__forceAbsoluteLinks";
 
     /** The static log object for this class. */
     static final Log LOG = CmsLog.getLog(OpenCmsCore.class);
@@ -507,7 +512,24 @@ public final class OpenCmsCore {
      */
     protected I_CmsCredentialsResolver getCredentialsResolver() {
 
+        if (m_credentialsResolver == null) {
+            CmsSystemConfiguration systemConfig = (CmsSystemConfiguration)m_configurationManager.getConfiguration(
+                CmsSystemConfiguration.class);
+            return systemConfig.getCredentialsResolver();
+        }
+
         return m_credentialsResolver;
+    }
+
+    /**
+     * Gets the database pool names.<p>
+     *
+     * @return the configured database pool names
+     */
+    protected List<String> getDbPoolNames() {
+
+        return new ArrayList<>(m_configurationManager.getConfiguration().getList("db.pools"));
+
     }
 
     /**
@@ -1631,6 +1653,8 @@ public final class OpenCmsCore {
             m_subscriptionManager.setSecurityManager(m_securityManager);
             m_subscriptionManager.initialize(adminCms);
 
+            CmsUgcSessionFactory.setAdminCms(adminCms);
+
             // initialize the formatter configuration
             CmsFormatterConfiguration.initialize(adminCms);
             CmsPersistentLoginTokenHandler.setAdminCms(initCmsObject(adminCms));
@@ -1652,6 +1676,8 @@ public final class OpenCmsCore {
             m_workflowManager.initialize(adminCms);
 
             m_remoteShellServer = CmsRemoteShellServer.initialize(systemConfiguration);
+
+            CmsPublishScheduledDialog.setAdminCms(initCmsObject(adminCms));
 
         } catch (CmsException e) {
             throw new CmsInitException(Messages.get().container(Messages.ERR_CRITICAL_INIT_MANAGERS_0), e);
@@ -1919,8 +1945,7 @@ public final class OpenCmsCore {
                 lock = new Object();
             }
             rpcService.service(req, res);
-            // update the session info
-            m_sessionManager.updateSessionInfo(cms, req);
+            m_sessionManager.updateSessionInfo(cms, req, rpcService.isBroadcastCall());
         } catch (CmsRoleViolationException rv) {
             // don't log these into the error channel
             LOG.debug(rv.getLocalizedMessage(), rv);
@@ -1972,7 +1997,6 @@ public final class OpenCmsCore {
         CmsObject cms = null;
         try {
             cms = initCmsObject(req, res);
-
             if (cms.getRequestContext().getCurrentProject().isOnlineProject()) {
                 String uri = cms.getRequestContext().getUri();
                 if (uri.startsWith(CmsWorkplace.VFS_PATH_SITES)) {
@@ -2007,6 +2031,9 @@ public final class OpenCmsCore {
             // user is initialized, now deliver the requested resource
             CmsResource resource = initResource(cms, cms.getRequestContext().getUri(), req, res);
             if (resource != null) {
+                boolean forceAbsoluteLinks = checkForceAbsoluteLinks(req, cms, resource);
+                cms.getRequestContext().setForceAbsoluteLinks(forceAbsoluteLinks);
+
                 // a file was read, go on process it
                 m_resourceManager.loadResource(cms, resource, req, res);
                 m_sessionManager.updateSessionInfo(cms, req);
@@ -2382,8 +2409,9 @@ public final class OpenCmsCore {
                     e);
             }
         }
-        // only init ADE manager in case of servlet initialization, it won't be needed in case of shell access
+
         if (OpenCms.getRunLevel() == OpenCms.RUNLEVEL_4_SERVLET_ACCESS) {
+            // only init ADE manager in case of servlet initialization, it won't be needed in case of shell access
             CmsThreadStatsTreeProfilingHandler stats = new CmsThreadStatsTreeProfilingHandler();
             try {
                 CmsDefaultProfilingHandler.INSTANCE.addHandler(stats);
@@ -2406,9 +2434,52 @@ public final class OpenCmsCore {
                     }
                 }
             }
+
+            try {
+                // get an Admin cms context object with site root set to "/"
+                CmsObject adminCms = initCmsObject(
+                    null,
+                    null,
+                    getDefaultUsers().getUserAdmin(),
+                    (String)null,
+                    (String)null);
+                OpenCms.getSearchManager().initSpellcheckIndex(adminCms);
+            } catch (CmsException e) {
+                throw new CmsInitException(Messages.get().container(Messages.ERR_CRITICAL_INIT_ADMINCMS_0), e);
+            }
+
         }
         // everything is initialized, now start publishing
         m_publishManager.startPublishing();
+    }
+
+    /**
+     * Checks whether 'force absolute links' mode should be enabled in request context.
+     *
+     * @param req the current request
+     * @param cms the CMS context
+     * @param resource the resource to load
+     *
+     * @return true if 'force absolute links' mode should be enabled
+     */
+    private boolean checkForceAbsoluteLinks(HttpServletRequest req, CmsObject cms, CmsResource resource) {
+
+        try {
+            boolean forceAbsoluteLinks = Boolean.parseBoolean(req.getParameter(PARAM_FORCE_ABSOLUTE_LINKS));
+            if (forceAbsoluteLinks) {
+                // only need to read the property if the request parameter is actually set
+                CmsProperty enableForceAbsoluteProp = cms.readPropertyObject(
+                    resource,
+                    CmsPropertyDefinition.PROPERTY_LINKS_FORCEABSOLUTE_ENABLED,
+                    true);
+                return Boolean.parseBoolean(enableForceAbsoluteProp.getValue());
+            } else {
+                return false;
+            }
+        } catch (Exception e) {
+            LOG.warn(e.getLocalizedMessage(), e);
+            return false;
+        }
     }
 
     /**
@@ -2766,7 +2837,8 @@ public final class OpenCmsCore {
             contextInfo.getRequestTime(),
             m_resourceManager.getFolderTranslator(),
             m_resourceManager.getFileTranslator(),
-            contextInfo.getOuFqn());
+            contextInfo.getOuFqn(),
+            contextInfo.isForceAbsoluteLinks());
         context.setDetailResource(contextInfo.getDetailResource());
 
         // now initialize and return the CmsObject
@@ -2810,7 +2882,6 @@ public final class OpenCmsCore {
         CmsSiteMatcher requestMatcher;
 
         boolean isSecureRequest = false;
-
         if (request != null) {
             // get path info from request
             requestedResource = getPathInfo(request);
@@ -2832,6 +2903,7 @@ public final class OpenCmsCore {
 
             // create the request matcher
             requestMatcher = new CmsSiteMatcher(request.getRequestURL().toString());
+
         } else {
             // if no request is available, the IP is always set to localhost
             remoteAddr = CmsContextInfo.LOCALHOST;
@@ -2904,7 +2976,8 @@ public final class OpenCmsCore {
             i18nInfo.getEncoding(),
             remoteAddr,
             requestTime,
-            ouFqn);
+            ouFqn,
+            false);
 
         // now generate and return the CmsObject
         return initCmsObject(contextInfo);

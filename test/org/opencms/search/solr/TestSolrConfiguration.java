@@ -42,7 +42,6 @@ import org.opencms.file.types.CmsResourceTypePlain;
 import org.opencms.main.CmsContextInfo;
 import org.opencms.main.OpenCms;
 import org.opencms.report.CmsShellReport;
-import org.opencms.search.CmsSearchIndex;
 import org.opencms.search.CmsSearchResource;
 import org.opencms.search.I_CmsSearchIndex;
 import org.opencms.search.documents.CmsExtractionResultCache;
@@ -104,6 +103,7 @@ public class TestSolrConfiguration extends OpenCmsTestCase {
         // suite.addTest(new TestSolrConfiguration("testMultipleLanguages"));
         suite.addTest(new TestSolrConfiguration("testReindexPublishedSiblings"));
         suite.addTest(new TestSolrConfiguration("testPostProcessor"));
+        suite.addTest(new TestSolrConfiguration("testMaxResultConfiguration"));
         suite.addTest(new TestSolrConfiguration("testShutDown"));
 
         TestSetup wrapper = new TestSetup(suite) {
@@ -165,6 +165,19 @@ public class TestSolrConfiguration extends OpenCmsTestCase {
     }
 
     /**
+     * Tests, if the configuration for the maximally processed search results is read correctly.
+     */
+    public void testMaxResultConfiguration() {
+
+        assertEquals(
+            500,
+            OpenCms.getSearchManager().getIndexSolr(CmsSolrIndex.DEFAULT_INDEX_NAME_ONLINE).getMaxProcessedResults());
+        assertEquals(
+            1000,
+            OpenCms.getSearchManager().getIndexSolr(CmsSolrIndex.DEFAULT_INDEX_NAME_OFFLINE).getMaxProcessedResults());
+    }
+
+    /**
      * @throws Throwable
      */
     public void testMultipleIndices() throws Throwable {
@@ -193,17 +206,17 @@ public class TestSolrConfiguration extends OpenCmsTestCase {
         squery.setRows(new Integer(100));
         CmsSolrResultList results = index.search(getCmsObject(), squery);
         AllTests.printResults(getCmsObject(), results, true);
-        assertEquals(56, results.getNumFound());
+        assertEquals(59, results.getNumFound());
 
         CmsObject cms = OpenCms.initCmsObject(getCmsObject(), new CmsContextInfo("test1"));
         results = index.search(cms, squery);
         AllTests.printResults(cms, results, false);
-        assertEquals(50, results.getNumFound());
+        assertEquals(53, results.getNumFound());
 
         cms = OpenCms.initCmsObject(getCmsObject(), new CmsContextInfo("test2"));
         results = index.search(cms, squery);
         AllTests.printResults(cms, results, true);
-        assertEquals(52, results.getNumFound());
+        assertEquals(55, results.getNumFound());
     }
 
     /**
@@ -320,7 +333,7 @@ public class TestSolrConfiguration extends OpenCmsTestCase {
         CmsSolrIndex index = new CmsSolrIndex(AllTests.INDEX_TEST);
         index.setProject("Offline");
         index.setLocale(Locale.GERMAN);
-        index.setRebuildMode(CmsSearchIndex.REBUILD_MODE_AUTO);
+        index.setRebuildMode(I_CmsSearchIndex.REBUILD_MODE_AUTO);
         index.setFieldConfigurationName("solr_fields");
         index.addSourceName("solr_source2");
         OpenCms.getSearchManager().addSearchIndex(index);

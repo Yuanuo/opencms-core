@@ -89,7 +89,7 @@ public class CmsJspElementSettingValueWrapper extends A_CmsJspValueWrapper {
     @Override
     public boolean getIsEmpty() {
 
-        return CmsStringUtil.isEmpty(m_value);
+        return !m_exists || CmsStringUtil.isEmpty(m_value);
     }
 
     /**
@@ -100,16 +100,7 @@ public class CmsJspElementSettingValueWrapper extends A_CmsJspValueWrapper {
     @Override
     public boolean getIsEmptyOrWhitespaceOnly() {
 
-        return CmsStringUtil.isEmptyOrWhitespaceOnly(m_value);
-    }
-
-    /**
-     * @see org.opencms.jsp.util.A_CmsJspValueWrapper#getIsSet()
-     */
-    @Override
-    public boolean getIsSet() {
-
-        return getExists() && !getIsEmpty();
+        return !m_exists || CmsStringUtil.isEmptyOrWhitespaceOnly(m_value);
     }
 
     /**
@@ -164,5 +155,24 @@ public class CmsJspElementSettingValueWrapper extends A_CmsJspValueWrapper {
     public String toString() {
 
         return m_value != null ? m_value : "";
+    }
+
+    /**
+     * Returns a value wrapper for the provided default in case this value is empty.<p>
+     *
+     * @param defaultValue the string to generate the default value from
+     *
+     * @return  a value wrapper for the provided default in case this value is empty.
+     */
+    @Override
+    public A_CmsJspValueWrapper useDefault(Object defaultValue) {
+
+        if (getIsEmptyOrWhitespaceOnly()) {
+            return new CmsJspElementSettingValueWrapper(
+                m_contextBean,
+                (defaultValue == null) ? null : String.valueOf(defaultValue),
+                true);
+        }
+        return this;
     }
 }

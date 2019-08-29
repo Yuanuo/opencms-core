@@ -59,6 +59,7 @@ import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.workplace.explorer.CmsExplorerTypeSettings;
 import org.opencms.xml.CmsXmlUtils;
+import org.opencms.xml.content.CmsVfsBundleLoaderXml;
 import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.types.I_CmsXmlContentValue;
@@ -67,13 +68,15 @@ import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import org.apache.commons.logging.Log;
+
+import org.dom4j.Element;
 
 import com.google.common.collect.Lists;
 import com.vaadin.ui.Button;
@@ -88,16 +91,19 @@ import com.vaadin.v7.ui.TextField;
 @SuppressWarnings("deprecation")
 public class CmsNewResourceTypeDialog extends CmsBasicDialog {
 
+    /**
+     * XPath elements.
+     */
     public static class XMLPath {
 
         /**Module Config Constant.  */
-        private final static String CONFIG_RESOURCETYPE = "ResourceType";
+        private static final String CONFIG_RESOURCETYPE = "ResourceType";
 
         /**Module Config Constant.  */
-        private final static String CONFIG_RESOURCETYPE_TYPENAME = "/TypeName";
+        private static final String CONFIG_RESOURCETYPE_TYPENAME = "/TypeName";
 
         /**Module Config Constant.  */
-        private final static String CONFIG_RESOURCETYPE_NAMEPATTERN = "/NamePattern";
+        private static final String CONFIG_RESOURCETYPE_NAMEPATTERN = "/NamePattern";
 
         /**
          * Adds the count to the path, e.g., <code>"Title" + num(2)</code> results in <code>"Title[2]"</code>.
@@ -108,6 +114,40 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
 
             return "[" + i + "]";
         }
+    }
+
+    /**
+     * Validator for the bundle resource field.<p>
+     */
+    class BundleValidator implements Validator {
+
+        /**Vaadin serial id. */
+        private static final long serialVersionUID = 7872665683495080792L;
+
+        /**
+         * @see com.vaadin.v7.data.Validator#validate(java.lang.Object)
+         */
+        public void validate(Object value) throws InvalidValueException {
+
+            if (!m_cms.existsResource((String)value)) {
+                throw new InvalidValueException(
+                    CmsVaadinUtils.getMessageText(Messages.GUI_RESOURCETYPE_EDIT_INVALID_RESORUCE_0));
+            }
+
+            try {
+                CmsResource res = m_cms.readResource((String)value);
+                if (!OpenCms.getResourceManager().getResourceType(res).equals(
+                    OpenCms.getResourceManager().getResourceType("propertyvfsbundle"))) {
+                    throw new InvalidValueException(
+                        CmsVaadinUtils.getMessageText(Messages.GUI_RESOURCETYPE_EDIT_INVALID_RESORUCE_NO_VFSBUNDLE_0));
+
+                }
+            } catch (CmsException e) {
+                LOG.error("Unable to read resource", e);
+            }
+
+        }
+
     }
 
     /**
@@ -147,7 +187,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         private static final long serialVersionUID = 7878441125879949490L;
 
         /**
-         * @see com.vaadin.data.Validator#validate(java.lang.Object)
+         * @see com.vaadin.v7.data.Validator#validate(java.lang.Object)
          */
         public void validate(Object value) throws InvalidValueException {
 
@@ -173,7 +213,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         private static final long serialVersionUID = 7878441125879949490L;
 
         /**
-         * @see com.vaadin.data.Validator#validate(java.lang.Object)
+         * @see com.vaadin.v7.data.Validator#validate(java.lang.Object)
          */
         public void validate(Object value) throws InvalidValueException {
 
@@ -211,20 +251,23 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
     /** Formatter folder name.*/
     private static final String FORMATTER = "formatters/";
 
-    /** Message key prefix. */
-    private static final String KEY_PREFIX_DESCRIPTION = "desc.";
+    /**Message key schema. */
+    private static final String MESSAGE_KEY_FORMATTER = "type.%s.%s";
 
-    /** Message key prefix. */
-    private static final String KEY_PREFIX_FORMATTER = "formatter.name.detail";
+    /**key: name.*/
+    private static final String MESSAGE_KEY_FORMATTER_NAME = "name";
 
-    /** Message key prefix. */
-    private static final String KEY_PREFIX_NAME = "fileicon.";
+    /**key: description. */
+    private static final String MESSAGE_KEY_FORMATTER_DESCRIPTION = "description";
 
-    /** Message key prefix. */
-    private static final String KEY_PREFIX_TITLE = "title.";
+    /**key: title. */
+    private static final String MESSAGE_KEY_FORMATTER_TITLE = "title";
+
+    /**key: formatter. */
+    private static final String MESSAGE_KEY_FORMATTER_FORMATTER = "formatter";
 
     /** Logger instance for this class. */
-    private static final Log LOG = CmsLog.getLog(CmsNewResourceTypeDialog.class);
+    protected static final Log LOG = CmsLog.getLog(CmsNewResourceTypeDialog.class);
 
     /**Sample path. */
     private static final String PATH_SAMPLE = "/system/modules/org.opencms.base/copyresources/";
@@ -237,9 +280,6 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
 
     /** Message bundle file name suffix. */
     private static final String SUFFIX_BUNDLE_FILE = ".messages";
-
-    /** Sample formatter config. */
-    private static final String SAMPLE_FORMATTER_CONFIG = PATH_SAMPLE + "sample-formatter.xml";
 
     /** Sample schema. */
     private static final String SAMPLE_SCHEMA = PATH_SAMPLE + "sample-schema.xsd";
@@ -265,6 +305,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
     /** vaadin component.*/
     private Button m_ok;
 
+    /**vaadin component. */
     private CmsPathSelectField m_parentFormatter;
 
     /** vaadin component.*/
@@ -384,7 +425,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
 
         Window window = CmsVaadinUtils.getWindow(dialog);
         window.setContent(this);
-        m_module = (CmsModule)OpenCms.getModuleManager().getModule(moduleName).clone();
+        m_module = OpenCms.getModuleManager().getModule(moduleName).clone();
         CmsResourceInfo resInfo = new CmsResourceInfo(
             m_module.getName(),
             m_module.getNiceName(),
@@ -438,7 +479,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         ? PROPERTIES_ENCODING
         : CmsFileUtil.getEncoding(m_cms, propertiesFile);
         StringBuffer contentBuffer = new StringBuffer();
-        contentBuffer.append(new String(propertiesFile.getContents(), encoding));
+        contentBuffer.append(new String(propertiesFile.getContents(), encoding).trim());
         for (Entry<String, String> entry : messages.entrySet()) {
             contentBuffer.append("\n");
             contentBuffer.append(entry.getKey());
@@ -448,6 +489,36 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         contentBuffer.append("\n");
         propertiesFile.setContents(contentBuffer.toString().getBytes(encoding));
         m_cms.writeFile(propertiesFile);
+    }
+
+    /**
+     * Adds the given messages to the vfs message bundle.<p>
+     *
+     * @param messages the messages
+     * @param vfsBundleFile the bundle file
+     *
+     * @throws CmsException if something goes wrong writing the file
+     */
+    private void addMessagesToVfsBundle(Map<String, String> messages, CmsFile vfsBundleFile) throws CmsException {
+
+        lockTemporary(vfsBundleFile);
+        CmsObject cms = m_cms;
+        CmsXmlContent content = CmsXmlContentFactory.unmarshal(cms, vfsBundleFile);
+        Locale locale = CmsLocaleManager.getDefaultLocale();
+        if (!content.hasLocale(locale)) {
+            content.addLocale(cms, locale);
+        }
+        Element root = content.getLocaleNode(locale);
+        for (Entry<String, String> entry : messages.entrySet()) {
+            Element message = root.addElement(CmsVfsBundleLoaderXml.N_MESSAGE);
+            Element key = message.addElement(CmsVfsBundleLoaderXml.N_KEY);
+            key.setText(entry.getKey());
+            Element value = message.addElement(CmsVfsBundleLoaderXml.N_VALUE);
+            value.setText(entry.getValue());
+        }
+        content.initDocument();
+        vfsBundleFile.setContents(content.marshal());
+        cms.writeFile(vfsBundleFile);
     }
 
     /**
@@ -480,23 +551,29 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
     private void addTypeMessages(CmsExplorerTypeSettings setting, String moduleFolder)
     throws CmsException, UnsupportedEncodingException {
 
-        Map<String, String> messages = new HashMap<String, String>();
+        Map<String, String> messages = new TreeMap<String, String>();
 
         // check if any messages to set
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_typeName.getValue())) {
-            String key = KEY_PREFIX_NAME + m_typeShortName.getValue();
+            String key = String.format(MESSAGE_KEY_FORMATTER, m_typeShortName.getValue(), MESSAGE_KEY_FORMATTER_NAME);
             messages.put(key, m_typeName.getValue());
             setting.setKey(key);
         }
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_typeDescription.getValue())) {
-            String key = KEY_PREFIX_DESCRIPTION + m_typeShortName.getValue();
+            String key = String.format(
+                MESSAGE_KEY_FORMATTER,
+                m_typeShortName.getValue(),
+                MESSAGE_KEY_FORMATTER_DESCRIPTION);
             messages.put(key, m_typeDescription.getValue());
             setting.setInfo(key);
         }
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_typeName.getValue())) {
-            String key = KEY_PREFIX_TITLE + m_typeShortName.getValue();
+            String key = String.format(MESSAGE_KEY_FORMATTER, m_typeShortName.getValue(), MESSAGE_KEY_FORMATTER_TITLE);
             messages.put(key, m_typeName.getValue());
-            String key2 = KEY_PREFIX_FORMATTER.replace("name", m_typeShortName.getValue());
+            String key2 = String.format(
+                MESSAGE_KEY_FORMATTER,
+                m_typeShortName.getValue(),
+                MESSAGE_KEY_FORMATTER_FORMATTER);
             messages.put(key2, m_typeName.getValue());
             setting.setTitleKey(key);
         }
@@ -522,33 +599,32 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         CmsFile file = m_cms.readFile(config);
 
         CmsXmlContent xmlContent = CmsXmlContentFactory.unmarshal(m_cms, file);
-        for (Locale l : OpenCms.getLocaleManager().getAvailableLocales()) {
-
-            if (!xmlContent.hasLocale(l)) {
-                xmlContent.addLocale(m_cms, l);
-            }
-            CmsResource formatter = m_cms.readResource(formatterPath);
-
-            I_CmsXmlContentValue v = xmlContent.getValue("Jsp", l);
-            v.setStringValue(m_cms, formatter.getRootPath());
-
-            String xmlPath = "NiceName";
-            v = xmlContent.getValue(xmlPath, l);
-            v.setStringValue(m_cms, m_typeName.getValue());
-
-            xmlPath = "Type";
-            v = xmlContent.getValue(xmlPath, l);
-            v.setStringValue(m_cms, m_typeShortName.getValue());
-
-            xmlPath = "AutoEnabled";
-            v = xmlContent.getValue(xmlPath, l);
-            v.setStringValue(m_cms, "true");
-
-            xmlPath = "Match/Width/Width";
-            createParentXmlElements(xmlContent, xmlPath, l);
-            v = xmlContent.getValue(xmlPath, l);
-            v.setStringValue(m_cms, "-1");
+        Locale l = new Locale("en");
+        if (!xmlContent.hasLocale(l)) {
+            xmlContent.addLocale(m_cms, l);
         }
+        CmsResource formatter = m_cms.readResource(formatterPath);
+
+        I_CmsXmlContentValue v = xmlContent.getValue("Jsp", l);
+        v.setStringValue(m_cms, formatter.getRootPath());
+
+        String xmlPath = "NiceName";
+        v = xmlContent.getValue(xmlPath, l);
+        v.setStringValue(m_cms, m_typeName.getValue());
+
+        xmlPath = "Type";
+        v = xmlContent.getValue(xmlPath, l);
+        v.setStringValue(m_cms, m_typeShortName.getValue());
+
+        xmlPath = "AutoEnabled";
+        v = xmlContent.getValue(xmlPath, l);
+        v.setStringValue(m_cms, "true");
+
+        xmlPath = "Match/Width/Width";
+        createParentXmlElements(xmlContent, xmlPath, l);
+        v = xmlContent.getValue(xmlPath, l);
+        v.setStringValue(m_cms, "-1");
+
         file.setContents(xmlContent.marshal());
         CmsLockUtil.ensureLock(m_cms, file);
         m_cms.writeFile(file);
@@ -561,7 +637,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
      */
     private void adjustModuleConfig() {
 
-        Locale l = CmsLocaleManager.getLocale("en");//.getDefaultLocale();
+        Locale l = CmsLocaleManager.getLocale("en");
         try {
             CmsResource config = m_cms.readResource(m_config.getValue());
             CmsFile configFile = m_cms.readFile(config);
@@ -608,7 +684,14 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
             macroResolver.setKeepEmptyMacros(true);
 
             macroResolver.addMacro(SAMPLE_TYPE_SCHEMA_ELEMENT, newElementString);
+            String bundleName = m_bundle.getValue();
 
+            bundleName = bundleName.split("/")[bundleName.split("/").length - 1];
+            if (bundleName.contains("_")) {
+                bundleName = bundleName.split("_")[0];
+            }
+            macroResolver.addMacro("ResourceBundle", bundleName);
+            macroResolver.addMacro("typeName", m_typeShortName.getValue());
             String encoding = m_cms.readPropertyObject(
                 file,
                 CmsPropertyDefinition.PROPERTY_CONTENT_ENCODING,
@@ -684,9 +767,8 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
                 I_CmsResourceType configType = OpenCms.getResourceManager().getResourceType(
                     CmsFormatterConfigurationCache.TYPE_FORMATTER_CONFIG);
                 List<CmsProperty> props = new ArrayList<CmsProperty>();
-                props.add(new CmsProperty(CmsPropertyDefinition.PROPERTY_LOCALE, getAvailableLocalString(), null));
-                props.add(
-                    new CmsProperty(CmsPropertyDefinition.PROPERTY_AVAILABLE_LOCALES, getAvailableLocalString(), null));
+                props.add(new CmsProperty(CmsPropertyDefinition.PROPERTY_LOCALE, "en", null));
+                props.add(new CmsProperty(CmsPropertyDefinition.PROPERTY_AVAILABLE_LOCALES, "en", null));
 
                 m_cms.createResource(formatterConfigPath, configType, null, props);
             }
@@ -729,8 +811,6 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
                 "false",
                 null,
                 null);
-            setting.setNewResourceUri("newresource_xmlcontent.jsp?newresourcetype=" + m_typeShortName.getValue());
-            setting.setNewResourcePage("structurecontent");
             setting.setAutoSetNavigation("false");
             setting.setAutoSetTitle("false");
             setting.setNewResourceOrder("10");
@@ -771,6 +851,7 @@ public class CmsNewResourceTypeDialog extends CmsBasicDialog {
         m_parentSchema.removeAllValidators();
         m_config.removeAllValidators();
         m_config.addValidator(new ResourceValidator());
+        m_bundle.addValidator(new BundleValidator());
         m_parentFormatter.addValidator(new ResourceValidator());
         m_parentSchema.addValidator(new ResourceValidator());
         CmsResource bundle = getMessageBundle();

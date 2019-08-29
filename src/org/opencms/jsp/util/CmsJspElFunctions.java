@@ -32,19 +32,19 @@ import org.opencms.file.CmsResource;
 import org.opencms.file.types.CmsResourceTypeFolderSubSitemap;
 import org.opencms.flex.CmsFlexController;
 import org.opencms.i18n.CmsLocaleManager;
-import org.opencms.i18n.CmsMessages;
 import org.opencms.json.JSONObject;
 import org.opencms.jsp.CmsJspResourceWrapper;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.module.CmsModule;
-import org.opencms.util.CmsHtml2TextConverter;
 import org.opencms.util.CmsHtmlConverter;
+import org.opencms.util.CmsHtmlExtractor;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
+import java.io.UnsupportedEncodingException;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -61,7 +61,6 @@ import javax.servlet.jsp.PageContext;
 
 import org.apache.commons.beanutils.PropertyUtils;
 import org.apache.commons.logging.Log;
-
 import com.google.common.collect.Maps;
 
 /**
@@ -310,8 +309,13 @@ public final class CmsJspElFunctions {
             // input is already a resource
             result = (CmsResource)input;
         } else if (input instanceof String) {
-            // input is a String
-            result = cms.readResource((String)input);
+            if (CmsUUID.isValidUUID((String)input)) {
+                // input is a UUID as String
+                result = cms.readResource(CmsUUID.valueOf((String)input));
+            } else {
+                // input is a path as String
+                result = cms.readResource(cms.getRequestContext().removeSiteRoot((String)input));
+            }
         } else if (input instanceof CmsUUID) {
             // input is a UUID
             result = cms.readResource((CmsUUID)input);
@@ -360,10 +364,10 @@ public final class CmsJspElFunctions {
     public static CmsJspResourceWrapper convertResource(CmsObject cms, Object input) throws CmsException {
 
         CmsJspResourceWrapper result;
-        if (input instanceof CmsJspResourceWrapper) {
-            result = (CmsJspResourceWrapper)input;
+        if (input instanceof CmsResource) {
+            result = CmsJspResourceWrapper.wrap(cms, (CmsResource)input);
         } else {
-            result = new CmsJspResourceWrapper(cms, convertRawResource(cms, input));
+            result = CmsJspResourceWrapper.wrap(cms, convertRawResource(cms, input));
         }
         return result;
     }
@@ -380,11 +384,7 @@ public final class CmsJspElFunctions {
 
         List<CmsJspResourceWrapper> result = new ArrayList<CmsJspResourceWrapper>(list.size());
         for (CmsResource res : list) {
-            if (res instanceof CmsJspResourceWrapper) {
-                result.add((CmsJspResourceWrapper)res);
-            } else {
-                result.add(new CmsJspResourceWrapper(cms, res));
-            }
+            result.add(CmsJspResourceWrapper.wrap(cms, res));
         }
         return result;
     }
@@ -548,6 +548,18 @@ public final class CmsJspElFunctions {
     public static boolean isSubSitemap(CmsResource resource) {
 
         return (resource != null) && CmsResourceTypeFolderSubSitemap.isSubSitemap(resource);
+    }
+
+    /**
+     * Returns whether the given value is an instance of {@link A_CmsJspValueWrapper}.<p>
+     *
+     * @param value the value object to check
+     *
+     * @return <code>true</code> if the given value is an instance of {@link A_CmsJspValueWrapper}
+     */
+    public static boolean isWrapper(Object value) {
+
+        return (value instanceof A_CmsJspValueWrapper);
     }
 
     /**
@@ -747,11 +759,18 @@ public final class CmsJspElFunctions {
             } else {
                 return "";
             }
-        }
-        try {
-            return CmsHtml2TextConverter.html2text(String.valueOf(input), OpenCms.getSystemInfo().getDefaultEncoding());
-        } catch (Exception e) {
-            return CmsMessages.formatUnknownKey(e.getMessage());
+        } else {
+            try {
+                return CmsHtmlExtractor.extractText(
+                    String.valueOf(input),
+                    OpenCms.getSystemInfo().getDefaultEncoding());
+            } catch (org.htmlparser.util.ParserException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+                return "";
+            } catch (UnsupportedEncodingException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+                return "";
+            }
         }
     }
 

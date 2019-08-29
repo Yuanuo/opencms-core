@@ -280,9 +280,11 @@ public class TestCmsXmlContainerPage extends OpenCmsTestCase {
             999,
             false,
             false,
+            false,
             Arrays.asList(element),
             null,
-            null);
+            null,
+            new HashMap<String, String>());
         service.saveContainerpage(containerPage.getStructureId(), Arrays.asList(container));
 
         CmsXmlContainerPage cntPage = CmsXmlContainerPageFactory.unmarshal(cms, containerPage);

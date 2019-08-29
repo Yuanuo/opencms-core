@@ -41,6 +41,7 @@ import org.opencms.acacia.shared.CmsEntityAttribute;
 import org.opencms.acacia.shared.CmsTabInfo;
 import org.opencms.acacia.shared.CmsType;
 import org.opencms.acacia.shared.CmsValidationResult;
+import org.opencms.ade.containerpage.client.CmsContainerpageController;
 import org.opencms.ade.contenteditor.client.css.I_CmsLayoutBundle;
 import org.opencms.ade.contenteditor.shared.CmsComplexWidgetData;
 import org.opencms.ade.contenteditor.shared.CmsContentDefinition;
@@ -74,6 +75,7 @@ import org.opencms.gwt.client.util.CmsDebugLog;
 import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsGwtConstants;
+import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
@@ -103,6 +105,8 @@ import com.google.gwt.event.dom.client.ClickHandler;
 import com.google.gwt.event.dom.client.KeyCodes;
 import com.google.gwt.event.logical.shared.CloseEvent;
 import com.google.gwt.event.logical.shared.CloseHandler;
+import com.google.gwt.event.logical.shared.SelectionEvent;
+import com.google.gwt.event.logical.shared.SelectionHandler;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
 import com.google.gwt.event.logical.shared.ValueChangeHandler;
 import com.google.gwt.event.shared.HandlerRegistration;
@@ -239,6 +243,12 @@ public final class CmsContentEditor extends CmsEditorBase {
     /** The container element client id if available. */
     String m_clientId;
 
+    /** The editor context. */
+    CmsEditorContext m_context;
+
+    /** Indicates if any settings attributes have been changed. */
+    boolean m_hasChangedSettings;
+
     /** Flag indicating that we need to collect changed values. */
     boolean m_needsValueChangeProcessing;
 
@@ -263,11 +273,11 @@ public final class CmsContentEditor extends CmsEditorBase {
     /** The window closing handler registration. */
     private HandlerRegistration m_closingHandlerRegistration;
 
+    /** The content info panel. */
+    private CmsInfoHeader m_contentInfoHeader;
+
     /** The locales present within the edited content. */
     private Set<String> m_contentLocales;
-
-    /** The editor context. */
-    private CmsEditorContext m_context;
 
     /** The copy locale button. */
     private CmsPushButton m_copyLocaleButton;
@@ -308,6 +318,9 @@ public final class CmsContentEditor extends CmsEditorBase {
     /** The open form button. */
     private CmsPushButton m_openFormButton;
 
+    /** The page info panel. */
+    private CmsInfoHeader m_pageInfoHeader;
+
     /** The event preview handler registration. */
     private HandlerRegistration m_previewHandlerRegistration;
 
@@ -346,9 +359,6 @@ public final class CmsContentEditor extends CmsEditorBase {
 
     /** The undo redo event handler registration. */
     private HandlerRegistration m_undoRedoHandlerRegistration;
-
-    /** Indicates if any settings attributes have been changed. */
-    boolean m_hasChangedSettings;
 
     /**
      * Constructor.<p>
@@ -540,17 +550,17 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param changeScope the change scope
      */
     static native void addNativeListener(I_CmsEntityChangeListener changeListener, String changeScope)/*-{
-		var instance = changeListener;
-		var nat = {
-			onChange : function(entity) {
-				var cmsEntity = @org.opencms.acacia.client.entity.CmsEntityBackend::createFromNativeWrapper(Lcom/google/gwt/core/client/JavaScriptObject;)(entity);
-				instance.@org.opencms.ade.contenteditor.client.I_CmsEntityChangeListener::onEntityChange(Lorg/opencms/acacia/shared/CmsEntity;)(cmsEntity);
-			}
-		}
-		var method = $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD];
-		if (typeof method == 'function') {
-			method(nat, changeScope);
-		}
+        var instance = changeListener;
+        var nat = {
+            onChange : function(entity) {
+                var cmsEntity = @org.opencms.acacia.client.entity.CmsEntityBackend::createFromNativeWrapper(Lcom/google/gwt/core/client/JavaScriptObject;)(entity);
+                instance.@org.opencms.ade.contenteditor.client.I_CmsEntityChangeListener::onEntityChange(Lorg/opencms/acacia/shared/CmsEntity;)(cmsEntity);
+            }
+        }
+        var method = $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD];
+        if (typeof method == 'function') {
+            method(nat, changeScope);
+        }
     }-*/;
 
     /**
@@ -559,12 +569,12 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @return <code>true</code> if the add entity change listener method has been exported
      */
     private static native boolean isObserverExported()/*-{
-		var method = $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD];
-		if (typeof method == 'function') {
-			return true;
-		} else {
-			return false;
-		}
+        var method = $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD];
+        if (typeof method == 'function') {
+            return true;
+        } else {
+            return false;
+        }
     }-*/;
 
     /**
@@ -573,8 +583,8 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @return the current entity
      */
     private static native JavaScriptObject nativeGetEntity()/*-{
-		return $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::GET_CURRENT_ENTITY_METHOD]
-				();
+        return $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::GET_CURRENT_ENTITY_METHOD]
+                ();
     }-*/;
 
     /**
@@ -653,7 +663,13 @@ public final class CmsContentEditor extends CmsEditorBase {
             public void execute() {
 
                 start(0, true);
-                getService().loadDefinition(entityId, m_clientId, editedEntity, getSkipPaths(), this);
+                getService().loadDefinition(
+                    entityId,
+                    m_clientId,
+                    editedEntity,
+                    getSkipPaths(),
+                    m_context.getSettingPresets(),
+                    this);
             }
 
             @Override
@@ -685,6 +701,7 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param mode the content creation mode
      * @param mainLocale the main language to copy in case the element language node does not exist yet
      * @param editHandlerData the data for the edit handler, if one is used to create a new content; null otherwise
+     * @param settingPresets the presets for container element settings
      * @param callback the callback
      */
     public void loadInitialDefinition(
@@ -695,6 +712,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         final String mode,
         final String mainLocale,
         final CmsEditHandlerData editHandlerData,
+        Map<String, String> settingPresets,
         final I_CmsSimpleCallback<CmsContentDefinition> callback) {
 
         CmsRpcAction<CmsContentDefinition> action = new CmsRpcAction<CmsContentDefinition>() {
@@ -713,6 +731,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                     postCreateHandler,
                     mode,
                     editHandlerData,
+                    settingPresets,
                     this);
             }
 
@@ -752,13 +771,17 @@ public final class CmsContentEditor extends CmsEditorBase {
         final CmsEntity editedEntity,
         final I_CmsSimpleCallback<CmsContentDefinition> callback) {
 
+        final Map<String, String> presets = new HashMap<>();
+        if ((m_context != null) && (m_context.getSettingPresets() != null)) {
+            presets.putAll(m_context.getSettingPresets());
+        }
         CmsRpcAction<CmsContentDefinition> action = new CmsRpcAction<CmsContentDefinition>() {
 
             @Override
             public void execute() {
 
                 start(0, true);
-                getService().loadNewDefinition(entityId, m_clientId, editedEntity, getSkipPaths(), this);
+                getService().loadNewDefinition(entityId, m_clientId, editedEntity, getSkipPaths(), presets, this);
             }
 
             @Override
@@ -826,6 +849,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                         postCreateHandler,
                         mainLocale,
                         editHandlerData,
+                        context.getSettingPresets(),
                         new I_CmsSimpleCallback<CmsContentDefinition>() {
 
                             public void execute(CmsContentDefinition contentDefinition) {
@@ -888,6 +912,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                         null,
                         mainLocale,
                         null,
+                        Collections.emptyMap(),
                         new I_CmsSimpleCallback<CmsContentDefinition>() {
 
                             public void execute(CmsContentDefinition contentDefinition) {
@@ -1487,12 +1512,13 @@ public final class CmsContentEditor extends CmsEditorBase {
         if (validationContext.hasValidationErrors()) {
             String locales = "";
             for (String id : validationContext.getInvalidEntityIds()) {
-                if (locales.length() > 0) {
-                    locales += ", ";
-                }
+
+                locales += "\n";
+
                 String locale = CmsContentDefinition.getLocaleFromId(id);
                 if (m_availableLocales.containsKey(locale)) {
                     locales += m_availableLocales.get(locale);
+                    locales += ": " + validationContext.getInvalidFields(id);
                 }
             }
             disableSave(Messages.get().key(Messages.GUI_TOOLBAR_VALIDATION_ERRORS_1, locales));
@@ -1703,7 +1729,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         Event nativeEvent = Event.as(event.getNativeEvent());
         if (event.getTypeInt() == Event.ONKEYDOWN) {
             int keyCode = nativeEvent.getKeyCode();
-            if (nativeEvent.getCtrlKey()) {
+            if (nativeEvent.getCtrlKey() || nativeEvent.getMetaKey()) {
                 // look for short cuts
                 if (nativeEvent.getShiftKey()) {
                     if (keyCode == KeyCodes.KEY_S) {
@@ -1735,8 +1761,8 @@ public final class CmsContentEditor extends CmsEditorBase {
 
         initLocaleSelect();
         setNativeResourceInfo(m_sitePath, m_locale);
-        CmsInfoHeader header = new CmsInfoHeader(m_title, null, m_sitePath, m_locale, m_iconClasses);
-        m_basePanel.add(header);
+        m_contentInfoHeader = new CmsInfoHeader(m_title, null, m_sitePath, m_locale, m_iconClasses);
+        m_basePanel.add(m_contentInfoHeader);
         SimplePanel content = new SimplePanel();
         content.setStyleName(org.opencms.acacia.client.css.I_CmsLayoutBundle.INSTANCE.form().formParent());
         m_basePanel.add(content);
@@ -1745,7 +1771,24 @@ public final class CmsContentEditor extends CmsEditorBase {
             initEditorChangeHandlers(m_definitions.get(m_locale).getEditorChangeScopes());
         }
         renderEntityForm(m_entityId, m_tabInfos, content, m_basePanel.getElement());
+        if ((m_clientId != null) && (getFormTabs() != null)) {
 
+            CmsListInfoBean pageInfo = CmsContainerpageController.get().getData().getPageInfo();
+            m_pageInfoHeader = new CmsInfoHeader(
+                pageInfo.getTitle(),
+                null,
+                pageInfo.getSubTitle(),
+                CmsContainerpageController.get().getData().getLocale(),
+                pageInfo.getBigIconClasses());
+            updateInfoHeader(CmsContentDefinition.SETTINGS_TAB_ID.equals(getFormTabs().getSelectedId()));
+            getFormTabs().addSelectionHandler(new SelectionHandler<Integer>() {
+
+                public void onSelection(SelectionEvent<Integer> event) {
+
+                    updateInfoHeader(CmsContentDefinition.SETTINGS_TAB_ID.equals(getFormTabs().getSelectedId()));
+                }
+            });
+        }
     }
 
     /**
@@ -1817,11 +1860,6 @@ public final class CmsContentEditor extends CmsEditorBase {
         m_sitePath = definition.getSitePath();
         m_resourceTypeName = definition.getResourceType();
         m_registeredEntities.add(definition.getEntityId());
-        String tabs = "";
-        for (CmsTabInfo info : definition.getTabInfos()) {
-            tabs += info.getTabId() + ":" + info.getStartName() + "   ";
-        }
-        CmsDebugLog.consoleLog("Tabs: " + tabs);
         m_tabInfos = definition.getTabInfos();
         m_iconClasses = definition.getIconClasses();
         addContentDefinition(definition);
@@ -2041,10 +2079,21 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void updateEditorValues(CmsEntity previous, CmsEntity updated) {
 
-        if (updated.getId().equals(m_entityId)) {
+        if (!m_isDirectEdit && updated.getId().equals(m_entityId)) {
             // only apply the changes to the same locale entity
             updateEditorValues(previous, updated, getEntity(), Collections.<String> emptyList());
         }
+    }
+
+    /**
+     * Updates the info header.<p>
+     *
+     * @param isSettingsTabSelected <code>true</code> if the element settings tab is selected
+     */
+    void updateInfoHeader(boolean isSettingsTabSelected) {
+
+        m_basePanel.remove(0);
+        m_basePanel.insert(isSettingsTabSelected ? m_pageInfoHeader : m_contentInfoHeader, 0);
     }
 
     /**
@@ -2082,14 +2131,16 @@ public final class CmsContentEditor extends CmsEditorBase {
      * Closes the editor.<p>
      */
     private native void closeEditorWidow() /*-{
-		if ($wnd.top.cms_ade_closeEditorDialog) {
-			$wnd.top.cms_ade_closeEditorDialog();
-		} else {
-			var backlink = $wnd[@org.opencms.ade.contenteditor.shared.rpc.I_CmsContentService::PARAM_BACKLINK];
-			if (backlink) {
-				$wnd.top.location.href = backlink;
-			}
-		}
+        if ($wnd.top.cms_ade_closeEditorDialog) {
+            $wnd.top.cms_ade_closeEditorDialog();
+        } else if ($wnd.parent.parent.cms_ade_closeEditorDialog) {
+            $wnd.parent.parent.cms_ade_closeEditorDialog();
+        } else {
+            var backlink = $wnd[@org.opencms.ade.contenteditor.shared.rpc.I_CmsContentService::PARAM_BACKLINK];
+            if (backlink) {
+                $wnd.top.location.href = backlink;
+            }
+        }
     }-*/;
 
     /**
@@ -2123,18 +2174,18 @@ public final class CmsContentEditor extends CmsEditorBase {
      * Exports the add entity change listener method.<p>
      */
     private native void exportObserver()/*-{
-		var self = this;
-		$wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD] = function(
-				listener, scope) {
-			var wrapper = {
-				onChange : listener.onChange
-			}
-			self.@org.opencms.ade.contenteditor.client.CmsContentEditor::addChangeListener(Lcom/google/gwt/core/client/JavaScriptObject;Ljava/lang/String;)(wrapper, scope);
-		}
-		$wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::GET_CURRENT_ENTITY_METHOD] = function() {
-			return new $wnd.acacia.CmsEntityWrapper(
-					self.@org.opencms.ade.contenteditor.client.CmsContentEditor::getCurrentEntity()());
-		}
+        var self = this;
+        $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::ADD_CHANGE_LISTENER_METHOD] = function(
+                listener, scope) {
+            var wrapper = {
+                onChange : listener.onChange
+            }
+            self.@org.opencms.ade.contenteditor.client.CmsContentEditor::addChangeListener(Lcom/google/gwt/core/client/JavaScriptObject;Ljava/lang/String;)(wrapper, scope);
+        }
+        $wnd[@org.opencms.ade.contenteditor.client.CmsContentEditor::GET_CURRENT_ENTITY_METHOD] = function() {
+            return new $wnd.acacia.CmsEntityWrapper(
+                    self.@org.opencms.ade.contenteditor.client.CmsContentEditor::getCurrentEntity()());
+        }
     }-*/;
 
     /**
@@ -2428,9 +2479,9 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param changed if the content has been changed
      */
     private native void setEditorState(boolean changed)/*-{
-		if (typeof $wnd.cmsSetEditorChangedState === 'function') {
-			$wnd.cmsSetEditorChangedState(changed);
-		}
+        if (typeof $wnd.cmsSetEditorChangedState === 'function') {
+            $wnd.cmsSetEditorChangedState(changed);
+        }
     }-*/;
 
     /**
@@ -2440,8 +2491,8 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param locale the content locale
      */
     private native void setNativeResourceInfo(String sitePath, String locale)/*-{
-		$wnd._editResource = sitePath;
-		$wnd._editLanguage = locale;
+        $wnd._editResource = sitePath;
+        $wnd._editLanguage = locale;
     }-*/;
 
     /**
@@ -2460,6 +2511,10 @@ public final class CmsContentEditor extends CmsEditorBase {
 
         for (String attributeName : m_entityBackend.getType(target.getTypeName()).getAttributeNames()) {
             CmsAttributeHandler handler = getAttributeHandler(attributeName, parentPathElements);
+            if (handler == null) {
+                // non visible attribute, skip it
+                continue;
+            }
             if (previous.hasAttribute(attributeName)
                 && updated.hasAttribute(attributeName)
                 && target.hasAttribute(attributeName)) {

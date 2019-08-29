@@ -396,12 +396,13 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                         // the client id may have changed, update the element widget
                         elementWidget.setId(elementBean.getClientId());
                     }
-
+                    Map<String, String> settingPresets = getSettingPresets(elementWidget);
                     try {
                         CmsElementSettingsDialog dialog = new CmsElementSettingsDialog(
                             m_controller,
                             elementWidget,
-                            settingsConfig);
+                            settingsConfig,
+                            settingPresets);
                         dialog.center();
                     } catch (NoFormatterException e) {
                         String ctype = "???";
@@ -417,15 +418,34 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                                 ctype = cpc.getContainerType();
                                 cname = cpc.getContainerId();
                             }
-                        } catch (Exception e2) { /*ignore*/ }
+                        } catch (Exception e2) {
+                            /*ignore*/ }
                         String path = "???";
                         try {
                             path = elementBean.getSitePath();
-                        } catch (Exception e2) { /*ignore*/ }
+                        } catch (Exception e2) {
+                            /*ignore*/ }
                         CmsAlertDialog alert = new CmsAlertDialog(
                             org.opencms.gwt.client.Messages.get().key(org.opencms.gwt.client.Messages.GUI_ERROR_0),
                             Messages.get().key(Messages.GUI_NO_FORMATTER_4, path, cname, ctype, schema));
                         alert.center();
+                    }
+                }
+
+                /**
+                 * Gets the map of setting presets.<p>
+                 *
+                 * @param elementWidget2 the element widget
+                 * @return the setting presets
+                 */
+                private Map<String, String> getSettingPresets(CmsContainerPageElementPanel elementWidget2) {
+
+                    I_CmsDropContainer dropContainer = elementWidget2.getParentTarget();
+                    if (dropContainer instanceof CmsContainerPageContainer) {
+                        CmsContainerPageContainer container = (CmsContainerPageContainer)dropContainer;
+                        return container.getSettingPresets();
+                    } else {
+                        return new HashMap<String, String>();
                     }
                 }
             });
@@ -740,8 +760,9 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
      *
      * @param element the element to edit
      * @param inline <code>true</code> to open the inline editor for the given element if available
+     * @param wasNew <code>true</code> in case this is a newly created element not previously edited
      */
-    public void openEditorForElement(final CmsContainerPageElementPanel element, boolean inline) {
+    public void openEditorForElement(final CmsContainerPageElementPanel element, boolean inline, boolean wasNew) {
 
         if (element.isNew()) {
             //openEditorForElement will be called again asynchronously when the RPC for creating the element has finished
@@ -761,7 +782,7 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
         } else {
             m_controller.setContentEditing(true);
             m_controller.disableInlineEditing(element);
-            m_controller.getContentEditorHandler().openDialog(element, inline);
+            m_controller.getContentEditorHandler().openDialog(element, inline, wasNew);
             element.removeHighlighting();
         }
     }
@@ -775,6 +796,7 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
             CmsCoreProvider.get().getStructureId(),
             true,
             CmsContainerpageController.get().getData().getDetailId(),
+            new HashMap<String, String>(),
             new CloseHandler<PopupPanel>() {
 
                 public void onClose(CloseEvent<PopupPanel> event) {
@@ -1013,7 +1035,20 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
         } else {
             structureId = element.getStructureId();
         }
-        CmsResourceInfoDialog.load(structureId, true, null, new CloseHandler<PopupPanel>() {
+        I_CmsDropContainer dropContainer = element.getParentTarget();
+        Map<String, String> contextParams = new HashMap<>();
+        if (dropContainer instanceof CmsContainerPageContainer) {
+            CmsContainerPageContainer cnt = (CmsContainerPageContainer)dropContainer;
+            String containerId = cnt.getContainerId();
+            String elemId = element.getId();
+            contextParams.put(CmsGwtConstants.ATTR_ELEMENT_ID, elemId);
+            contextParams.put(CmsGwtConstants.ATTR_CONTAINER_ID, containerId);
+            String pageRootPath = CmsStringUtil.joinPaths(
+                CmsCoreProvider.get().getSiteRoot(),
+                CmsCoreProvider.get().getUri());
+            contextParams.put(CmsGwtConstants.ATTR_PAGE_ROOT_PATH, pageRootPath);
+        }
+        CmsResourceInfoDialog.load(structureId, true, null, contextParams, new CloseHandler<PopupPanel>() {
 
             public void onClose(CloseEvent<PopupPanel> event) {
 

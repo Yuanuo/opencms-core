@@ -34,7 +34,7 @@ import org.opencms.main.CmsLog;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.editablegroup.CmsEditableGroup;
-import org.opencms.ui.components.editablegroup.CmsEditableGroupRow;
+import org.opencms.ui.components.editablegroup.I_CmsEditableGroupRow;
 import org.opencms.util.CmsDataTypeUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -190,7 +190,7 @@ public class CmsAdditionalInfosDialog extends CmsBasicDialog {
             }
         }
 
-        for (CmsEditableGroupRow row : m_userinfoGroup.getRows()) {
+        for (I_CmsEditableGroupRow row : m_userinfoGroup.getRows()) {
             String key = ((TextField)(((HorizontalLayout)row.getComponent()).getComponent(0))).getValue();
             String value = ((TextField)(((HorizontalLayout)row.getComponent()).getComponent(1))).getValue();
             saveAddInfo(key, value);
@@ -267,7 +267,7 @@ public class CmsAdditionalInfosDialog extends CmsBasicDialog {
     private List<String> getKeyListFromGroup(CmsEditableGroup group) {
 
         List<String> res = new ArrayList<String>();
-        for (CmsEditableGroupRow row : group.getRows()) {
+        for (I_CmsEditableGroupRow row : group.getRows()) {
             res.add(((TextField)(((HorizontalLayout)row.getComponent()).getComponent(0))).getValue());
         }
         return res;
@@ -282,18 +282,24 @@ public class CmsAdditionalInfosDialog extends CmsBasicDialog {
      */
     private void saveAddInfo(String key, String value) {
 
+        int pos = key.indexOf("@");
+
+        String className = "";
+        if (pos > -1) {
+            className = key.substring(pos + 1);
+            key = key.substring(0, pos);
+        }
+
         if (CmsStringUtil.isEmptyOrWhitespaceOnly(value)) {
             m_user.deleteAdditionalInfo(key);
             return;
         }
 
-        int pos = key.indexOf("@");
         if (pos < 0) {
             m_user.setAdditionalInfo(key, value);
             return;
         }
-        String className = key.substring(pos + 1);
-        key = key.substring(0, pos);
+
         Class<?> clazz;
         try {
             // try the class name

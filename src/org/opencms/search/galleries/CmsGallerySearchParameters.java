@@ -33,17 +33,19 @@ import org.opencms.file.CmsResource;
 import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.main.OpenCms;
-import org.opencms.search.CmsSearchIndex;
-import org.opencms.search.CmsSearchParameters;
+import org.opencms.search.A_CmsSearchIndex;
 import org.opencms.search.CmsSearchUtil;
 import org.opencms.search.fields.CmsSearchField;
 import org.opencms.search.fields.CmsSearchFieldConfiguration;
 import org.opencms.search.solr.CmsSolrQuery;
 import org.opencms.util.CmsPair;
+import org.opencms.util.CmsUUID;
 import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.solr.client.solrj.SolrQuery.ORDER;
@@ -58,74 +60,74 @@ public class CmsGallerySearchParameters {
     /** Sort parameter constants. */
     public enum CmsGallerySortParam {
 
-    /** Sort by date created ascending. */
-    dateCreated_asc,
+        /** Sort by date created ascending. */
+        dateCreated_asc,
 
-    /** Sort by date created descending. */
-    dateCreated_desc,
+        /** Sort by date created descending. */
+        dateCreated_desc,
 
-    /** Sort date expired ascending. */
-    dateExpired_asc,
+        /** Sort date expired ascending. */
+        dateExpired_asc,
 
-    /** Sort date expired descending. */
-    dateExpired_desc,
+        /** Sort date expired descending. */
+        dateExpired_desc,
 
-    /** Sort by date modified ascending. */
-    dateLastModified_asc,
+        /** Sort by date modified ascending. */
+        dateLastModified_asc,
 
-    /** Sort by date modified descending. */
-    dateLastModified_desc,
+        /** Sort by date modified descending. */
+        dateLastModified_desc,
 
-    /** Sort date released ascending. */
-    dateReleased_asc,
+        /** Sort date released ascending. */
+        dateReleased_asc,
 
-    /** Sort date released descending. */
-    dateReleased_desc,
+        /** Sort date released descending. */
+        dateReleased_desc,
 
-    /** Sort by length ascending. */
-    length_asc,
+        /** Sort by length ascending. */
+        length_asc,
 
-    /** Sort by length descending. */
-    length_desc,
+        /** Sort by length descending. */
+        length_desc,
 
-    /** Sort by VFS root path ascending. */
-    path_asc,
+        /** Sort by VFS root path ascending. */
+        path_asc,
 
-    /** Sort by VFS root path descending. */
-    path_desc,
+        /** Sort by VFS root path descending. */
+        path_desc,
 
-    /** Sort by score ascending. */
-    score,
+        /** Sort by score descending. */
+        score,
 
-    /** Sort state ascending. */
-    state_asc,
+        /** Sort state ascending. */
+        state_asc,
 
-    /** Sort state descending. */
-    state_desc,
+        /** Sort state descending. */
+        state_desc,
 
-    /** Sort by title ascending. */
-    title_asc,
+        /** Sort by title ascending. */
+        title_asc,
 
-    /** Sort by title ascending. */
-    title_desc,
+        /** Sort by title ascending. */
+        title_desc,
 
-    /** Sort by type ascending. */
-    type_asc,
+        /** Sort by type ascending. */
+        type_asc,
 
-    /** Sort by type descending. */
-    type_desc,
+        /** Sort by type descending. */
+        type_desc,
 
-    /** Sort created by ascending. */
-    userCreated_asc,
+        /** Sort created by ascending. */
+        userCreated_asc,
 
-    /** Sort created by descending. */
-    userCreated_desc,
+        /** Sort created by descending. */
+        userCreated_desc,
 
-    /** Sort modified by ascending. */
-    userLastModified_asc,
+        /** Sort modified by ascending. */
+        userLastModified_asc,
 
-    /** Sort modified by descending. */
-    userLastModified_desc;
+        /** Sort modified by descending. */
+        userLastModified_desc;
 
         /** The default sort parameter. */
         public static final CmsGallerySortParam DEFAULT = title_asc;
@@ -187,6 +189,9 @@ public class CmsGallerySearchParameters {
         }
     }
 
+    /** The allowed dynamic function ids. */
+    private Collection<CmsUUID> m_allowedFunctions;
+
     /** The categories to search in. */
     private List<String> m_categories;
 
@@ -198,9 +203,6 @@ public class CmsGallerySearchParameters {
 
     /** The time range for the date of resource last modification to consider in the search. */
     private CmsGallerySearchTimeRange m_dateLastModifiedTimeRange;
-
-    /** The list of search index fields to search in. */
-    private List<String> m_fields;
 
     /** The list of folders to search in. */
     private List<String> m_folders;
@@ -302,22 +304,6 @@ public class CmsGallerySearchParameters {
     }
 
     /**
-     * Returns the list of the names of the fields to search in.<p>
-     *
-     * If this has not been set, then the default fields defined in
-     * {@link CmsSearchIndex#DOC_META_FIELDS} are used as default.<p>
-     *
-     * @return the list of the names of the fields to search in
-     */
-    public List<String> getFields() {
-
-        if (m_fields == null) {
-            setFields(Arrays.asList(CmsSearchIndex.DOC_META_FIELDS));
-        }
-        return m_fields;
-    }
-
-    /**
      * Returns the list of folders to search in.<p>
      *
      * @return a list of paths of VFS folders
@@ -398,11 +384,6 @@ public class CmsGallerySearchParameters {
                 getDateLastModifiedRange().m_startTime,
                 getDateLastModifiedRange().m_endTime));
 
-        // Set fields
-        if (null != m_fields) {
-            query.setFields(m_fields.toArray(new String[m_fields.size()]));
-        }
-
         // set scope / folders to search in
         m_foldersToSearchIn = new ArrayList<String>();
         addFoldersToSearchIn(m_folders);
@@ -414,12 +395,14 @@ public class CmsGallerySearchParameters {
             false,
             true);
 
-        // TODO: ignoresearchexclude
         if (!m_ignoreSearchExclude) {
             // Reference for the values: CmsGallerySearchIndex.java, field EXCLUDE_PROPERTY_VALUES
             query.addFilterQuery(
                 "-" + CmsSearchField.FIELD_SEARCH_EXCLUDE,
-                Arrays.asList(new String[] {"all", "gallery"}),
+                Arrays.asList(
+                    new String[] {
+                        A_CmsSearchIndex.PROPERTY_SEARCH_EXCLUDE_VALUE_ALL,
+                        A_CmsSearchIndex.PROPERTY_SEARCH_EXCLUDE_VALUE_GALLERY}),
                 false,
                 true);
         }
@@ -455,6 +438,26 @@ public class CmsGallerySearchParameters {
 
         // set result collapsing by id
         query.addFilterQuery("{!collapse field=id}");
+
+        query.setFields(CmsGallerySearchResult.getRequiredSolrFields());
+
+        if ((m_allowedFunctions != null) && !m_allowedFunctions.isEmpty()) {
+            String functionFilter = "((-type:("
+                + CmsXmlDynamicFunctionHandler.TYPE_FUNCTION
+                + " OR "
+                + CmsResourceTypeFunctionConfig.TYPE_NAME
+                + ")) OR (id:(";
+            Iterator<CmsUUID> it = m_allowedFunctions.iterator();
+            while (it.hasNext()) {
+                CmsUUID id = it.next();
+                functionFilter += id.toString();
+                if (it.hasNext()) {
+                    functionFilter += " OR ";
+                }
+            }
+            functionFilter += ")))";
+            query.addFilterQuery(functionFilter);
+        }
 
         return query;
     }
@@ -548,6 +551,16 @@ public class CmsGallerySearchParameters {
     }
 
     /**
+     * Sets the allowed dynamic function ids.<p>
+     *
+     * @param allowedFunctions the allowed dynamic function ids
+     */
+    public void setAllowedFunctions(Collection<CmsUUID> allowedFunctions) {
+
+        m_allowedFunctions = allowedFunctions;
+    }
+
+    /**
      * Sets the categories for the search.<p>
      *
      * Results are found only if they are contained in at least one of the given categories.
@@ -596,16 +609,6 @@ public class CmsGallerySearchParameters {
         if (m_dateLastModifiedTimeRange == null) {
             m_dateLastModifiedTimeRange = new CmsGallerySearchTimeRange(startTime, endTime);
         }
-    }
-
-    /**
-     * Sets the list of the names of the fields to search in. <p>
-     *
-     * @param fields the list of names of the fields to set
-     */
-    public void setFields(List<String> fields) {
-
-        m_fields = fields;
     }
 
     /**
@@ -748,27 +751,6 @@ public class CmsGallerySearchParameters {
     }
 
     /**
-     * Wraps this parameters to the standard search parameters, so that inherited methods in the search index
-     * can be used.<p>
-     *
-     * @return this parameters wrapped to the standard search parameters
-     */
-    protected CmsSearchParameters getCmsSearchParams() {
-
-        CmsSearchParameters result = new CmsSearchParameters();
-        result.setFields(getFields());
-        result.setExcerptOnlySearchedFields(true);
-        if (getSearchWords() != null) {
-            result.setQuery(getSearchWords());
-            result.setIgnoreQuery(false);
-        } else {
-            result.setIgnoreQuery(true);
-        }
-
-        return result;
-    }
-
-    /**
      * Adds folders to perform the search in.
      * @param folders Folders to search in.
      */
@@ -843,7 +825,7 @@ public class CmsGallerySearchParameters {
             case path_desc:
                 return CmsPair.create(CmsSearchField.FIELD_PATH, ORDER.desc);
             case score:
-                return CmsPair.create(CmsSearchField.FIELD_SCORE, ORDER.asc);
+                return CmsPair.create(CmsSearchField.FIELD_SCORE, ORDER.desc);
             case state_asc:
                 return CmsPair.create(CmsSearchField.FIELD_STATE, ORDER.asc);
             case state_desc:

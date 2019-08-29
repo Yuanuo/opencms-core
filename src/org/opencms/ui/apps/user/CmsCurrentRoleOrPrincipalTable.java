@@ -27,6 +27,7 @@
 
 package org.opencms.ui.apps.user;
 
+import org.opencms.file.CmsGroup;
 import org.opencms.file.CmsObject;
 import org.opencms.main.CmsLog;
 import org.opencms.security.CmsPrincipal;
@@ -35,8 +36,8 @@ import org.opencms.ui.FontOpenCms;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.components.OpenCmsTheme;
 import org.opencms.ui.contextmenu.CmsContextMenu;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,14 +47,16 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 
-import com.vaadin.v7.data.util.IndexedContainer;
-import com.vaadin.v7.event.ItemClickEvent;
-import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
 import com.vaadin.shared.MouseEventDetails.MouseButton;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
-import com.vaadin.v7.ui.Table;
+import com.vaadin.ui.Component;
 import com.vaadin.ui.themes.ValoTheme;
+import com.vaadin.v7.data.Item;
+import com.vaadin.v7.data.util.IndexedContainer;
+import com.vaadin.v7.event.ItemClickEvent;
+import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
+import com.vaadin.v7.ui.Table;
 
 /**
  * Class for the table to view and edit groups of a given user.<p>
@@ -85,8 +88,23 @@ public class CmsCurrentRoleOrPrincipalTable extends Table {
         /**
          * @see org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry#getVisibility(java.lang.Object)
          */
+        @SuppressWarnings("synthetic-access")
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
+            List<Item> itemsToCheck = new ArrayList<>();
+            for (Object groupObj : m_container.getItemIds()) {
+                if (groupObj instanceof CmsGroup) {
+                    CmsGroup group = (CmsGroup)groupObj;
+                    if (context.contains(group.getName())) {
+                        itemsToCheck.add(m_container.getItem(group));
+                    }
+                }
+            }
+            for (Item item : itemsToCheck) {
+                if (!item.getItemProperty(PROP_STATUS).getValue().equals(Boolean.TRUE)) {
+                    return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
+                }
+            }
             return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
         }
 
@@ -136,6 +154,7 @@ public class CmsCurrentRoleOrPrincipalTable extends Table {
      * @param principal CmsPrincipal
      */
     public CmsCurrentRoleOrPrincipalTable(A_CmsEditUserGroupRoleDialog dialog, CmsObject cms, CmsPrincipal principal) {
+
         m_cms = cms;
         m_dialog = dialog;
         m_principal = principal;
@@ -169,6 +188,7 @@ public class CmsCurrentRoleOrPrincipalTable extends Table {
 
             private static final long serialVersionUID = 4807195510202231174L;
 
+            @SuppressWarnings("unchecked")
             public void itemClick(ItemClickEvent event) {
 
                 if (!event.isCtrlKey()
@@ -202,6 +222,17 @@ public class CmsCurrentRoleOrPrincipalTable extends Table {
             }
 
         });
+
+        setItemDescriptionGenerator(new ItemDescriptionGenerator() {
+
+            private static final long serialVersionUID = 7367011213487089661L;
+
+            public String generateDescription(Component source, Object itemId, Object propertyId) {
+
+                return m_dialog.getDescriptionForItemId(itemId);
+            }
+        });
+
         addGeneratedColumn(PROP_REMOVE, new ColumnGenerator() {
 
             private static final long serialVersionUID = -7212693904376423407L;

@@ -133,9 +133,9 @@ public class TestJSONSearchConfigurationParser extends OpenCmsTestCase {
             pageSizes.add(Integer.valueOf(5));
             pageSizes.add(Integer.valueOf(8));
             I_CmsSearchConfigurationPagination expected = new CmsSearchConfigurationPagination(
-                CmsJSONSearchConfigurationParser.DEFAULT_PAGE_PARAM,
+                CmsSearchConfigurationPagination.DEFAULT_PAGE_PARAM,
                 pageSizes,
-                CmsJSONSearchConfigurationParser.DEFAULT_PAGENAVLENGTH);
+                Integer.valueOf(CmsSearchConfigurationPagination.DEFAULT_PAGE_NAV_LENGTH));
             ConfigurationTester.testPaginationConfiguration(expected, config.getPaginationConfig());
         } catch (JSONException e) {
             e.printStackTrace();
@@ -154,6 +154,7 @@ public class TestJSONSearchConfigurationParser extends OpenCmsTestCase {
         Map<String, String> additionalParameters = new HashMap<String, String>(2);
         additionalParameters.put("p1", "fq=lastmodified:[%(value) TO *]");
         additionalParameters.put("p2", "fq=%(value)");
+        additionalParameters.put("p3", null);
         I_CmsSearchConfigurationCommon commonConfig = new CmsSearchConfigurationCommon(
             "querytest",
             "lastquerytest",

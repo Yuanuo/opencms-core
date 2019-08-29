@@ -33,8 +33,10 @@ package org.opencms.search.solr;
 
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.configuration.CmsParameterConfiguration;
+import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
@@ -62,6 +64,7 @@ import org.opencms.search.galleries.CmsGallerySearchResult;
 import org.opencms.search.galleries.CmsGallerySearchResultList;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 
@@ -71,14 +74,18 @@ import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import javax.servlet.ServletResponse;
 
 import org.apache.commons.logging.Log;
-import org.apache.lucene.index.Term;
 import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
@@ -86,26 +93,20 @@ import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.params.CommonParams;
-import org.apache.solr.common.params.HighlightParams;
 import org.apache.solr.common.util.ContentStreamBase;
+import org.apache.solr.common.util.FastWriter;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.SolrCore;
 import org.apache.solr.handler.ReplicationHandler;
-import org.apache.solr.handler.component.ResponseBuilder;
-import org.apache.solr.handler.component.SearchComponent;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
 import org.apache.solr.response.BinaryQueryResponseWriter;
 import org.apache.solr.response.QueryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
-import org.apache.solr.schema.SchemaField;
-import org.apache.solr.search.DocListAndSet;
-import org.apache.solr.search.DocSlice;
-import org.apache.solr.search.QParser;
-import org.apache.solr.util.FastWriter;
+
+import com.google.common.base.Objects;
 
 /**
  * Implements the search within an Solr index.<p>
@@ -113,6 +114,9 @@ import org.apache.solr.util.FastWriter;
  * @since 8.5.0
  */
 public class CmsSolrIndex extends CmsSearchIndex {
+
+    /** The serial version id. */
+    private static final long serialVersionUID = -1570077792574476721L;
 
     /** The name of the default Solr Offline index. */
     public static final String DEFAULT_INDEX_NAME_OFFLINE = "Solr Offline";
@@ -123,11 +127,40 @@ public class CmsSolrIndex extends CmsSearchIndex {
     /** Constant for additional parameter to set the post processor class name. */
     public static final String POST_PROCESSOR = "search.solr.postProcessor";
 
+    /**
+     * Constant for additional parameter to set the maximally processed results (start + rows) for searches with this index.
+     * It overwrites the global configuration from {@link CmsSolrConfiguration#getMaxProcessedResults()} for this index.
+    **/
+    public static final String SOLR_SEARCH_MAX_PROCESSED_RESULTS = "search.solr.maxProcessedResults";
+
+    /** Constant for additional parameter to set the fields the select handler should return at maximum. */
+    public static final String SOLR_HANDLER_ALLOWED_FIELDS = "handle.solr.allowedFields";
+
+    /** Constant for additional parameter to set the number results the select handler should return at maxium per request. */
+    public static final String SOLR_HANDLER_MAX_ALLOWED_RESULTS_PER_PAGE = "handle.solr.maxAllowedResultsPerPage";
+
+    /** Constant for additional parameter to set the maximal number of a result, the select handler should return. */
+    public static final String SOLR_HANDLER_MAX_ALLOWED_RESULTS_AT_ALL = "handle.solr.maxAllowedResultsAtAll";
+
+    /** Constant for additional parameter to disable the select handler (except for debug mode). */
+    private static final String SOLR_HANDLER_DISABLE_SELECT = "handle.solr.disableSelectHandler";
+
+    /** Constant for additional parameter to set the VFS path to the file holding the debug secret. */
+    private static final String SOLR_HANDLER_DEBUG_SECRET_FILE = "handle.solr.debugSecretFile";
+
+    /** Constant for additional parameter to disable the spell handler (except for debug mode). */
+    private static final String SOLR_HANDLER_DISABLE_SPELL = "handle.solr.disableSpellHandler";
     /** The solr exclude property. */
     public static final String PROPERTY_SEARCH_EXCLUDE_VALUE_SOLR = "solr";
 
     /** Indicates the maximum number of documents from the complete result set to return. */
     public static final int ROWS_MAX = 50;
+
+    /** The constant for an unlimited maximum number of results to return in a Solr search. */
+    public static final int MAX_RESULTS_UNLIMITED = -1;
+
+    /** The constant for an unlimited maximum number of results to return in a Solr search. */
+    public static final int MAX_RESULTS_GALLERY = 10000;
 
     /** A constant for debug formatting output. */
     protected static final int DEBUG_PADDING_RIGHT = 50;
@@ -165,17 +198,53 @@ public class CmsSolrIndex extends CmsSearchIndex {
     /** The name of the key that is used for the query time. */
     private static final String QUERY_TIME_NAME = "QTime";
 
+    /** The name of the key that is used for the query time. */
+    private static final String QUERY_HIGHLIGHTING_NAME = "highlighting";
+
     /** A constant for UTF-8 charset. */
     private static final Charset UTF8 = Charset.forName("UTF-8");
 
+    /** The name of the request parameter holding the debug secret. */
+    private static final String REQUEST_PARAM_DEBUG_SECRET = "_debug";
+
+    /** The name of the query parameter enabling spell checking. */
+    private static final String QUERY_SPELLCHECK_NAME = "spellcheck";
+
+    /** The name of the query parameter sorting. */
+    private static final String QUERY_SORT_NAME = "sort";
+
+    /** The name of the query parameter expand. */
+    private static final String QUERY_PARAM_EXPAND = "expand";
+
     /** The embedded Solr client for this index. */
-    SolrClient m_solr;
+    transient SolrClient m_solr;
 
     /** The post document manipulator. */
-    private I_CmsSolrPostSearchProcessor m_postProcessor;
+    private transient I_CmsSolrPostSearchProcessor m_postProcessor;
 
     /** The core name for the index. */
-    private String m_coreName;
+    private transient String m_coreName;
+
+    /** The list of allowed fields to return. */
+    private String[] m_handlerAllowedFields;
+
+    /** The number of maximally allowed results per page when using the handler. */
+    private int m_handlerMaxAllowedResultsPerPage = -1;
+
+    /** The number of maximally allowed results at all when using the handler. */
+    private int m_handlerMaxAllowedResultsAtAll = -1;
+
+    /** Flag, indicating if the handler only works in debug mode. */
+    private boolean m_handlerSelectDisabled;
+
+    /** Path to the secret file. Must be under /system/.../ or /shared/.../ and readable by all users that should be able to debug. */
+    private String m_handlerDebugSecretFile;
+
+    /** Flag, indicating if the spellcheck handler is disabled for the index. */
+    private boolean m_handlerSpellDisabled;
+
+    /** The maximal number of results to process for search queries. */
+    int m_maxProcessedResults = -2; // special value for not initialized.
 
     /**
      * Default constructor.<p>
@@ -225,19 +294,85 @@ public class CmsSolrIndex extends CmsSearchIndex {
     @Override
     public void addConfigurationParameter(String key, String value) {
 
-        if (POST_PROCESSOR.equals(key)) {
-            if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
-                try {
-                    setPostProcessor((I_CmsSolrPostSearchProcessor)Class.forName(value).newInstance());
-                } catch (Exception e) {
-                    CmsException ex = new CmsException(
-                        Messages.get().container(Messages.LOG_SOLR_ERR_POST_PROCESSOR_NOT_EXIST_1, value),
-                        e);
-                    LOG.error(ex.getMessage(), ex);
+        switch (key) {
+            case POST_PROCESSOR:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    try {
+                        setPostProcessor((I_CmsSolrPostSearchProcessor)Class.forName(value).newInstance());
+                    } catch (Exception e) {
+                        CmsException ex = new CmsException(
+                            Messages.get().container(Messages.LOG_SOLR_ERR_POST_PROCESSOR_NOT_EXIST_1, value),
+                            e);
+                        LOG.error(ex.getMessage(), ex);
+                    }
                 }
-            }
+                break;
+            case SOLR_HANDLER_ALLOWED_FIELDS:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    m_handlerAllowedFields = Stream.of(value.split(",")).map(v -> v.trim()).toArray(String[]::new);
+                }
+                break;
+            case SOLR_HANDLER_MAX_ALLOWED_RESULTS_PER_PAGE:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    try {
+                        m_handlerMaxAllowedResultsPerPage = Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        LOG.warn(
+                            "Could not parse parameter \""
+                                + SOLR_HANDLER_MAX_ALLOWED_RESULTS_PER_PAGE
+                                + "\" for index \""
+                                + getName()
+                                + "\". Results per page will not be restricted.");
+                    }
+                }
+                break;
+            case SOLR_HANDLER_MAX_ALLOWED_RESULTS_AT_ALL:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    try {
+                        m_handlerMaxAllowedResultsAtAll = Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        LOG.warn(
+                            "Could not parse parameter \""
+                                + SOLR_HANDLER_MAX_ALLOWED_RESULTS_AT_ALL
+                                + "\" for index \""
+                                + getName()
+                                + "\". Results per page will not be restricted.");
+                    }
+                }
+                break;
+            case SOLR_HANDLER_DISABLE_SELECT:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    m_handlerSelectDisabled = value.trim().toLowerCase().equals("true");
+                }
+                break;
+            case SOLR_HANDLER_DEBUG_SECRET_FILE:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    m_handlerDebugSecretFile = value.trim();
+                }
+                break;
+            case SOLR_HANDLER_DISABLE_SPELL:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    m_handlerSpellDisabled = value.trim().toLowerCase().equals("true");
+                }
+                break;
+            case SOLR_SEARCH_MAX_PROCESSED_RESULTS:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    try {
+                        m_maxProcessedResults = Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        LOG.warn(
+                            "Could not parse parameter \""
+                                + SOLR_SEARCH_MAX_PROCESSED_RESULTS
+                                + "\" for index \""
+                                + getName()
+                                + "\". The global configuration will be used instead.");
+                    }
+                }
+                break;
+            default:
+                super.addConfigurationParameter(key, value);
+                break;
         }
-        super.addConfigurationParameter(key, value);
     }
 
     /**
@@ -270,6 +405,43 @@ public class CmsSolrIndex extends CmsSearchIndex {
             // don't index  folders or temporary files for galleries, but pretty much everything else
             return true;
         }
+        // If this is the default offline index than it is used for gallery search that needs all resources indexed.
+        if (this.getName().equals(DEFAULT_INDEX_NAME_OFFLINE)) {
+            return false;
+        }
+
+        boolean isOnlineIndex = getProject().equals(CmsProject.ONLINE_PROJECT_NAME);
+        if (isOnlineIndex && (resource.getDateExpired() <= System.currentTimeMillis())) {
+            return true;
+        }
+
+        try {
+            // do property lookup with folder search
+            String propValue = cms.readPropertyObject(
+                resource,
+                CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE,
+                true).getValue();
+            if (propValue != null) {
+                if (!("false".equalsIgnoreCase(propValue.trim()))) {
+                    return true;
+                }
+            }
+        } catch (CmsException e) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
+                    org.opencms.search.Messages.get().getBundle().key(
+                        org.opencms.search.Messages.LOG_UNABLE_TO_READ_PROPERTY_1,
+                        resource.getRootPath()));
+            }
+        }
+        if (!USE_ALL_LOCALE.equalsIgnoreCase(getLocale().getLanguage())) {
+            // check if any resource default locale has a match with the index locale, if not skip resource
+            List<Locale> locales = OpenCms.getLocaleManager().getDefaultLocales(cms, resource);
+            Locale match = OpenCms.getLocaleManager().getFirstMatchingLocale(
+                Collections.singletonList(getLocale()),
+                locales);
+            return (match == null);
+        }
         return false;
 
     }
@@ -293,7 +465,8 @@ public class CmsSolrIndex extends CmsSearchIndex {
                 false,
                 null,
                 true,
-                CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+                CmsResourceFilter.ONLY_VISIBLE_NO_DELETED,
+                MAX_RESULTS_GALLERY); // ignore the maximally searched number of contents.
 
             if (null == list) {
                 return null;
@@ -348,6 +521,20 @@ public class CmsSolrIndex extends CmsSearchIndex {
     @Override
     public synchronized I_CmsSearchDocument getDocument(String fieldname, String term) {
 
+        return getDocument(fieldname, term, null);
+    }
+
+    /**
+     * Version of {@link org.opencms.search.CmsSearchIndex#getDocument(java.lang.String, java.lang.String)} where
+     * the returned fields can be restricted.
+     *
+     * @param fieldname the field to query in
+     * @param term the query
+     * @param fls the returned fields.
+     * @return the document.
+     */
+    public synchronized I_CmsSearchDocument getDocument(String fieldname, String term, String[] fls) {
+
         try {
             SolrQuery query = new SolrQuery();
             if (CmsSearchField.FIELD_PATH.equals(fieldname)) {
@@ -356,6 +543,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
                 query.setQuery(fieldname + ":" + term);
             }
             query.addFilterQuery("{!collapse field=" + fieldname + "}");
+            if (null != fls) {
+                query.setFields(fls);
+            }
             QueryResponse res = m_solr.query(query);
             if (res != null) {
                 SolrDocumentList sdl = m_solr.query(query).getResults();
@@ -378,7 +568,7 @@ public class CmsSolrIndex extends CmsSearchIndex {
 
         if (isIndexing(res)) {
             I_CmsDocumentFactory defaultFactory = super.getDocumentFactory(res);
-            if (null == defaultFactory) {
+            if ((null == defaultFactory) || defaultFactory.getName().equals("generic")) {
 
                 if (OpenCms.getResourceManager().getResourceType(res) instanceof CmsResourceTypeXmlContainerPage) {
                     return OpenCms.getSearchManager().getDocumentFactory(
@@ -425,6 +615,17 @@ public class CmsSolrIndex extends CmsSearchIndex {
     }
 
     /**
+     * Returns the maximal number of results (start + rows) that are processed for each search query unless another
+     * maximum is explicitly specified in {@link #search(CmsObject, CmsSolrQuery, boolean, ServletResponse, boolean, CmsResourceFilter, int)}.
+     *
+     * @return the maximal number of results (start + rows) that are processed for a search query.
+     */
+    public int getMaxProcessedResults() {
+
+        return m_maxProcessedResults;
+    }
+
+    /**
      * Returns the search post processor.<p>
      *
      * @return the post processor to use
@@ -441,6 +642,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
     public void initialize() throws CmsSearchException {
 
         super.initialize();
+        if (m_maxProcessedResults == -2) {
+            m_maxProcessedResults = OpenCms.getSearchManager().getSolrServerConfiguration().getMaxProcessedResults();
+        }
         try {
             OpenCms.getSearchManager().registerSolrIndex(this);
         } catch (CmsConfigurationException ex) {
@@ -572,11 +776,64 @@ public class CmsSolrIndex extends CmsSearchIndex {
      * Performs the actual search.<p>
      *
      * @param cms the current OpenCms context
-     * @param ignoreMaxRows <code>true</code> to return all all requested rows, <code>false</code> to use max rows
      * @param query the OpenCms Solr query
+     * @param ignoreMaxRows <code>true</code> to return all all requested rows, <code>false</code> to use max rows
      * @param response the servlet response to write the query result to, may also be <code>null</code>
      * @param ignoreSearchExclude if set to false, only contents with search_exclude unset or "false" will be found - typical for the the non-gallery case
      * @param filter the resource filter to use
+     *
+     * @return the found documents
+     *
+     * @throws CmsSearchException if something goes wrong
+     *
+     * @see #search(CmsObject, CmsSolrQuery, boolean)
+     */
+    public CmsSolrResultList search(
+        CmsObject cms,
+        final CmsSolrQuery query,
+        boolean ignoreMaxRows,
+        ServletResponse response,
+        boolean ignoreSearchExclude,
+        CmsResourceFilter filter)
+    throws CmsSearchException {
+
+        return search(cms, query, ignoreMaxRows, response, ignoreSearchExclude, filter, getMaxProcessedResults());
+    }
+
+    /**
+     * Performs the actual search.<p>
+     *
+     * To provide for correct permissions two queries are performed and the response is fused from that queries:
+     * <ol>
+     *  <li>a query for permission checking, where fl, start and rows is adjusted. From this query result we take for the response:
+     *      <ul>
+     *          <li>facets</li>
+     *          <li>spellcheck</li>
+     *          <li>suggester</li>
+     *          <li>morelikethis</li>
+     *          <li>clusters</li>
+     *      </ul>
+     *  </li>
+     *  <li>a query that collects only the resources determined by the first query and performs highlighting. From this query we take for the response:
+     *      <li>result</li>
+     *      <li>highlighting</li>
+     *  </li>
+     *</ol>
+     *
+     * Currently not or only partly supported Solr features are:
+     * <ul>
+     *  <li>groups</li>
+     *  <li>collapse - representatives of the collapsed group might be filtered by the permission check</li>
+     *  <li>expand is disabled</li>
+     * </ul>
+     *
+     * @param cms the current OpenCms context
+     * @param query the OpenCms Solr query
+     * @param ignoreMaxRows <code>true</code> to return all requested rows, <code>false</code> to use max rows
+     * @param response the servlet response to write the query result to, may also be <code>null</code>
+     * @param ignoreSearchExclude if set to false, only contents with search_exclude unset or "false" will be found - typical for the the non-gallery case
+     * @param filter the resource filter to use
+     * @param maxNumResults the maximal number of results to search for
      *
      * @return the found documents
      *
@@ -591,279 +848,419 @@ public class CmsSolrIndex extends CmsSearchIndex {
         boolean ignoreMaxRows,
         ServletResponse response,
         boolean ignoreSearchExclude,
-        CmsResourceFilter filter)
+        CmsResourceFilter filter,
+        int maxNumResults)
     throws CmsSearchException {
+
+        CmsSolrResultList result = null;
+        long startTime = System.currentTimeMillis();
+
+        // TODO:
+        // - fall back to "last found results" if none are present at the "last page"?
+        // - deal with cursorMarks?
+        // - deal with groups?
+        // - deal with result clustering?
+        // - remove max score calculation?
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug(Messages.get().getBundle().key(Messages.LOG_SOLR_DEBUG_ORIGINAL_QUERY_2, query, getName()));
+        }
+
+        // change thread priority in order to reduce search impact on overall system performance
+        int previousPriority = Thread.currentThread().getPriority();
+        if (getPriority() > 0) {
+            Thread.currentThread().setPriority(getPriority());
+        }
 
         // check if the user is allowed to access this index
         checkOfflineAccess(cms);
+
         if (!ignoreSearchExclude) {
+            if (LOG.isInfoEnabled()) {
+                LOG.info(
+                    Messages.get().getBundle().key(
+                        Messages.LOG_SOLR_INFO_ADDING_SEARCH_EXCLUDE_FILTER_FOR_QUERY_2,
+                        query,
+                        getName()));
+            }
             query.addFilterQuery(CmsSearchField.FIELD_SEARCH_EXCLUDE + ":\"false\"");
         }
 
-        int previousPriority = Thread.currentThread().getPriority();
-        long startTime = System.currentTimeMillis();
+        // get start parameter from the request
+        int start = null == query.getStart() ? 0 : query.getStart().intValue();
 
-        // remember the initial query
-        SolrQuery initQuery = query.clone();
+        // correct negative start values to 0.
+        if (start < 0) {
+            query.setStart(Integer.valueOf(0));
+            start = 0;
+        }
 
-        query.setHighlight(false);
+        // Adjust the maximal number of results to process in case it is unlimited.
+        if (maxNumResults < 0) {
+            maxNumResults = Integer.MAX_VALUE;
+            if (LOG.isInfoEnabled()) {
+                LOG.info(
+                    Messages.get().getBundle().key(
+                        Messages.LOG_SOLR_INFO_LIMITING_MAX_PROCESSED_RESULTS_3,
+                        query,
+                        getName(),
+                        Integer.valueOf(maxNumResults)));
+            }
+        }
+
+        // Correct the rows parameter
+        // Set the default rows, if rows are not set in the original query.
+        int rows = null == query.getRows() ? CmsSolrQuery.DEFAULT_ROWS.intValue() : query.getRows().intValue();
+
+        // Restrict the rows, such that the maximal number of queryable results is not exceeded.
+        if ((((rows + start) > maxNumResults) || ((rows + start) < 0))) {
+            rows = maxNumResults - start;
+        }
+        // Restrict the rows to the maximally allowed number, if they should be restricted.
+        if (!ignoreMaxRows && (rows > ROWS_MAX)) {
+            if (LOG.isInfoEnabled()) {
+                LOG.info(
+                    Messages.get().getBundle().key(
+                        Messages.LOG_SOLR_INFO_LIMITING_MAX_ROWS_4,
+                        new Object[] {query, getName(), Integer.valueOf(rows), Integer.valueOf(ROWS_MAX)}));
+            }
+            rows = ROWS_MAX;
+        }
+        // If start is higher than maxNumResults, the rows could be negative here - correct this.
+        if (rows < 0) {
+            if (LOG.isInfoEnabled()) {
+                LOG.info(
+                    Messages.get().getBundle().key(
+                        Messages.LOG_SOLR_INFO_CORRECTING_ROWS_4,
+                        new Object[] {query, getName(), Integer.valueOf(rows), Integer.valueOf(0)}));
+            }
+            rows = 0;
+        }
+        // Set the corrected rows for the query.
+        query.setRows(Integer.valueOf(rows));
+
+        // remove potentially set expand parameter
+        if (null != query.getParams(QUERY_PARAM_EXPAND)) {
+            LOG.info(Messages.get().getBundle().key(Messages.LOG_SOLR_INFO_REMOVING_EXPAND_2, query, getName()));
+            query.remove("expand");
+        }
+
+        float maxScore = 0;
+
         LocalSolrQueryRequest solrQueryRequest = null;
+        SolrCore core = null;
+        String[] sortParamValues = query.getParams(QUERY_SORT_NAME);
+        boolean sortByScoreDesc = (null == sortParamValues)
+            || (sortParamValues.length == 0)
+            || Objects.equal(sortParamValues[0], "score desc");
+
         try {
 
             // initialize the search context
             CmsObject searchCms = OpenCms.initCmsObject(cms);
 
-            // change thread priority in order to reduce search impact on overall system performance
-            if (getPriority() > 0) {
-                Thread.currentThread().setPriority(getPriority());
-            }
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////// QUERY FOR PERMISSION CHECK, FACETS, SPELLCHECK, SUGGESTIONS ///////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            // the lists storing the found documents that will be returned
-            List<CmsSearchResource> resourceDocumentList = new ArrayList<CmsSearchResource>();
-            SolrDocumentList solrDocumentList = new SolrDocumentList();
-
+            // Clone the query and keep the original one
+            CmsSolrQuery checkQuery = query.clone();
             // Initialize rows, offset, end and the current page.
-            int rows = query.getRows() != null ? query.getRows().intValue() : CmsSolrQuery.DEFAULT_ROWS.intValue();
-            if (!ignoreMaxRows && (rows > ROWS_MAX)) {
-                rows = ROWS_MAX;
-            }
-            int start = query.getStart() != null ? query.getStart().intValue() : 0;
             int end = start + rows;
+            int itemsToCheck = 0 == end ? 0 : Math.max(10, end + (end / 5)); // request 20 percent more, but at least 10 results if permissions are filtered
+            // use a set to prevent double entries if multiple check queries are performed.
+            Set<String> resultSolrIds = new HashSet<>(rows); // rows are set before definitely.
 
-            // set the start to '0' and expand the rows before performing the query
-            query.setStart(new Integer(0));
-            query.setRows(new Integer(5 * (rows + start)));
-
-            // perform the Solr query and remember the original Solr response
-            QueryResponse queryResponse = m_solr.query(query);
-            long solrTime = System.currentTimeMillis() - startTime;
+            // counter for the documents found and accessible
+            int cnt = 0;
+            long hitCount = 0;
+            long visibleHitCount = 0;
+            int processedResults = 0;
+            long solrPermissionTime = 0;
+            // disable highlighting - it's done in the next query.
+            checkQuery.setHighlight(false);
+            // adjust rows and start for the permission check.
+            checkQuery.setRows(Integer.valueOf(Math.min(maxNumResults - processedResults, itemsToCheck)));
+            checkQuery.setStart(Integer.valueOf(processedResults));
+            // return only the fields required for the permission check and for scoring
+            checkQuery.setFields(CmsSearchField.FIELD_TYPE, CmsSearchField.FIELD_SOLR_ID, CmsSearchField.FIELD_PATH);
+            List<String> originalFields = Arrays.asList(query.getFields().split(","));
+            if (originalFields.contains(CmsSearchField.FIELD_SCORE)) {
+                checkQuery.addField(CmsSearchField.FIELD_SCORE);
+            }
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(Messages.get().getBundle().key(Messages.LOG_SOLR_DEBUG_CHECK_QUERY_2, checkQuery, getName()));
+            }
+            // perform the permission check Solr query and remember the response and time Solr took.
+            long solrCheckTime = System.currentTimeMillis();
+            QueryResponse checkQueryResponse = m_solr.query(checkQuery);
+            solrCheckTime = System.currentTimeMillis() - solrCheckTime;
+            solrPermissionTime += solrCheckTime;
 
             // initialize the counts
-            long hitCount = queryResponse.getResults().getNumFound();
-            if ((rows > 0) && (hitCount > 0)) {
-                // ensure that both start and end are inside the range of foundDocuments.size()
-                start = new Long((start > hitCount) ? hitCount : start).intValue();
-                end = new Long((end > hitCount) ? hitCount : end).intValue();
-            } else {
-                // return all found documents in the search result
-                start = 0;
-                end = new Long(hitCount).intValue();
-            }
-            long visibleHitCount = hitCount;
-            float maxScore = 0;
+            hitCount = checkQueryResponse.getResults().getNumFound();
+            int maxToProcess = Long.valueOf(Math.min(hitCount, maxNumResults)).intValue();
+            visibleHitCount = hitCount;
 
-            // If we're using a postprocessor, (re-)initialize it before using it
+            // process found documents
+            for (SolrDocument doc : checkQueryResponse.getResults()) {
+                try {
+                    CmsSolrDocument searchDoc = new CmsSolrDocument(doc);
+                    if (needsPermissionCheck(searchDoc) && !hasPermissions(searchCms, searchDoc, filter)) {
+                        visibleHitCount--;
+                    } else {
+                        if (cnt >= start) {
+                            resultSolrIds.add(searchDoc.getFieldValueAsString(CmsSearchField.FIELD_SOLR_ID));
+                        }
+                        if (sortByScoreDesc && (searchDoc.getScore() > maxScore)) {
+                            maxScore = searchDoc.getScore();
+                        }
+                        if (++cnt >= end) {
+                            break;
+                        }
+                    }
+                } catch (Exception e) {
+                    // should not happen, but if it does we want to go on with the next result nevertheless
+                    visibleHitCount--;
+                    LOG.warn(Messages.get().getBundle().key(Messages.LOG_SOLR_ERR_RESULT_ITERATION_FAILED_0), e);
+                }
+            }
+            processedResults += checkQueryResponse.getResults().size();
+
+            if ((resultSolrIds.size() < rows) && (processedResults < maxToProcess)) {
+                CmsSolrQuery secondCheckQuery = checkQuery.clone();
+                // disable all features not necessary, since results are present from the first check query.
+                secondCheckQuery.setFacet(false);
+                secondCheckQuery.setMoreLikeThis(false);
+                secondCheckQuery.set(QUERY_SPELLCHECK_NAME, false);
+                do {
+                    // query directly more under certain conditions to reduce number of queries
+                    itemsToCheck = itemsToCheck < 3000 ? itemsToCheck * 4 : itemsToCheck;
+                    // adjust rows and start for the permission check.
+                    secondCheckQuery.setRows(
+                        Integer.valueOf(
+                            Long.valueOf(Math.min(maxToProcess - processedResults, itemsToCheck)).intValue()));
+                    secondCheckQuery.setStart(Integer.valueOf(processedResults));
+
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(
+                            Messages.get().getBundle().key(
+                                Messages.LOG_SOLR_DEBUG_SECONDCHECK_QUERY_2,
+                                secondCheckQuery,
+                                getName()));
+                    }
+
+                    long solrSecondCheckTime = System.currentTimeMillis();
+                    QueryResponse secondCheckQueryResponse = m_solr.query(secondCheckQuery);
+                    processedResults += secondCheckQueryResponse.getResults().size();
+                    solrSecondCheckTime = System.currentTimeMillis() - solrSecondCheckTime;
+                    solrPermissionTime += solrCheckTime;
+
+                    // process found documents
+                    for (SolrDocument doc : secondCheckQueryResponse.getResults()) {
+                        try {
+                            CmsSolrDocument searchDoc = new CmsSolrDocument(doc);
+                            String docSolrId = searchDoc.getFieldValueAsString(CmsSearchField.FIELD_SOLR_ID);
+                            if ((needsPermissionCheck(searchDoc) && !hasPermissions(searchCms, searchDoc, filter))
+                                || resultSolrIds.contains(docSolrId)) {
+                                visibleHitCount--;
+                            } else {
+                                if (cnt >= start) {
+                                    resultSolrIds.add(docSolrId);
+                                }
+                                if (sortByScoreDesc && (searchDoc.getScore() > maxScore)) {
+                                    maxScore = searchDoc.getScore();
+                                }
+                                if (++cnt >= end) {
+                                    break;
+                                }
+                            }
+                        } catch (Exception e) {
+                            // should not happen, but if it does we want to go on with the next result nevertheless
+                            visibleHitCount--;
+                            LOG.warn(
+                                Messages.get().getBundle().key(Messages.LOG_SOLR_ERR_RESULT_ITERATION_FAILED_0),
+                                e);
+                        }
+                    }
+
+                } while ((resultSolrIds.size() < rows) && (processedResults < maxToProcess));
+            }
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////// QUERY FOR RESULTS AND HIGHLIGHTING ////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // the lists storing the found documents that will be returned
+            List<CmsSearchResource> resourceDocumentList = new ArrayList<CmsSearchResource>(resultSolrIds.size());
+            SolrDocumentList solrDocumentList = new SolrDocumentList();
+
+            long solrResultTime = 0;
+
+            // If we're using a post-processor, (re-)initialize it before using it
             if (m_postProcessor != null) {
                 m_postProcessor.init();
             }
 
-            // process found documents
-            List<CmsSearchResource> allDocs = new ArrayList<CmsSearchResource>();
-            int cnt = 0;
-            for (int i = 0; (i < queryResponse.getResults().size()) && (cnt < end); i++) {
+            // build the query for getting the results
+            SolrQuery queryForResults = new SolrQuery();
+            queryForResults.setFields(query.getFields());
+            queryForResults.setQuery(query.getQuery());
+
+            // we add an additional filter, such that we can only find the documents we want to retrieve, as we figured out in the check query.
+            if (!resultSolrIds.isEmpty()) {
+                Optional<String> queryFilterString = resultSolrIds.stream().map(a -> '"' + a + '"').reduce(
+                    (a, b) -> a + " OR " + b);
+                queryForResults.addFilterQuery(CmsSearchField.FIELD_SOLR_ID + ":(" + queryFilterString.get() + ")");
+            }
+            queryForResults.setRows(Integer.valueOf(resultSolrIds.size()));
+            queryForResults.setStart(Integer.valueOf(0));
+
+            // use sorting as in the original query.
+            queryForResults.setSorts(query.getSorts());
+            if (null != sortParamValues) {
+                queryForResults.add(QUERY_SORT_NAME, sortParamValues);
+            }
+
+            // Take over highlighting part, if the original query had highlighting enabled.
+            if (query.getHighlight()) {
+                for (String paramName : query.getParameterNames()) {
+                    if (paramName.startsWith("hl")) {
+                        queryForResults.add(paramName, query.getParams(paramName));
+                    }
+                }
+            }
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(
+                    Messages.get().getBundle().key(Messages.LOG_SOLR_DEBUG_RESULT_QUERY_2, queryForResults, getName()));
+            }
+            // perform the result query.
+            solrResultTime = System.currentTimeMillis();
+            QueryResponse resultQueryResponse = m_solr.query(queryForResults);
+            solrResultTime = System.currentTimeMillis() - solrResultTime;
+
+            // List containing solr ids of filtered contents for which highlighting has to be removed.
+            // Since we checked permissions just a few milliseconds ago, this should typically stay empty.
+            List<String> filteredResultIds = new ArrayList<>(5);
+
+            for (SolrDocument doc : resultQueryResponse.getResults()) {
                 try {
-                    SolrDocument doc = queryResponse.getResults().get(i);
                     CmsSolrDocument searchDoc = new CmsSolrDocument(doc);
                     if (needsPermissionCheck(searchDoc)) {
-                        // only if the document is an OpenCms internal resource perform the permission check
                         CmsResource resource = filter == null
                         ? getResource(searchCms, searchDoc)
                         : getResource(searchCms, searchDoc, filter);
-                        if (resource != null) {
-                            // permission check performed successfully: the user has read permissions!
-                            if (cnt >= start) {
-                                if (m_postProcessor != null) {
-                                    doc = m_postProcessor.process(
-                                        searchCms,
-                                        resource,
-                                        (SolrInputDocument)searchDoc.getDocument());
-                                }
-                                resourceDocumentList.add(new CmsSearchResource(resource, searchDoc));
-                                if (null != doc) {
-                                    solrDocumentList.add(doc);
-                                }
-                                maxScore = maxScore < searchDoc.getScore() ? searchDoc.getScore() : maxScore;
+                        if (null != resource) {
+                            if (m_postProcessor != null) {
+                                doc = m_postProcessor.process(
+                                    searchCms,
+                                    resource,
+                                    (SolrInputDocument)searchDoc.getDocument());
                             }
-                            allDocs.add(new CmsSearchResource(resource, searchDoc));
-                            cnt++;
+                            resourceDocumentList.add(new CmsSearchResource(resource, searchDoc));
+                            solrDocumentList.add(doc);
                         } else {
-                            visibleHitCount--;
+                            filteredResultIds.add(searchDoc.getFieldValueAsString(CmsSearchField.FIELD_SOLR_ID));
                         }
-                    } else {
-                        // if permission check is not required for this index,
-                        // add a pseudo resource together with document to the results
+                    } else { // should not happen unless the index has changed since the first query.
                         resourceDocumentList.add(new CmsSearchResource(PSEUDO_RES, searchDoc));
                         solrDocumentList.add(doc);
-                        maxScore = maxScore < searchDoc.getScore() ? searchDoc.getScore() : maxScore;
-                        cnt++;
+                        visibleHitCount--;
                     }
                 } catch (Exception e) {
                     // should not happen, but if it does we want to go on with the next result nevertheless
+                    visibleHitCount--;
                     LOG.warn(Messages.get().getBundle().key(Messages.LOG_SOLR_ERR_RESULT_ITERATION_FAILED_0), e);
                 }
             }
-            // the last documents were all secret so let's take the last found docs
-            // TODO: Is this useful? For the last page?
-            // Better way to determine which resources to show in case of page sizes changing?
-            if (resourceDocumentList.isEmpty() && (allDocs.size() > 0)) {
-                int showCount = allDocs.size() % rows;
-                showCount = showCount == 0 ? rows : showCount;
-                start = allDocs.size() - new Long(showCount).intValue();
-                end = allDocs.size();
-                if (allDocs.size() > start) {
-                    resourceDocumentList = allDocs.subList(start, end);
-                    for (CmsSearchResource r : resourceDocumentList) {
-                        maxScore = maxScore < r.getDocument().getScore() ? r.getDocument().getScore() : maxScore;
-                        solrDocumentList.add(((CmsSolrDocument)r.getDocument()).getSolrDocument());
-                    }
-                }
-            }
-            long processTime = System.currentTimeMillis() - startTime - solrTime;
 
-            // create and return the result
+            long processTime = System.currentTimeMillis() - startTime - solrPermissionTime - solrResultTime;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////// CREATE THE FINAL RESPONSE /////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // we are manipulating the checkQueryResponse to set up the final response, we want to deliver.
+
+            // adjust start, max score and hit count displayed in the result list.
             solrDocumentList.setStart(start);
-            solrDocumentList.setMaxScore(new Float(maxScore));
+            Float finalMaxScore = sortByScoreDesc ? new Float(maxScore) : checkQueryResponse.getResults().getMaxScore();
+            solrDocumentList.setMaxScore(finalMaxScore);
             solrDocumentList.setNumFound(visibleHitCount);
 
-            queryResponse.getResponse().setVal(
-                queryResponse.getResponse().indexOf(QUERY_RESPONSE_NAME, 0),
+            // Exchange the search parameters in the response header by the ones from the (adjusted) original query.
+            NamedList<Object> params = ((NamedList<Object>)(checkQueryResponse.getHeader().get(HEADER_PARAMS_NAME)));
+            params.clear();
+            for (String paramName : query.getParameterNames()) {
+                params.add(paramName, query.get(paramName));
+            }
+
+            // Fill in the documents to return.
+            checkQueryResponse.getResponse().setVal(
+                checkQueryResponse.getResponse().indexOf(QUERY_RESPONSE_NAME, 0),
                 solrDocumentList);
 
-            queryResponse.getResponseHeader().setVal(
-                queryResponse.getResponseHeader().indexOf(QUERY_TIME_NAME, 0),
+            // Fill in the time, the overall query took, including processing and permission check.
+            checkQueryResponse.getResponseHeader().setVal(
+                checkQueryResponse.getResponseHeader().indexOf(QUERY_TIME_NAME, 0),
                 new Integer(new Long(System.currentTimeMillis() - startTime).intValue()));
-            long highlightEndTime = System.currentTimeMillis();
-            SolrCore core = m_solr instanceof EmbeddedSolrServer
-            ? ((EmbeddedSolrServer)m_solr).getCoreContainer().getCore(getCoreName())
-            : null;
-            CmsSolrResultList result = null;
-            try {
-                SearchComponent highlightComponenet = null;
-                if (core != null) {
-                    highlightComponenet = core.getSearchComponent("highlight");
-                    solrQueryRequest = new LocalSolrQueryRequest(core, queryResponse.getResponseHeader());
-                }
-                SolrQueryResponse solrQueryResponse = null;
-                if (solrQueryRequest != null) {
-                    // create and initialize the solr response
-                    solrQueryResponse = new SolrQueryResponse();
-                    solrQueryResponse.setAllValues(queryResponse.getResponse());
-                    int paramsIndex = queryResponse.getResponseHeader().indexOf(HEADER_PARAMS_NAME, 0);
-                    NamedList<Object> header = null;
-                    Object o = queryResponse.getResponseHeader().getVal(paramsIndex);
-                    if (o instanceof NamedList) {
-                        header = (NamedList<Object>)o;
-                        header.setVal(header.indexOf(CommonParams.ROWS, 0), new Integer(rows));
-                        header.setVal(header.indexOf(CommonParams.START, 0), new Long(start));
-                    }
 
-                    // set the OpenCms Solr query as parameters to the request
-                    solrQueryRequest.setParams(initQuery);
-
-                    // perform the highlighting
-                    if ((header != null) && (initQuery.getHighlight()) && (highlightComponenet != null)) {
-                        header.add(HighlightParams.HIGHLIGHT, "on");
-                        if ((initQuery.getHighlightFields() != null) && (initQuery.getHighlightFields().length > 0)) {
-                            header.add(
-                                HighlightParams.FIELDS,
-                                CmsStringUtil.arrayAsString(initQuery.getHighlightFields(), ","));
-                        }
-                        String formatter = initQuery.getParams(HighlightParams.FORMATTER) != null
-                        ? initQuery.getParams(HighlightParams.FORMATTER)[0]
-                        : null;
-                        if (formatter != null) {
-                            header.add(HighlightParams.FORMATTER, formatter);
-                        }
-                        if (initQuery.getHighlightFragsize() != 100) {
-                            header.add(HighlightParams.FRAGSIZE, new Integer(initQuery.getHighlightFragsize()));
-                        }
-                        if (initQuery.getHighlightRequireFieldMatch()) {
-                            header.add(
-                                HighlightParams.FIELD_MATCH,
-                                new Boolean(initQuery.getHighlightRequireFieldMatch()));
-                        }
-                        if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(initQuery.getHighlightSimplePost())) {
-                            header.add(HighlightParams.SIMPLE_POST, initQuery.getHighlightSimplePost());
-                        }
-                        if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(initQuery.getHighlightSimplePre())) {
-                            header.add(HighlightParams.SIMPLE_PRE, initQuery.getHighlightSimplePre());
-                        }
-                        if (initQuery.getHighlightSnippets() != 1) {
-                            header.add(HighlightParams.SNIPPETS, new Integer(initQuery.getHighlightSnippets()));
-                        }
-                        ResponseBuilder rb = new ResponseBuilder(
-                            solrQueryRequest,
-                            solrQueryResponse,
-                            Collections.singletonList(highlightComponenet));
-                        try {
-                            rb.doHighlights = true;
-                            DocListAndSet res = new DocListAndSet();
-                            SchemaField idField = OpenCms.getSearchManager().getSolrServerConfiguration().getSolrSchema().getUniqueKeyField();
-
-                            int[] luceneIds = new int[rows];
-                            int docs = 0;
-                            for (SolrDocument doc : solrDocumentList) {
-                                String idString = (String)doc.getFirstValue(CmsSearchField.FIELD_SOLR_ID);
-                                int id = solrQueryRequest.getSearcher().getFirstMatch(
-                                    new Term(idField.getName(), idField.getType().toInternal(idString)));
-                                luceneIds[docs++] = id;
-                            }
-                            res.docList = new DocSlice(0, docs, luceneIds, null, docs, 0);
-                            rb.setResults(res);
-                            rb.setQuery(QParser.getParser(initQuery.getQuery(), null, solrQueryRequest).getQuery());
-                            rb.setQueryString(initQuery.getQuery());
-                            highlightComponenet.prepare(rb);
-                            highlightComponenet.process(rb);
-                            highlightComponenet.finishStage(rb);
-                        } catch (Exception e) {
-                            LOG.error(e.getMessage() + " in query: " + initQuery, new Exception(e));
-                        }
-
-                        // Make highlighting also available via the CmsSolrResultList
-                        queryResponse.setResponse(solrQueryResponse.getValues());
-
-                        highlightEndTime = System.currentTimeMillis();
-                    }
+            // Fill in the highlighting information from the result query.
+            if (query.getHighlight()) {
+                NamedList<Object> highlighting = (NamedList<Object>)resultQueryResponse.getResponse().get(
+                    QUERY_HIGHLIGHTING_NAME);
+                // filter out highlighting for documents where access is not permitted.
+                for (String filteredId : filteredResultIds) {
+                    highlighting.remove(filteredId);
                 }
-
-                result = new CmsSolrResultList(
-                    initQuery,
-                    queryResponse,
-                    solrDocumentList,
-                    resourceDocumentList,
-                    start,
-                    new Integer(rows),
-                    end,
-                    rows > 0 ? (allDocs.size() / rows) + 1 : 0, //page - but matches only in case of equally sized pages and is zero for rows=0 (because this was this way before!?!)
-                    visibleHitCount,
-                    new Float(maxScore),
-                    startTime,
-                    highlightEndTime);
-                if (LOG.isDebugEnabled()) {
-                    Object[] logParams = new Object[] {
-                        new Long(System.currentTimeMillis() - startTime),
-                        new Long(result.getNumFound()),
-                        new Long(solrTime),
-                        new Long(processTime),
-                        new Long(result.getHighlightEndTime() != 0 ? result.getHighlightEndTime() - startTime : 0)};
-                    LOG.debug(
-                        query.toString()
-                            + "\n"
-                            + Messages.get().getBundle().key(Messages.LOG_SOLR_SEARCH_EXECUTED_5, logParams));
-                }
-                if (response != null) {
-                    writeResp(response, solrQueryRequest, solrQueryResponse);
-                }
-            } finally {
-                if (solrQueryRequest != null) {
-                    solrQueryRequest.close();
-                }
-                if (core != null) {
-                    core.close();
-                }
+                NamedList<Object> completeResponse = new NamedList<Object>(1);
+                completeResponse.addAll(checkQueryResponse.getResponse());
+                completeResponse.add(QUERY_HIGHLIGHTING_NAME, highlighting);
+                checkQueryResponse.setResponse(completeResponse);
             }
-            return result;
-        } catch (Exception e) {
+
+            // build the result
+            result = new CmsSolrResultList(
+                query,
+                checkQueryResponse,
+                solrDocumentList,
+                resourceDocumentList,
+                start,
+                new Integer(rows),
+                Math.min(end, (start + solrDocumentList.size())),
+                rows > 0 ? (start / rows) + 1 : 0, //page - but matches only in case of equally sized pages and is zero for rows=0 (because this was this way before!?!)
+                visibleHitCount,
+                finalMaxScore,
+                startTime,
+                System.currentTimeMillis());
+            if (LOG.isDebugEnabled()) {
+                Object[] logParams = new Object[] {
+                    new Long(System.currentTimeMillis() - startTime),
+                    new Long(result.getNumFound()),
+                    new Long(solrPermissionTime + solrResultTime),
+                    new Long(processTime),
+                    new Long(result.getHighlightEndTime() != 0 ? result.getHighlightEndTime() - startTime : 0)};
+                LOG.debug(
+                    query.toString()
+                        + "\n"
+                        + Messages.get().getBundle().key(Messages.LOG_SOLR_SEARCH_EXECUTED_5, logParams));
+            }
+            // write the response for the handler
+            if (response != null) {
+                // create and return the result
+                core = m_solr instanceof EmbeddedSolrServer
+                ? ((EmbeddedSolrServer)m_solr).getCoreContainer().getCore(getCoreName())
+                : null;
+
+                solrQueryRequest = new LocalSolrQueryRequest(core, query);
+                SolrQueryResponse solrQueryResponse = new SolrQueryResponse();
+                solrQueryResponse.setAllValues(checkQueryResponse.getResponse());
+                writeResp(response, solrQueryRequest, solrQueryResponse);
+            }
+        } catch (
+
+        Exception e) {
             throw new CmsSearchException(
                 Messages.get().container(
                     Messages.LOG_SOLR_ERR_SEARCH_EXECUTION_FAILD_1,
@@ -874,10 +1271,13 @@ public class CmsSolrIndex extends CmsSearchIndex {
             if (solrQueryRequest != null) {
                 solrQueryRequest.close();
             }
+            if (null != core) {
+                core.close();
+            }
             // re-set thread to previous priority
             Thread.currentThread().setPriority(previousPriority);
         }
-
+        return result;
     }
 
     /**
@@ -929,6 +1329,7 @@ public class CmsSolrIndex extends CmsSearchIndex {
     public void select(ServletResponse response, CmsObject cms, CmsSolrQuery query, boolean ignoreMaxRows)
     throws Exception {
 
+        throwExceptionIfSafetyRestrictionsAreViolated(cms, query, false);
         boolean isOnline = cms.getRequestContext().getCurrentProject().isOnlineProject();
         CmsResourceFilter filter = isOnline ? null : CmsResourceFilter.IGNORE_EXPIRATION;
 
@@ -980,10 +1381,12 @@ public class CmsSolrIndex extends CmsSearchIndex {
      */
     public void spellCheck(ServletResponse res, CmsObject cms, CmsSolrQuery q) throws CmsSearchException {
 
+        throwExceptionIfSafetyRestrictionsAreViolated(cms, q, true);
         SolrCore core = null;
         LocalSolrQueryRequest solrQueryRequest = null;
         try {
             q.setRequestHandler("/spell");
+            q.setRows(Integer.valueOf(0));
 
             QueryResponse queryResponse = m_solr.query(q);
 
@@ -1079,6 +1482,18 @@ public class CmsSolrIndex extends CmsSearchIndex {
     }
 
     /**
+     * Check, if the current user has permissions on the document's resource.
+     * @param cms the context
+     * @param doc the solr document (from the search result)
+     * @param filter the resource filter to use for checking permissions
+     * @return <code>true</code> iff the resource mirrored by the search result can be read by the current user.
+     */
+    protected boolean hasPermissions(CmsObject cms, CmsSolrDocument doc, CmsResourceFilter filter) {
+
+        return null != (filter == null ? getResource(cms, doc) : getResource(cms, doc, filter));
+    }
+
+    /**
      * @see org.opencms.search.CmsSearchIndex#indexSearcherClose()
      */
     @SuppressWarnings("sync-override")
@@ -1115,14 +1530,15 @@ public class CmsSolrIndex extends CmsSearchIndex {
      *
      * @return <code>true</code> if the given resource should be indexed or <code>false</code> if not
      */
+    @Override
     protected boolean isIndexing(CmsResource res) {
 
         if ((res != null) && (getSources() != null)) {
-            I_CmsDocumentFactory result = OpenCms.getSearchManager().getDocumentFactory(res);
+            I_CmsDocumentFactory documentFactory = OpenCms.getSearchManager().getDocumentFactory(res);
             for (CmsSearchIndexSource source : getSources()) {
                 if (source.isIndexing(res.getRootPath(), CmsSolrDocumentContainerPage.TYPE_CONTAINERPAGE_SOLR)
                     || source.isIndexing(res.getRootPath(), CmsSolrDocumentXmlContent.TYPE_XMLCONTENT_SOLR)
-                    || source.isIndexing(res.getRootPath(), result.getName())) {
+                    || ((documentFactory != null) && source.isIndexing(res.getRootPath(), documentFactory.getName()))) {
                     return true;
                 }
             }
@@ -1165,10 +1581,95 @@ public class CmsSolrIndex extends CmsSearchIndex {
     private String generateCoreName(final String name) {
 
         if (name != null) {
-            //TODO: Add more name manipulations to guarantee a valid core name
             return name.replace(" ", "-");
         }
         return null;
+    }
+
+    /**
+     * Checks if the query should be executed using the debug mode where the security restrictions do not apply.
+     * @param cms the current context.
+     * @param query the query to execute.
+     * @return a flag, indicating, if the query should be performed in debug mode.
+     */
+    private boolean isDebug(CmsObject cms, CmsSolrQuery query) {
+
+        String[] debugSecretValues = query.remove(REQUEST_PARAM_DEBUG_SECRET);
+        String debugSecret = (debugSecretValues == null) || (debugSecretValues.length < 1)
+        ? null
+        : debugSecretValues[0];
+        if ((null != debugSecret) && !debugSecret.trim().isEmpty() && (null != m_handlerDebugSecretFile)) {
+            try {
+                CmsFile secretFile = cms.readFile(m_handlerDebugSecretFile);
+                String secret = new String(secretFile.getContents(), CmsFileUtil.getEncoding(cms, secretFile));
+                return secret.trim().equals(debugSecret.trim());
+            } catch (Exception e) {
+                LOG.info(
+                    "Failed to read secret file for index \""
+                        + getName()
+                        + "\" at path \""
+                        + m_handlerDebugSecretFile
+                        + "\".");
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Throws an exception if the request can for security reasons not be performed.
+     * Security restrictions can be set via parameters of the index.
+     *
+     * @param cms the current context.
+     * @param query the query.
+     * @param isSpell flag, indicating if the spellcheck handler is requested.
+     * @throws CmsSearchException thrown if the query cannot be executed due to security reasons.
+     */
+    private void throwExceptionIfSafetyRestrictionsAreViolated(CmsObject cms, CmsSolrQuery query, boolean isSpell)
+    throws CmsSearchException {
+
+        if (!isDebug(cms, query)) {
+            if (isSpell) {
+                if (m_handlerSpellDisabled) {
+                    throw new CmsSearchException(Messages.get().container(Messages.GUI_HANDLER_REQUEST_NOT_ALLOWED_0));
+                }
+            } else {
+                if (m_handlerSelectDisabled) {
+                    throw new CmsSearchException(Messages.get().container(Messages.GUI_HANDLER_REQUEST_NOT_ALLOWED_0));
+                }
+                int start = null != query.getStart() ? query.getStart().intValue() : 0;
+                int rows = null != query.getRows() ? query.getRows().intValue() : CmsSolrQuery.DEFAULT_ROWS.intValue();
+                if ((m_handlerMaxAllowedResultsAtAll >= 0) && ((rows + start) > m_handlerMaxAllowedResultsAtAll)) {
+                    throw new CmsSearchException(
+                        Messages.get().container(
+                            Messages.GUI_HANDLER_TOO_MANY_RESULTS_REQUESTED_AT_ALL_2,
+                            Integer.valueOf(m_handlerMaxAllowedResultsAtAll),
+                            Integer.valueOf(rows + start)));
+                }
+                if ((m_handlerMaxAllowedResultsPerPage >= 0) && (rows > m_handlerMaxAllowedResultsPerPage)) {
+                    throw new CmsSearchException(
+                        Messages.get().container(
+                            Messages.GUI_HANDLER_TOO_MANY_RESULTS_REQUESTED_PER_PAGE_2,
+                            Integer.valueOf(m_handlerMaxAllowedResultsPerPage),
+                            Integer.valueOf(rows)));
+                }
+                if ((null != m_handlerAllowedFields) && (Stream.of(m_handlerAllowedFields).anyMatch(x -> true))) {
+                    if (query.getFields().equals(CmsSolrQuery.ALL_RETURN_FIELDS)) {
+                        query.setFields(m_handlerAllowedFields);
+                    } else {
+                        for (String requestedField : query.getFields().split(",")) {
+                            if (Stream.of(m_handlerAllowedFields).noneMatch(
+                                allowedField -> allowedField.equals(requestedField))) {
+                                throw new CmsSearchException(
+                                    Messages.get().container(
+                                        Messages.GUI_HANDLER_REQUESTED_FIELD_NOT_ALLOWED_2,
+                                        requestedField,
+                                        Stream.of(m_handlerAllowedFields).reduce("", (a, b) -> a + "," + b)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /**

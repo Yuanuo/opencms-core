@@ -34,18 +34,18 @@ import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.security.CmsRole;
+import org.opencms.security.CmsRoleViolationException;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsCssIcon;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.apps.Messages;
-import org.opencms.ui.apps.user.CmsOuTree.CmsOuTreeType;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.ui.components.OpenCmsTheme;
 import org.opencms.ui.contextmenu.CmsContextMenu;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry;
 import org.opencms.util.CmsStringUtil;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -170,9 +170,20 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
          */
         public void executeAction(Set<String> context) {
 
+            boolean includeTechnicalFields = false;
+            try {
+                OpenCms.getRoleManager().checkRole(m_cms, CmsRole.ADMINISTRATOR);
+                includeTechnicalFields = true;
+            } catch (CmsRoleViolationException e) {
+                // ok
+            }
             Window window = CmsBasicDialog.prepareWindow(DialogWidth.wide);
             window.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_IMEXPORT_DIALOGNAME_0));
-            window.setContent(CmsImportExportUserDialog.getExportUserDialogForOU(context.iterator().next(), window));
+            window.setContent(
+                CmsImportExportUserDialog.getExportUserDialogForOU(
+                    context.iterator().next(),
+                    window,
+                    includeTechnicalFields));
 
             A_CmsUI.get().addWindow(window);
         }
@@ -229,9 +240,10 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (getItem(context.iterator().next()).getItemProperty(TableProperty.Type).getValue().equals(
-                CmsOuTreeType.GROUP)) {
+            Object typeObj = getItem(context.iterator().next()).getItemProperty(TableProperty.Type).getValue();
+            if (((I_CmsOuTreeType)typeObj).isGroup()) {
                 return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
+
             }
             return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
         }
@@ -268,8 +280,8 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (getItem(context.iterator().next()).getItemProperty(TableProperty.Type).getValue().equals(
-                CmsOuTreeType.USER)) {
+            Object typeObj = getItem(context.iterator().next()).getItemProperty(TableProperty.Type).getValue();
+            if (((I_CmsOuTreeType)typeObj).isUser()) {
                 return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
             }
             return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
@@ -326,16 +338,16 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
      * Table properties.<p>
      */
     enum TableProperty {
+        /** Description property.*/
+        Description(Messages.GUI_USERMANAGEMENT_OU_DESCRIPTION_0, String.class, ""),
         /**Icon property. */
         Icon(null, Resource.class, new CmsCssIcon(OpenCmsTheme.ICON_OU)),
         /** Name property. */
         Name(Messages.GUI_USERMANAGEMENT_OU_NAME_0, String.class, ""),
-        /** Description property.*/
-        Description(Messages.GUI_USERMANAGEMENT_OU_DESCRIPTION_0, String.class, ""),
-        /** Type property. */
-        Type(null, CmsOuTreeType.class, CmsOuTreeType.OU),
         /** Resources property.*/
-        Ressources(Messages.GUI_USERMANAGEMENT_OU_EDIT_PANEL2_0, String.class, "");
+        Ressources(Messages.GUI_USERMANAGEMENT_OU_EDIT_PANEL2_0, String.class, ""),
+        /** Type property. */
+        Type(null, I_CmsOuTreeType.class, CmsOuTreeType.OU);
 
         /**Default value for column.*/
         private Object m_defaultValue;
@@ -393,14 +405,17 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
 
     }
 
-    /**vaadin serial id. */
-    private static final long serialVersionUID = -1080519790145391678L;
-
     /** Log instance for this class. */
     static final Log LOG = CmsLog.getLog(CmsOUTable.class);
 
-    /**Indexed container. */
-    private IndexedContainer m_container;
+    /**vaadin serial id. */
+    private static final long serialVersionUID = -1080519790145391678L;
+
+    /**Calling app. */
+    protected CmsAccountsApp m_app;
+
+    /**Parent ou. */
+    protected String m_parentOu;
 
     /**CmsObject. */
     CmsObject m_cms;
@@ -408,11 +423,8 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
     /** The context menu. */
     CmsContextMenu m_menu;
 
-    /**Calling app. */
-    protected CmsAccountsApp m_app;
-
-    /**Parent ou. */
-    protected String m_parentOu;
+    /**Indexed container. */
+    private IndexedContainer m_container;
 
     /** The available menu entries. */
     private List<I_CmsSimpleContextMenuEntry<Set<String>>> m_menuEntries;
@@ -471,10 +483,15 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
      */
     protected void updateApp(String itemId) {
 
-        if (itemId.equals(CmsOuTreeType.GROUP.getID())
-            | itemId.equals(CmsOuTreeType.USER.getID())
-            | itemId.equals(CmsOuTreeType.ROLE.getID())) {
-            m_app.update(m_parentOu, CmsOuTreeType.fromID(itemId), null);
+        I_CmsOuTreeType foundType = null;
+        for (I_CmsOuTreeType type : m_app.getTreeTypeProvider().getTreeTypes()) {
+            if (itemId.equals(type.getId())) {
+                foundType = type;
+                break;
+            }
+        }
+        if (foundType != null) {
+            m_app.update(m_parentOu, foundType, null);
             return;
         }
         m_app.update(itemId, CmsOuTreeType.OU, null, "");
@@ -552,10 +569,13 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
 
                 String out = "";
                 try {
-                    if (!((String)itemId).equals(CmsOuTreeType.GROUP.getID())
-                        & !((String)itemId).equals(CmsOuTreeType.USER.getID())
-                        & !((String)itemId).equals(CmsOuTreeType.ROLE.getID())) {
-
+                    boolean isOu = true;
+                    for (I_CmsOuTreeType type : m_app.getTreeTypeProvider().getTreeTypes()) {
+                        if (type.getId().equals(itemId)) {
+                            isOu = false;
+                        }
+                    }
+                    if (isOu) {
                         List<CmsResource> resources = OpenCms.getOrgUnitManager().getResourcesForOrganizationalUnit(
                             m_cms,
                             (String)itemId);
@@ -587,23 +607,15 @@ public class CmsOUTable extends Table implements I_CmsFilterableTable {
         }
         try {
             if (m_app.isOUManagable(m_parentOu)) {
-                Item groupItem = m_container.addItem(CmsOuTreeType.GROUP.getID());
-                groupItem.getItemProperty(TableProperty.Name).setValue(
-                    CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_GROUPS_0));
-                groupItem.getItemProperty(TableProperty.Icon).setValue(new CmsCssIcon(OpenCmsTheme.ICON_GROUP));
-                groupItem.getItemProperty(TableProperty.Type).setValue(CmsOuTreeType.GROUP);
 
-                Item roleItem = m_container.addItem(CmsOuTreeType.ROLE.getID());
-                roleItem.getItemProperty(TableProperty.Name).setValue(
-                    CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_ROLES_0));
-                roleItem.getItemProperty(TableProperty.Icon).setValue(new CmsCssIcon(OpenCmsTheme.ICON_ROLE));
-                roleItem.getItemProperty(TableProperty.Type).setValue(CmsOuTreeType.ROLE);
-
-                Item userItem = m_container.addItem(CmsOuTreeType.USER.getID());
-                userItem.getItemProperty(TableProperty.Name).setValue(
-                    CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_0));
-                userItem.getItemProperty(TableProperty.Icon).setValue(new CmsCssIcon(OpenCmsTheme.ICON_USER));
-                userItem.getItemProperty(TableProperty.Type).setValue(CmsOuTreeType.USER);
+                for (I_CmsOuTreeType treeType : m_app.getTreeTypeProvider().getTreeTypes()) {
+                    if (treeType.showInOuTable() && treeType.isValidForOu(m_cms, m_parentOu)) {
+                        Item item = m_container.addItem(treeType.getId());
+                        item.getItemProperty(TableProperty.Name).setValue(treeType.getName());
+                        item.getItemProperty(TableProperty.Icon).setValue(treeType.getIcon());
+                        item.getItemProperty(TableProperty.Type).setValue(treeType);
+                    }
+                }
             }
             List<CmsOrganizationalUnit> webOus = new ArrayList<CmsOrganizationalUnit>();
             for (CmsOrganizationalUnit ou : OpenCms.getOrgUnitManager().getOrganizationalUnits(

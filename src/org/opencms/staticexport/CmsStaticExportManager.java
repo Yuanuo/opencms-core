@@ -28,7 +28,7 @@
 package org.opencms.staticexport;
 
 import org.opencms.ade.detailpage.CmsDetailPageUtil;
-import org.opencms.ade.detailpage.I_CmsDetailPageFinder;
+import org.opencms.ade.detailpage.I_CmsDetailPageHandler;
 import org.opencms.db.CmsExportPoint;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
@@ -598,7 +598,8 @@ public class CmsStaticExportManager implements I_CmsEventListener {
             i18nInfo.getEncoding(),
             remoteAddr,
             CmsContextInfo.CURRENT_TIME,
-            cms.getRequestContext().getOuFqn());
+            cms.getRequestContext().getOuFqn(),
+            cms.getRequestContext().isForceAbsoluteLinks());
         CmsObject exportCms = OpenCms.initCmsObject(null, contextInfo);
 
         // only export those resources where the export property is set
@@ -674,7 +675,8 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                     // write to rfs
                     exported = true;
                     String locRfsName = rfsName;
-                    if (locales.contains(locale)) {
+                    // in case of the default locale, this would either be wrong or the identity substitution
+                    if (!locale.equals(CmsLocaleManager.getDefaultLocale()) && locales.contains(locale)) {
                         locRfsName = rule.getLocalizedRfsName(rfsName, "/");
                     }
                     writeResource(req, rule.getExportPath(), locRfsName, resource, content);
@@ -1332,7 +1334,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                 // Accessing the ADEManager during setup may not work.
                 try {
                     vfsRes = cms.readResource(vfsName);
-                    I_CmsDetailPageFinder finder = OpenCms.getADEManager().getDetailPageFinder();
+                    I_CmsDetailPageHandler finder = OpenCms.getADEManager().getDetailPageHandler();
                     String detailPage = finder.getDetailPage(
                         cms,
                         vfsRes.getRootPath(),

@@ -27,6 +27,8 @@
 
 package org.opencms.ui.apps;
 
+import org.opencms.main.CmsLog;
+import org.opencms.main.OpenCms;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.I_CmsAppView;
@@ -36,10 +38,13 @@ import org.opencms.ui.components.CmsAppViewLayout;
 import org.opencms.ui.components.I_CmsWindowCloseListener;
 import org.opencms.ui.components.OpenCmsTheme;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+
+import org.apache.commons.logging.Log;
 
 import com.vaadin.event.Action;
 import com.vaadin.event.Action.Handler;
@@ -47,9 +52,11 @@ import com.vaadin.event.ShortcutAction;
 import com.vaadin.navigator.ViewChangeListener;
 import com.vaadin.server.Page.BrowserWindowResizeEvent;
 import com.vaadin.server.Page.BrowserWindowResizeListener;
-import com.vaadin.v7.ui.Label;
+import com.vaadin.ui.Dependency;
+import com.vaadin.ui.Dependency.Type;
+import com.vaadin.ui.Label;
 import com.vaadin.ui.UI;
-import com.vaadin.v7.ui.VerticalLayout;
+import com.vaadin.ui.VerticalLayout;
 import com.vaadin.ui.themes.ValoTheme;
 
 /**
@@ -115,6 +122,9 @@ implements ViewChangeListener, I_CmsWindowCloseListener, I_CmsAppView, Handler, 
 
     /** The serial version id. */
     private static final long serialVersionUID = -8128528863875050216L;
+
+    /** Logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsAppView.class);
 
     /** The current app. */
     private I_CmsWorkplaceApp m_app;
@@ -220,6 +230,7 @@ implements ViewChangeListener, I_CmsWindowCloseListener, I_CmsAppView, Handler, 
      */
     public void enter(String newState) {
 
+        injectAdditionalStyles();
         if (newState.startsWith(NavigationState.PARAM_SEPARATOR)) {
             newState = newState.substring(1);
         }
@@ -377,5 +388,20 @@ implements ViewChangeListener, I_CmsWindowCloseListener, I_CmsAppView, Handler, 
     public String toString() {
 
         return "appView " + getName() + System.identityHashCode(this) + " (" + m_app + ")";
+    }
+
+    /**
+     * Inject external stylesheets.
+     */
+    private void injectAdditionalStyles() {
+
+        try {
+            Collection<String> stylesheets = OpenCms.getWorkplaceAppManager().getAdditionalStyleSheets();
+            for (String stylesheet : stylesheets) {
+                A_CmsUI.get().getPage().addDependency(new Dependency(Type.STYLESHEET, stylesheet));
+            }
+        } catch (Exception e) {
+            LOG.warn(e.getLocalizedMessage(), e);
+        }
     }
 }

@@ -27,6 +27,7 @@
 
 package org.opencms.ade.galleries;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.galleries.CmsGalleryFilteredNavTreeBuilder.NavigationNode;
 import org.opencms.ade.galleries.preview.I_CmsPreviewProvider;
 import org.opencms.ade.galleries.shared.CmsGalleryConfiguration;
@@ -53,6 +54,7 @@ import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
 import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.types.CmsResourceTypeBinary;
+import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.file.types.CmsResourceTypeImage;
 import org.opencms.file.types.CmsResourceTypePointer;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
@@ -98,10 +100,13 @@ import org.opencms.workplace.CmsWorkplaceMessages;
 import org.opencms.workplace.CmsWorkplaceSettings;
 import org.opencms.workplace.explorer.CmsResourceUtil;
 import org.opencms.xml.containerpage.CmsADESessionCache;
+import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
 
+import java.text.Collator;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -322,6 +327,11 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
             return o1Path.compareTo(o2Path);
         }
     };
+
+    /** The dynamic function resource type names. */
+    private static final Set<String> FUNCTION_TYPES = new HashSet<>(
+        Arrays.asList(
+            new String[] {CmsXmlDynamicFunctionHandler.TYPE_FUNCTION, CmsResourceTypeFunctionConfig.TYPE_NAME}));
 
     /** The instance of the resource manager. */
     CmsResourceManager m_resourceManager;
@@ -587,8 +597,9 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
                 public int compare(CmsResourceTypeBean first, CmsResourceTypeBean second) {
 
                     return ComparisonChain.start().compare(searchTypeRank(first), searchTypeRank(second)).compare(
-                        first.getType(),
-                        second.getType()).result();
+                        first.getTitle(),
+                        second.getTitle(),
+                        Collator.getInstance(getWorkplaceLocale())).compare(first.getType(), second.getType()).result();
                 }
 
                 int searchTypeRank(CmsResourceTypeBean type) {
@@ -603,7 +614,6 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
             });
 
         }
-
         return result;
     }
 
@@ -1473,6 +1483,19 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
     }
 
     /**
+     * Returns the workplace locale from the current user's settings.<p>
+     *
+     * @return the workplace locale
+     */
+    Locale getWorkplaceLocale() {
+
+        if (m_wpLocale == null) {
+            m_wpLocale = OpenCms.getWorkplaceManager().getWorkplaceLocale(getCmsObject());
+        }
+        return m_wpLocale;
+    }
+
+    /**
      * Creates the sitemap entry bean for a resource.<p>
      *
      * @param cms the current CMS context
@@ -1579,7 +1602,8 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
                     title = getCmsObject().readPropertyObject(
                         sitePath,
                         CmsPropertyDefinition.PROPERTY_TITLE,
-                        false).getValue("");
+                        false,
+                        getWorkplaceLocale()).getValue("");
                 } catch (CmsException e) {
                     // error reading title property
                     logError(e);
@@ -1715,6 +1739,9 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
             bean.addAdditionalInfo(
                 Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_RESULT_LABEL_DESCRIPTION_0),
                 description);
+            if (sResult.getResourceType().equals(CmsResourceTypeFunctionConfig.TYPE_NAME)) {
+                bean.setSubTitle(description);
+            }
         } else {
             bean.setDescription(resourceTypeDisplayName);
         }
@@ -2603,19 +2630,6 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
     }
 
     /**
-     * Returns the workplace locale from the current user's settings.<p>
-     *
-     * @return the workplace locale
-     */
-    private Locale getWorkplaceLocale() {
-
-        if (m_wpLocale == null) {
-            m_wpLocale = OpenCms.getWorkplaceManager().getWorkplaceLocale(getCmsObject());
-        }
-        return m_wpLocale;
-    }
-
-    /**
      * Returns the workplace settings of the current user.<p>
      *
      * @return the workplace settings
@@ -2740,6 +2754,15 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
             params.setDateLastModifiedTimeRange(Long.MIN_VALUE, dateModifiedEnd);
         }
         params.setIgnoreSearchExclude(searchData.isIgnoreSearchExclude());
+        if (GalleryMode.ade.equals(searchData.getGalleryMode())) {
+            if (searchData.getTypes().isEmpty() || !Collections.disjoint(FUNCTION_TYPES, searchData.getTypes())) {
+                CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(
+                    cms,
+                    cms.getRequestContext().addSiteRoot(searchData.getReferencePath()));
+                // in case a restricted set of functions is configured, remove all other functions
+                params.setAllowedFunctions(config.getDynamicFunctions());
+            }
+        }
         return params;
     }
 
@@ -3050,7 +3073,14 @@ public class CmsGalleryService extends CmsGwtService implements I_CmsGalleryServ
             ? searchObj.getGalleries().get(0)
             : searchObj.getFolders().iterator().next();
             try {
-                CmsResource targetRes = searchCms.readResource(target, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+                CmsResource targetRes;
+                if (searchCms.existsResource(target, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED)) {
+                    targetRes = searchCms.readResource(target, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+                } else {
+                    CmsObject rootCms = OpenCms.initCmsObject(searchCms);
+                    rootCms.getRequestContext().setSiteRoot("");
+                    targetRes = rootCms.readResource(target, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+                }
                 searchObj.setNoUploadReason(
                     new CmsResourceUtil(searchCms, targetRes).getNoEditReason(getWorkplaceLocale(), true));
             } catch (CmsException e) {

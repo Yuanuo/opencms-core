@@ -27,6 +27,8 @@
 
 package org.opencms.ui.contextmenu;
 
+import static org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
+import static org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.controlpermission;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.defaultfile;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.deleted;
@@ -42,6 +44,7 @@ import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notdeleted;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notinproject;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notnew;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notonline;
+import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notpointer;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.notunchangedfile;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.otherlock;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.pagefolder;
@@ -53,8 +56,6 @@ import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.rolewpuser;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.unlocked;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.writepermisssion;
 import static org.opencms.ui.contextmenu.CmsVisibilityCheckFlag.xmlunmarshal;
-import static org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
-import static org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
 
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
@@ -75,8 +76,6 @@ import org.opencms.security.CmsRole;
 import org.opencms.ui.I_CmsDialogContext;
 import org.opencms.ui.editors.messagebundle.CmsMessageBundleEditorTypes.BundleType;
 import org.opencms.workplace.explorer.CmsResourceUtil;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
-import org.opencms.workplace.explorer.menu.Messages;
 import org.opencms.xml.content.CmsXmlContentFactory;
 
 import java.util.Set;
@@ -131,6 +130,7 @@ public final class CmsStandardVisibilityCheck extends A_CmsSimpleVisibilityCheck
     /** Like DEFAULT, but only active for files. */
     public static final CmsStandardVisibilityCheck EDIT = new CmsStandardVisibilityCheck(
         file,
+        notpointer,
         roleeditor,
         notonline,
         notdeleted,
@@ -256,6 +256,7 @@ public final class CmsStandardVisibilityCheck extends A_CmsSimpleVisibilityCheck
      * @param flags the flags indicating which checks to perform
      */
     public CmsStandardVisibilityCheck(CmsVisibilityCheckFlag... flags) {
+
         for (CmsVisibilityCheckFlag flag : flags) {
             m_flags.add(flag);
         }
@@ -354,6 +355,13 @@ public final class CmsStandardVisibilityCheck extends A_CmsSimpleVisibilityCheck
                 return VISIBILITY_INVISIBLE;
             }
 
+            if (flag(notpointer)
+                && OpenCms.getResourceManager().matchResourceType(
+                    CmsResourceTypePointer.getStaticTypeName(),
+                    resource.getTypeId())) {
+                return VISIBILITY_INVISIBLE;
+            }
+
             if (flag(replacable)) {
                 I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(resource);
                 boolean usesDumpLoader = type.getLoaderId() == CmsDumpLoader.RESOURCE_LOADER_ID;
@@ -367,6 +375,7 @@ public final class CmsStandardVisibilityCheck extends A_CmsSimpleVisibilityCheck
                 I_CmsResourceType type = resUtil.getResourceType();
                 boolean hasSourcecodeEditor = (type instanceof CmsResourceTypeXmlContent)
                     || (type instanceof CmsResourceTypeXmlPage)
+                    || (type instanceof CmsResourceTypePointer)
                     || OpenCms.getResourceManager().matchResourceType(
                         BundleType.PROPERTY.toString(),
                         resource.getTypeId());

@@ -32,28 +32,34 @@ import org.opencms.file.CmsUser;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.CmsSessionInfo;
+import org.opencms.main.CmsSystemInfo;
 import org.opencms.main.OpenCms;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
+import org.opencms.ui.apps.A_CmsWorkplaceApp;
 import org.opencms.ui.apps.CmsFileExplorerConfiguration;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.apps.sessions.CmsSessionsTable.TableProperty;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsUserInfo;
 import org.opencms.ui.components.OpenCmsTheme;
+import org.opencms.util.CmsDateUtil;
 
+import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.logging.Log;
 
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
-import com.vaadin.v7.ui.VerticalLayout;
 import com.vaadin.ui.Window;
+import com.vaadin.v7.ui.VerticalLayout;
 
 /**
  * Dialog to show user information and to switch to user session.<p>
@@ -210,7 +216,7 @@ public class CmsUserInfoDialog extends CmsBasicDialog {
             inacTime = new Long(System.currentTimeMillis() - m_user.getLastlogin());
             neverActive = m_user.getLastlogin() == 0L;
         } else {
-            inacTime = new Long(System.currentTimeMillis() - currentSession.getTimeUpdated());
+            inacTime = new Long(System.currentTimeMillis() - currentSession.getTimeLastAction());
         }
 
         String[] inactiveTime = CmsSessionInfo.getHourMinuteSecondTimeString(inacTime.longValue());
@@ -228,6 +234,13 @@ public class CmsUserInfoDialog extends CmsBasicDialog {
                 res.add(getLastLoginMessage(inacTime));
             }
         }
+        res.add(
+            CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_DATE_CREATED_0)
+                + ": "
+                + CmsDateUtil.getDateTime(
+                    new Date(m_user.getDateCreated()),
+                    DateFormat.SHORT,
+                    A_CmsUI.get().getLocale()));
         if (currentSession != null) {
             res.add(TableProperty.Site.getLocalizedMessage() + ": " + getSiteTitle(currentSession));
 
@@ -346,19 +359,19 @@ public class CmsUserInfoDialog extends CmsBasicDialog {
                             session);
 
                         if (path == null) {
-                            path = CmsVaadinUtils.getWorkplaceLink()
-                                + "?_lrid="
-                                + (new Date()).getTime()
-                                + "#!"
-                                + CmsFileExplorerConfiguration.APP_ID
-                                + "/"
-                                + session.getProject().getStringValue()
-                                + "!!"
-                                + session.getSiteRoot()
-                                + "!!!!";
+                            Map<String, String[]> parameters = new HashMap<>();
+                            parameters.put("_lrid", new String[] {String.valueOf(System.currentTimeMillis())});
+                            path = CmsVaadinUtils.getWorkplaceLink(
+                                CmsFileExplorerConfiguration.APP_ID,
+                                session.getProject().getStringValue()
+                                    + A_CmsWorkplaceApp.PARAM_SEPARATOR
+                                    + session.getSiteRoot()
+                                    + A_CmsWorkplaceApp.PARAM_SEPARATOR
+                                    + A_CmsWorkplaceApp.PARAM_SEPARATOR,
+                                parameters);
                         }
                         A_CmsUI.get().getPage().setLocation(path);
-                        if (path.contains("workplace#")) {
+                        if (path.contains(CmsSystemInfo.WORKPLACE_PATH + "#")) {
                             A_CmsUI.get().getPage().reload();
                         }
                     } catch (CmsException e) {

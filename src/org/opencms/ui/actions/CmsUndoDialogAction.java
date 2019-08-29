@@ -30,12 +30,11 @@ package org.opencms.ui.actions;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.ui.I_CmsDialogContext;
-import org.opencms.ui.I_CmsDialogContext.ContextType;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.CmsStandardVisibilityCheck;
 import org.opencms.ui.contextmenu.I_CmsHasMenuItemVisibility;
 import org.opencms.ui.dialogs.CmsUndoDialog;
 import org.opencms.workplace.explorer.Messages;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 
 import java.util.List;
 import java.util.Map;
@@ -99,17 +98,6 @@ public class CmsUndoDialogAction extends A_CmsWorkplaceAction implements I_CmsAD
     public CmsMenuItemVisibilityMode getVisibility(CmsObject cms, List<CmsResource> resources) {
 
         return VISIBILITY.getVisibility(cms, resources);
-    }
-
-    /**
-     * @see org.opencms.ui.actions.A_CmsWorkplaceAction#getVisibility(org.opencms.ui.I_CmsDialogContext)
-     */
-    @Override
-    public CmsMenuItemVisibilityMode getVisibility(I_CmsDialogContext context) {
-
-        return ContextType.sitemapToolbar.equals(context.getContextType())
-        ? CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE
-        : super.getVisibility(context);
     }
 
     /**

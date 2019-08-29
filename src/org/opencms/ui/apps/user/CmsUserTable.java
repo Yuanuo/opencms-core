@@ -35,23 +35,23 @@ import org.opencms.main.CmsLog;
 import org.opencms.main.CmsSessionInfo;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsRole;
+import org.opencms.security.CmsRoleViolationException;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsCssIcon;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.apps.sessions.CmsKillSessionDialog;
 import org.opencms.ui.apps.sessions.CmsUserInfoDialog;
-import org.opencms.ui.apps.user.CmsOuTree.CmsOuTreeType;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.ui.components.CmsConfirmationDialog;
 import org.opencms.ui.components.OpenCmsTheme;
 import org.opencms.ui.contextmenu.CmsContextMenu;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry;
 import org.opencms.util.CmsDateUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 
 import java.text.DateFormat;
 import java.util.ArrayList;
@@ -85,6 +85,91 @@ import com.vaadin.v7.ui.VerticalLayout;
  *
  */
 public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsToggleTable {
+
+    /**Table properties. */
+    public enum TableProperty {
+        /**Last login. */
+        Created(Messages.GUI_USERMANAGEMENT_USER_DATE_CREATED_0, Long.class, new Long(0L)),
+        /**Is the user disabled? */
+        DISABLED("", Boolean.class, new Boolean(false)),
+        /**From Other ou?. */
+        FROMOTHEROU("", Boolean.class, new Boolean(false)),
+        /**Description. */
+        FullName(Messages.GUI_USERMANAGEMENT_USER_NAME_0, String.class, ""),
+        /**Icon. */
+        Icon(null, Resource.class, new CmsCssIcon("oc-icon-24-user")),
+        /**IsIndirect?. */
+        INDIRECT("", Boolean.class, new Boolean(false)),
+        /**Last login. */
+        LastLogin(Messages.GUI_USERMANAGEMENT_USER_LAST_LOGIN_0, Long.class, new Long(0L)),
+        /**Name. */
+        Name(Messages.GUI_USERMANAGEMENT_USER_USER_0, String.class, ""),
+        /**Is the user new? */
+        NEWUSER("", Boolean.class, new Boolean(false)),
+        /**OU. */
+        OU(Messages.GUI_USERMANAGEMENT_USER_OU_0, String.class, ""),
+        /**Status. */
+        STATUS("", Integer.class, new Integer(0)),
+        /**Full system Name. */
+        SystemName("", String.class, "");
+
+        /**Default value for column.*/
+        private Object m_defaultValue;
+
+        /**Header Message key.*/
+        private String m_headerMessage;
+
+        /**Type of column property.*/
+        private Class<?> m_type;
+
+        /**
+         * constructor.<p>
+         *
+         * @param name Name
+         * @param type type
+         * @param defaultValue value
+         */
+        TableProperty(String name, Class<?> type, Object defaultValue) {
+
+            m_headerMessage = name;
+            m_type = type;
+            m_defaultValue = defaultValue;
+        }
+
+        /**
+         * The default value.<p>
+         *
+         * @return the default value object
+         */
+        Object getDefault() {
+
+            return m_defaultValue;
+        }
+
+        /**
+         * Gets the name of the property.<p>
+         *
+         * @return a name
+         */
+        String getName() {
+
+            if (!CmsStringUtil.isEmptyOrWhitespaceOnly(m_headerMessage)) {
+                return CmsVaadinUtils.getMessageText(m_headerMessage);
+            }
+            return "";
+        }
+
+        /**
+         * Gets the type of property.<p>
+         *
+         * @return the type
+         */
+        Class<?> getType() {
+
+            return m_type;
+        }
+
+    }
 
     /**
      *Entry to addition info dialog.<p>
@@ -195,10 +280,9 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (context.size() > 1) {
-                return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
-            }
-            return onlyVisibleForOU(new CmsUUID(context.iterator().next()));
+            CmsUUID id = new CmsUUID(context.iterator().next());
+            return CmsMenuItemVisibilityMode.activeInactive(
+                m_app.canEditUser(id) && onlyVisibleForOU(id) && (context.size() <= 1));
         }
 
     }
@@ -215,7 +299,8 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
 
             Window window = CmsBasicDialog.prepareWindow(DialogWidth.max);
 
-            window.setContent(new CmsUserEditGroupDialog(m_cms, new CmsUUID(context.iterator().next()), window, m_app));
+            window.setContent(
+                new CmsUserEditGroupsDialog(m_cms, new CmsUUID(context.iterator().next()), window, m_app));
             A_CmsUI.get().addWindow(window);
         }
 
@@ -232,10 +317,8 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (context.size() > 1) {
-                return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
-            }
-            return onlyVisibleForOU(new CmsUUID(context.iterator().next()));
+            return CmsMenuItemVisibilityMode.activeInactive(
+                onlyVisibleForOU(new CmsUUID(context.iterator().next())) && (context.size() <= 1));
         }
 
     }
@@ -270,10 +353,8 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (context.size() > 1) {
-                return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
-            }
-            return onlyVisibleForOU(new CmsUUID(context.iterator().next()));
+            return CmsMenuItemVisibilityMode.activeInactive(
+                onlyVisibleForOU(new CmsUUID(context.iterator().next())) && (context.size() <= 1));
         }
 
     }
@@ -512,7 +593,7 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
                 String confirmText = "";
                 String caption = "";
                 Runnable okRunnable = null;
-                if (m_type.equals(CmsOuTreeType.GROUP)) {
+                if (m_type.isGroup()) {
                     caption = CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_REMOVE_USER_FROM_GROUP_0);
                     confirmText = CmsVaadinUtils.getMessageText(
                         Messages.GUI_USERMANAGEMENT_REMOVE_USER_FROM_GROUP_CONFIRM_2,
@@ -577,7 +658,7 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          */
         public String getTitle(Locale locale) {
 
-            if (m_type.equals(CmsOuTreeType.GROUP)) {
+            if (m_type.isGroup()) {
                 return CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_REMOVE_USER_FROM_GROUP_0);
             }
             return CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_REMOVE_USER_FROM_ROLE_0);
@@ -587,6 +668,10 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          * @see org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry#getVisibility(java.lang.Object)
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
+
+            if (!m_app.canRemoveGroupMemebers(m_group)) {
+                return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
+            }
 
             if (context.size() > 1) {
                 return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
@@ -680,7 +765,7 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
                             }
                             window.close();
                         } catch (CmsException e) {
-                            //
+                            LOG.error("Unable to swith user", e);
                         }
                     }
                 },
@@ -708,138 +793,44 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
          */
         public CmsMenuItemVisibilityMode getVisibility(Set<String> context) {
 
-            if (context.size() > 1) {
-                return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
+            try {
+                OpenCms.getRoleManager().checkRole(m_cms, CmsRole.ADMINISTRATOR);
+                return CmsMenuItemVisibilityMode.activeInactive(
+                    onlyVisibleForOU(new CmsUUID(context.iterator().next())) && (context.size() <= 1));
+            } catch (CmsRoleViolationException e) {
+                return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
             }
-            return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
+
         }
 
     }
-
-    /**Table properties. */
-    enum TableProperty {
-        /**Icon. */
-        Icon(null, Resource.class, new CmsCssIcon("oc-icon-24-user")),
-        /**Full system Name. */
-        SystemName("", String.class, ""),
-        /**Name. */
-        Name(Messages.GUI_USERMANAGEMENT_USER_USER_0, String.class, ""),
-        /**Description. */
-        FullName(Messages.GUI_USERMANAGEMENT_USER_NAME_0, String.class, ""),
-        /**OU. */
-        OU(Messages.GUI_USERMANAGEMENT_USER_OU_0, String.class, ""),
-        /**Last login. */
-        LastLogin(Messages.GUI_USERMANAGEMENT_USER_LAST_LOGIN_0, Long.class, new Long(0L)),
-        /**IsIndirect?. */
-        INDIRECT("", Boolean.class, new Boolean(false)),
-        /**From Other ou?. */
-        FROMOTHEROU("", Boolean.class, new Boolean(false)),
-        /**Is the user disabled? */
-        DISABLED("", Boolean.class, new Boolean(false)),
-        /**Is the user new? */
-        NEWUSER("", Boolean.class, new Boolean(false)),
-        /**Status. */
-        STATUS("", Integer.class, new Integer(0));
-
-        /**Default value for column.*/
-        private Object m_defaultValue;
-
-        /**Header Message key.*/
-        private String m_headerMessage;
-
-        /**Type of column property.*/
-        private Class<?> m_type;
-
-        /**
-         * constructor.<p>
-         *
-         * @param name Name
-         * @param type type
-         * @param defaultValue value
-         */
-        TableProperty(String name, Class<?> type, Object defaultValue) {
-
-            m_headerMessage = name;
-            m_type = type;
-            m_defaultValue = defaultValue;
-        }
-
-        /**
-         * The default value.<p>
-         *
-         * @return the default value object
-         */
-        Object getDefault() {
-
-            return m_defaultValue;
-        }
-
-        /**
-         * Gets the name of the property.<p>
-         *
-         * @return a name
-         */
-        String getName() {
-
-            if (!CmsStringUtil.isEmptyOrWhitespaceOnly(m_headerMessage)) {
-                return CmsVaadinUtils.getMessageText(m_headerMessage);
-            }
-            return "";
-        }
-
-        /**
-         * Gets the type of property.<p>
-         *
-         * @return the type
-         */
-        Class<?> getType() {
-
-            return m_type;
-        }
-
-    }
-
-    /**vaadin serial id.*/
-    private static final long serialVersionUID = 7863356514060544048L;
-
-    /** Log instance for this class. */
-    static final Log LOG = CmsLog.getLog(CmsUserTable.class);
 
     /**Map for password status of user. */
     protected static final Map<CmsUUID, Boolean> USER_PASSWORD_STATUS = new HashMap<CmsUUID, Boolean>();
 
-    /**Indexed container. */
-    private IndexedContainer m_container;
+    /** Log instance for this class. */
+    static final Log LOG = CmsLog.getLog(CmsUserTable.class);
 
-    /**CmsObject.*/
-    CmsObject m_cms;
-
-    /** The context menu. */
-    CmsContextMenu m_menu;
+    /**vaadin serial id.*/
+    private static final long serialVersionUID = 7863356514060544048L;
 
     /**Name of group to show user for, or null. */
     protected String m_group;
 
-    /** The available menu entries. */
-    private List<I_CmsSimpleContextMenuEntry<Set<String>>> m_menuEntries;
+    /**Type to be shown. */
+    protected I_CmsOuTreeType m_type;
 
     /**The app.*/
     CmsAccountsApp m_app;
 
-    /**Type to be shown. */
-    protected CmsOuTreeType m_type;
-
-    /**List of user. */
-    private List<CmsUser> m_user;
-
-    /**flag indicates if all indirect items (for roles or sub OUs) are loaded. */
-    private boolean m_fullLoaded;
+    /**CmsObject.*/
+    CmsObject m_cms;
 
     /**List of indirect user. */
     List<CmsUser> m_indirects;
 
-    /**vaadin component.*/
-    private VerticalLayout m_emptyLayout;
+    /** The context menu. */
+    CmsContextMenu m_menu;
 
     /**OU. */
     String m_ou;
@@ -850,32 +841,20 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     /**Set of user with Flag to reset password. */
     private Set<CmsUUID> m_checkedUserPasswordReset;
 
-    /**
-     * public constructor.<p>
-     *
-     * @param ou name
-     * @param app the app
-     * @param showAll boolean
-     */
-    public CmsUserTable(String ou, CmsAccountsApp app, boolean showAll) {
+    /**Indexed container. */
+    private IndexedContainer m_container;
 
-        m_ou = ou.equals("/") ? "" : ou;
-        m_app = app;
-        try {
-            m_cms = getCmsObject();
-            m_type = CmsOuTreeType.USER;
-            List<CmsUser> directs = OpenCms.getOrgUnitManager().getUsersWithoutAdditionalInfo(m_cms, ou, false);
-            m_indirects = new ArrayList<CmsUser>();
-            if (showAll) {
-                setAllUser(directs);
-            } else {
-                m_user = directs;
-            }
-            init(showAll);
-        } catch (CmsException e) {
-            LOG.error("Unable to read user.", e);
-        }
-    }
+    /**vaadin component.*/
+    private VerticalLayout m_emptyLayout;
+
+    /**flag indicates if all indirect items (for roles or sub OUs) are loaded. */
+    private boolean m_fullyLoaded;
+
+    /** The available menu entries. */
+    private List<I_CmsSimpleContextMenuEntry<Set<String>>> m_menuEntries;
+
+    /**List of user. */
+    private List<CmsUser> m_users;
 
     /**
      * puiblic constructor.<p>
@@ -886,7 +865,12 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
      * @param showAll show all user including inherited?
      * @param app the app
      */
-    public CmsUserTable(String ou, CmsUUID groupID, CmsOuTreeType cmsOuTreeType, boolean showAll, CmsAccountsApp app) {
+    public CmsUserTable(
+        String ou,
+        CmsUUID groupID,
+        I_CmsOuTreeType cmsOuTreeType,
+        boolean showAll,
+        CmsAccountsApp app) {
 
         m_ou = ou.equals("/") ? "" : ou;
         m_app = app;
@@ -896,12 +880,12 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
             m_type = cmsOuTreeType;
 
             m_indirects = new ArrayList<CmsUser>();
-            if (m_type.equals(CmsOuTreeType.GROUP)) {
+            if (m_type.isGroup()) {
                 m_group = m_cms.readGroup(groupID).getName();
-                m_user = m_cms.getUsersOfGroup(m_group, true);
-                m_fullLoaded = true;
+                m_users = m_cms.getUsersOfGroup(m_group, true);
+                m_fullyLoaded = true;
             }
-            if (m_type.equals(CmsOuTreeType.ROLE)) {
+            if (m_type.isRole()) {
                 m_group = CmsRole.valueOfId(groupID).forOrgUnit(ou).getFqn();
                 List<CmsUser> directs = OpenCms.getRoleManager().getUsersOfRole(
                     m_cms,
@@ -909,15 +893,43 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
                     true,
                     true);
                 if (showAll) {
-                    setAllUser(directs);
+                    setAllUsers(directs);
                 } else {
-                    m_user = directs;
+                    m_users = directs;
                 }
             }
 
             init(showAll);
         } catch (CmsException e) {
             LOG.error("Unable to read user", e);
+        }
+    }
+
+    /**
+     * public constructor.<p>
+     *
+     * @param ou name
+     * @param type the tree type
+     * @param app the app
+     * @param showAll boolean
+     */
+    public CmsUserTable(String ou, I_CmsOuTreeType type, CmsAccountsApp app, boolean showAll) {
+
+        m_ou = ou.equals("/") ? "" : ou;
+        m_app = app;
+        try {
+            m_cms = getCmsObject();
+            m_type = type;
+            List<CmsUser> directs = m_app.getUsersWithoutAdditionalInfo(m_cms, type, ou, false);
+            m_indirects = new ArrayList<CmsUser>();
+            if (showAll) {
+                setAllUsers(directs);
+            } else {
+                m_users = directs;
+            }
+            init(showAll);
+        } catch (CmsException e) {
+            LOG.error("Unable to read user.", e);
         }
     }
 
@@ -936,6 +948,9 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
 
     }
 
+    /**
+     * @see org.opencms.ui.apps.user.I_CmsToggleTable#getCurrentSize()
+     */
     public int getCurrentSize() {
 
         return this.size();
@@ -955,20 +970,57 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     }
 
     /**
+     * Gets currently visible user.
+     *
+     * @return List of user
+     */
+    public List<CmsUser> getVisibleUser() {
+
+        if (!m_fullyLoaded) {
+            return m_users;
+        }
+        if (size() == m_users.size()) {
+            return m_users;
+        }
+        List<CmsUser> directs = new ArrayList<CmsUser>();
+        for (CmsUser user : m_users) {
+            if (!m_indirects.contains(user)) {
+                directs.add(user);
+            }
+        }
+        return directs;
+    }
+
+    /**
      * @see org.opencms.ui.apps.user.I_CmsToggleTable#toggle(boolean)
      */
     public void toggle(boolean pressed) {
 
         try {
 
-            if (pressed && !m_fullLoaded) {
-                setAllUser(m_user);
+            if (pressed && !m_fullyLoaded) {
+                setAllUsers(m_users);
             }
         } catch (CmsException e) {
-            m_fullLoaded = false;
+            m_fullyLoaded = false;
             LOG.error("Error loading user", e);
         }
         fillContainer(pressed);
+    }
+
+    /**
+     * Adds given user to given IndexedContainer.<p>
+     *
+     * @param container to add the user to
+     * @param user to add
+     */
+    protected void addUserToContainer(IndexedContainer container, CmsUser user) {
+
+        if (m_blackList.contains(user)) {
+            return;
+        }
+        Item item = container.addItem(user);
+        fillItem(item, user);
     }
 
     /**
@@ -981,7 +1033,7 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
         m_container.removeAllContainerFilters();
         m_container.removeAllItems();
         m_checkedUserPasswordReset = new HashSet<CmsUUID>();
-        for (CmsUser user : m_user) {
+        for (CmsUser user : m_users) {
             if (showIndirect || !m_indirects.contains(user)) {
                 addUserToContainer(m_container, user);
             }
@@ -990,21 +1042,231 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     }
 
     /**
+     * Fills the container item for a user.<p>
+     *
+     * @param item the item
+     * @param user the user
+     */
+    protected void fillItem(Item item, CmsUser user) {
+
+        item.getItemProperty(TableProperty.Name).setValue(user.getSimpleName());
+        item.getItemProperty(TableProperty.FullName).setValue(user.getFullName());
+        item.getItemProperty(TableProperty.SystemName).setValue(user.getName());
+        boolean disabled = !user.isEnabled();
+        item.getItemProperty(TableProperty.DISABLED).setValue(new Boolean(disabled));
+        boolean newUser = user.getLastlogin() == 0L;
+        item.getItemProperty(TableProperty.NEWUSER).setValue(new Boolean(newUser));
+        try {
+            item.getItemProperty(TableProperty.OU).setValue(
+                OpenCms.getOrgUnitManager().readOrganizationalUnit(m_cms, user.getOuFqn()).getDisplayName(
+                    A_CmsUI.get().getLocale()));
+        } catch (CmsException e) {
+            LOG.error("Can't read OU", e);
+        }
+        item.getItemProperty(TableProperty.LastLogin).setValue(new Long(user.getLastlogin()));
+        item.getItemProperty(TableProperty.Created).setValue(new Long(user.getDateCreated()));
+        item.getItemProperty(TableProperty.INDIRECT).setValue(new Boolean(m_indirects.contains(user)));
+        item.getItemProperty(TableProperty.FROMOTHEROU).setValue(new Boolean(!user.getOuFqn().equals(m_ou)));
+        item.getItemProperty(TableProperty.STATUS).setValue(getStatusInt(disabled, newUser));
+    }
+
+    /**
+     * initializes table.
+     * @param showAll boolean
+     */
+    protected void init(boolean showAll) {
+
+        m_menu = new CmsContextMenu();
+        m_menu.setAsTableContextMenu(this);
+
+        m_container = new IndexedContainer();
+
+        for (TableProperty prop : TableProperty.values()) {
+            m_container.addContainerProperty(prop, prop.getType(), prop.getDefault());
+            setColumnHeader(prop, prop.getName());
+        }
+        m_app.addUserContainerProperties(m_container);
+        setContainerDataSource(m_container);
+        setItemIconPropertyId(TableProperty.Icon);
+        setRowHeaderMode(RowHeaderMode.ICON_ONLY);
+
+        setColumnWidth(null, 40);
+        setColumnWidth(TableProperty.STATUS, 100);
+        setSelectable(true);
+        setMultiSelect(true);
+
+        setVisibleColumns(TableProperty.Name, TableProperty.OU);
+
+        fillContainer(showAll);
+
+        addItemClickListener(new ItemClickListener() {
+
+            private static final long serialVersionUID = 4807195510202231174L;
+
+            @SuppressWarnings("unchecked")
+            public void itemClick(ItemClickEvent event) {
+
+                changeValueIfNotMultiSelect(event.getItemId());
+
+                if (event.getButton().equals(MouseButton.RIGHT) || (event.getPropertyId() == null)) {
+                    Set<String> userIds = new HashSet<String>();
+                    for (CmsUser user : (Set<CmsUser>)getValue()) {
+                        userIds.add(user.getId().getStringValue());
+                    }
+
+                    m_menu.setEntries(getMenuEntries(), userIds);
+                    m_menu.openForTable(event, event.getItemId(), event.getPropertyId(), CmsUserTable.this);
+                } else if (event.getButton().equals(MouseButton.LEFT)
+                    && TableProperty.Name.equals(event.getPropertyId())) {
+                    CmsUser user = ((Set<CmsUser>)getValue()).iterator().next();
+                    try {
+                        openInfoDialog(user.getId());
+                    } catch (CmsException e) {
+                        LOG.error("Error on opening user info dialog", e);
+                    }
+                }
+
+            }
+
+        });
+        setCellStyleGenerator(new CellStyleGenerator() {
+
+            private static final long serialVersionUID = 4685652851810828147L;
+
+            public String getStyle(Table source, Object itemId, Object propertyId) {
+
+                if (TableProperty.STATUS.equals(propertyId)) {
+                    return getStatusStyleForItem(source.getItem(itemId), (CmsUser)itemId);
+
+                }
+                String css = " ";
+
+                if (((Boolean)(source.getItem(itemId).getItemProperty(
+                    TableProperty.FROMOTHEROU).getValue())).booleanValue()) {
+                    css += OpenCmsTheme.EXPIRED;
+                }
+
+                if (TableProperty.Name.equals(propertyId)) {
+                    css += " " + OpenCmsTheme.HOVER_COLUMN;
+                }
+
+                if (((Boolean)source.getItem(itemId).getItemProperty(
+                    TableProperty.INDIRECT).getValue()).booleanValue()) {
+                    return css + " " + OpenCmsTheme.TABLE_CELL_DISABLED;
+                }
+                return css.length() == 1 ? null : css;
+            }
+
+            private String getStatusStyleForItem(Item item, CmsUser user) {
+
+                if (((Boolean)item.getItemProperty(TableProperty.DISABLED).getValue()).booleanValue()) {
+                    return OpenCmsTheme.TABLE_COLUMN_BOX_GRAY;
+                }
+
+                if (((Boolean)item.getItemProperty(TableProperty.NEWUSER).getValue()).booleanValue()) {
+                    return OpenCmsTheme.TABLE_COLUMN_BOX_BLUE;
+                }
+
+                if (OpenCms.getLoginManager().isUserTempDisabled(user.getName())) {
+                    return OpenCmsTheme.TABLE_COLUMN_BOX_RED;
+                }
+
+                if (isUserPasswordReset(user)) {
+                    return OpenCmsTheme.TABLE_COLUMN_BOX_ORANGE;
+                }
+
+                return OpenCmsTheme.TABLE_COLUMN_BOX_GREEN;
+            }
+        });
+        addGeneratedColumn(TableProperty.STATUS, new ColumnGenerator() {
+
+            private static final long serialVersionUID = -2144476865774782965L;
+
+            public Object generateCell(Table source, Object itemId, Object columnId) {
+
+                return getStatus(
+                    (CmsUser)itemId,
+                    ((Boolean)source.getItem(itemId).getItemProperty(TableProperty.DISABLED).getValue()).booleanValue(),
+                    ((Boolean)source.getItem(itemId).getItemProperty(TableProperty.NEWUSER).getValue()).booleanValue());
+
+            }
+
+        });
+        addGeneratedColumn(TableProperty.LastLogin, new ColumnGenerator() {
+
+            private static final long serialVersionUID = -6781906011584975559L;
+
+            public Object generateCell(Table source, Object itemId, Object columnId) {
+
+                long lastLogin = ((Long)source.getItem(itemId).getItemProperty(
+                    TableProperty.LastLogin).getValue()).longValue();
+                return lastLogin == 0L
+                ? CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_NEVER_LOGGED_IN_0)
+                : CmsDateUtil.getDateTime(new Date(lastLogin), DateFormat.SHORT, A_CmsUI.get().getLocale());
+
+            }
+
+        });
+
+        addGeneratedColumn(TableProperty.Created, new ColumnGenerator() {
+
+            private static final long serialVersionUID = -6781906011584975559L;
+
+            public Object generateCell(Table source, Object itemId, Object columnId) {
+
+                long created = ((Long)source.getItem(itemId).getItemProperty(
+                    TableProperty.Created).getValue()).longValue();
+                return created == 0L
+                ? ""
+                : CmsDateUtil.getDateTime(new Date(created), DateFormat.SHORT, A_CmsUI.get().getLocale());
+
+            }
+
+        });
+
+        setItemDescriptionGenerator(new ItemDescriptionGenerator() {
+
+            private static final long serialVersionUID = 7367011213487089661L;
+
+            public String generateDescription(Component source, Object itemId, Object propertyId) {
+
+                if (TableProperty.STATUS.equals(propertyId)) {
+
+                    return getStatusHelp(
+                        (CmsUser)itemId,
+                        ((Boolean)((Table)source).getItem(itemId).getItemProperty(
+                            TableProperty.DISABLED).getValue()).booleanValue(),
+                        ((Boolean)((Table)source).getItem(itemId).getItemProperty(
+                            TableProperty.NEWUSER).getValue()).booleanValue());
+                }
+                return null;
+            }
+        });
+        setVisibleColumns(
+            TableProperty.STATUS,
+            TableProperty.Name,
+            TableProperty.FullName,
+            TableProperty.OU,
+            TableProperty.LastLogin,
+            TableProperty.Created);
+    }
+
+    /**
      * Visibility which is only active if user is in right ou.<p>
      *
      * @param userId to be checked
      * @return CmsMenuItemVisibilityMode
      */
-    protected CmsMenuItemVisibilityMode onlyVisibleForOU(CmsUUID userId) {
+    protected boolean onlyVisibleForOU(CmsUUID userId) {
 
         try {
             if (m_app.isOUManagable(m_cms.readUser(userId).getOuFqn())) {
-                return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
+                return true;
             }
         } catch (CmsException e) {
             //
         }
-        return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
+        return false;
     }
 
     /**
@@ -1016,7 +1278,7 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     protected CmsMenuItemVisibilityMode onlyVisibleForOU(Set<String> context) {
 
         for (String id : context) {
-            if (onlyVisibleForOU(new CmsUUID(id)).equals(CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE)) {
+            if (!onlyVisibleForOU(new CmsUUID(id))) {
                 return CmsMenuItemVisibilityMode.VISIBILITY_INACTIVE;
             }
         }
@@ -1181,49 +1443,17 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     }
 
     /**
-     * Adds given user to given IndexedContainer.<p>
-     *
-     * @param container to add the user to
-     * @param user to add
-     */
-    private void addUserToContainer(IndexedContainer container, CmsUser user) {
-
-        if (m_blackList.contains(user)) {
-            return;
-        }
-        Item item = container.addItem(user);
-        item.getItemProperty(TableProperty.Name).setValue(user.getSimpleName());
-        item.getItemProperty(TableProperty.FullName).setValue(user.getFullName());
-        item.getItemProperty(TableProperty.SystemName).setValue(user.getName());
-        boolean disabled = !user.isEnabled();
-        item.getItemProperty(TableProperty.DISABLED).setValue(new Boolean(disabled));
-        boolean newUser = user.getLastlogin() == 0L;
-        item.getItemProperty(TableProperty.NEWUSER).setValue(new Boolean(newUser));
-        try {
-            item.getItemProperty(TableProperty.OU).setValue(
-                OpenCms.getOrgUnitManager().readOrganizationalUnit(m_cms, user.getOuFqn()).getDisplayName(
-                    A_CmsUI.get().getLocale()));
-        } catch (CmsException e) {
-            LOG.error("Can't read OU", e);
-        }
-        item.getItemProperty(TableProperty.LastLogin).setValue(new Long(user.getLastlogin()));
-        item.getItemProperty(TableProperty.INDIRECT).setValue(new Boolean(m_indirects.contains(user)));
-        item.getItemProperty(TableProperty.FROMOTHEROU).setValue(new Boolean(!user.getOuFqn().equals(m_ou)));
-        item.getItemProperty(TableProperty.STATUS).setValue(getStatusInt(disabled, newUser));
-    }
-
-    /**
      * Gets list of indirect users to show.<p>
      *
-     * @param allUser all users
-     * @param directUser direct user
+     * @param allUsers all users
+     * @param directUsers direct user
      * @return indirect user
      */
-    private List<CmsUser> getAllowedIndirects(List<CmsUser> allUser, List<CmsUser> directUser) {
+    private List<CmsUser> getAllowedIndirects(List<CmsUser> allUsers, List<CmsUser> directUsers) {
 
         List<CmsUser> res = new ArrayList<CmsUser>();
-        for (CmsUser u : allUser) {
-            if (!directUser.contains(u)) {
+        for (CmsUser u : allUsers) {
+            if (!directUsers.contains(u)) {
                 res.add(u);
             }
         }
@@ -1249,169 +1479,6 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
     }
 
     /**
-     * initializes table.
-     * @param showAll boolean
-     */
-    private void init(boolean showAll) {
-
-        m_menu = new CmsContextMenu();
-        m_menu.setAsTableContextMenu(this);
-
-        m_container = new IndexedContainer();
-
-        for (TableProperty prop : TableProperty.values()) {
-            m_container.addContainerProperty(prop, prop.getType(), prop.getDefault());
-            setColumnHeader(prop, prop.getName());
-        }
-        setContainerDataSource(m_container);
-        setItemIconPropertyId(TableProperty.Icon);
-        setRowHeaderMode(RowHeaderMode.ICON_ONLY);
-
-        setColumnWidth(null, 40);
-        setColumnWidth(TableProperty.STATUS, 100);
-        setSelectable(true);
-        setMultiSelect(true);
-
-        setVisibleColumns(TableProperty.Name, TableProperty.OU);
-
-        fillContainer(showAll);
-
-        addItemClickListener(new ItemClickListener() {
-
-            private static final long serialVersionUID = 4807195510202231174L;
-
-            @SuppressWarnings("unchecked")
-            public void itemClick(ItemClickEvent event) {
-
-                changeValueIfNotMultiSelect(event.getItemId());
-
-                if (event.getButton().equals(MouseButton.RIGHT) || (event.getPropertyId() == null)) {
-                    Set<String> userIds = new HashSet<String>();
-                    for (CmsUser user : (Set<CmsUser>)getValue()) {
-                        userIds.add(user.getId().getStringValue());
-                    }
-
-                    m_menu.setEntries(getMenuEntries(), userIds);
-                    m_menu.openForTable(event, event.getItemId(), event.getPropertyId(), CmsUserTable.this);
-                } else if (event.getButton().equals(MouseButton.LEFT)
-                    && TableProperty.Name.equals(event.getPropertyId())) {
-                    CmsUser user = ((Set<CmsUser>)getValue()).iterator().next();
-                    try {
-                        openInfoDialog(user.getId());
-                    } catch (CmsException e) {
-                        LOG.error("Error on opening user info dialog", e);
-                    }
-                }
-
-            }
-
-        });
-        setCellStyleGenerator(new CellStyleGenerator() {
-
-            private static final long serialVersionUID = 4685652851810828147L;
-
-            public String getStyle(Table source, Object itemId, Object propertyId) {
-
-                if (TableProperty.STATUS.equals(propertyId)) {
-                    return getStatusStyleForItem(source.getItem(itemId), (CmsUser)itemId);
-
-                }
-                String css = " ";
-
-                if (((Boolean)(source.getItem(itemId).getItemProperty(
-                    TableProperty.FROMOTHEROU).getValue())).booleanValue()) {
-                    css += OpenCmsTheme.EXPIRED;
-                }
-
-                if (TableProperty.Name.equals(propertyId)) {
-                    css += " " + OpenCmsTheme.HOVER_COLUMN;
-                }
-
-                if (((Boolean)source.getItem(itemId).getItemProperty(
-                    TableProperty.INDIRECT).getValue()).booleanValue()) {
-                    return css + " " + OpenCmsTheme.TABLE_CELL_DISABLED;
-                }
-                return css.length() == 1 ? null : css;
-            }
-
-            private String getStatusStyleForItem(Item item, CmsUser user) {
-
-                if (((Boolean)item.getItemProperty(TableProperty.DISABLED).getValue()).booleanValue()) {
-                    return OpenCmsTheme.TABLE_COLUMN_BOX_GRAY;
-                }
-
-                if (((Boolean)item.getItemProperty(TableProperty.NEWUSER).getValue()).booleanValue()) {
-                    return OpenCmsTheme.TABLE_COLUMN_BOX_BLUE;
-                }
-
-                if (OpenCms.getLoginManager().isUserTempDisabled(user.getName())) {
-                    return OpenCmsTheme.TABLE_COLUMN_BOX_RED;
-                }
-
-                if (isUserPasswordReset(user)) {
-                    return OpenCmsTheme.TABLE_COLUMN_BOX_ORANGE;
-                }
-
-                return OpenCmsTheme.TABLE_COLUMN_BOX_GREEN;
-            }
-        });
-        addGeneratedColumn(TableProperty.STATUS, new ColumnGenerator() {
-
-            private static final long serialVersionUID = -2144476865774782965L;
-
-            public Object generateCell(Table source, Object itemId, Object columnId) {
-
-                return getStatus(
-                    (CmsUser)itemId,
-                    ((Boolean)source.getItem(itemId).getItemProperty(TableProperty.DISABLED).getValue()).booleanValue(),
-                    ((Boolean)source.getItem(itemId).getItemProperty(TableProperty.NEWUSER).getValue()).booleanValue());
-
-            }
-
-        });
-        addGeneratedColumn(TableProperty.LastLogin, new ColumnGenerator() {
-
-            private static final long serialVersionUID = -6781906011584975559L;
-
-            public Object generateCell(Table source, Object itemId, Object columnId) {
-
-                long lastLogin = ((Long)source.getItem(itemId).getItemProperty(
-                    TableProperty.LastLogin).getValue()).longValue();
-                return lastLogin == 0L
-                ? CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_NEVER_LOGGED_IN_0)
-                : CmsDateUtil.getDateTime(new Date(lastLogin), DateFormat.SHORT, A_CmsUI.get().getLocale());
-
-            }
-
-        });
-
-        setItemDescriptionGenerator(new ItemDescriptionGenerator() {
-
-            private static final long serialVersionUID = 7367011213487089661L;
-
-            public String generateDescription(Component source, Object itemId, Object propertyId) {
-
-                if (TableProperty.STATUS.equals(propertyId)) {
-
-                    return getStatusHelp(
-                        (CmsUser)itemId,
-                        ((Boolean)((Table)source).getItem(itemId).getItemProperty(
-                            TableProperty.DISABLED).getValue()).booleanValue(),
-                        ((Boolean)((Table)source).getItem(itemId).getItemProperty(
-                            TableProperty.NEWUSER).getValue()).booleanValue());
-                }
-                return null;
-            }
-        });
-        setVisibleColumns(
-            TableProperty.STATUS,
-            TableProperty.Name,
-            TableProperty.FullName,
-            TableProperty.OU,
-            TableProperty.LastLogin);
-    }
-
-    /**
      * Checks is it is allown for the current user to see given user.<p>
      *
      * @param user to be checked
@@ -1432,28 +1499,27 @@ public class CmsUserTable extends Table implements I_CmsFilterableTable, I_CmsTo
      * @param directs direct user
      * @throws CmsException exception
      */
-    private void setAllUser(List<CmsUser> directs) throws CmsException {
+    private void setAllUsers(List<CmsUser> directs) throws CmsException {
 
-        m_fullLoaded = true;
-        boolean onlyNormalUser = false;
+        m_fullyLoaded = true;
         if (m_type.equals(CmsOuTreeType.ROLE)) {
-            m_user = OpenCms.getRoleManager().getUsersOfRole(
+            m_users = OpenCms.getRoleManager().getUsersOfRole(
                 m_cms,
                 CmsRole.valueOfRoleName(m_group).forOrgUnit(m_ou),
                 true,
                 false);
         } else if (m_type.equals(CmsOuTreeType.USER)) {
-            m_user = OpenCms.getOrgUnitManager().getUsersWithoutAdditionalInfo(m_cms, m_ou, true);
+            m_users = m_app.getUsersWithoutAdditionalInfo(m_cms, m_type, m_ou, true);
 
         }
-        Iterator<CmsUser> it = m_user.iterator();
+        Iterator<CmsUser> it = m_users.iterator();
         while (it.hasNext()) {
             CmsUser u = it.next();
             if (!isAllowedUser(u)) {
                 m_blackList.add(u);
             }
         }
-        m_indirects.addAll(getAllowedIndirects(m_user, directs));
+        m_indirects.addAll(getAllowedIndirects(m_users, directs));
     }
 
     /**

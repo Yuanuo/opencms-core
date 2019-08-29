@@ -27,6 +27,7 @@
 
 package org.opencms.jsp.search.controller;
 
+import org.opencms.file.CmsObject;
 import org.opencms.jsp.search.config.I_CmsSearchConfiguration;
 import org.opencms.search.solr.CmsSolrQuery;
 
@@ -69,11 +70,15 @@ public class CmsSearchController implements I_CmsSearchControllerMain {
         m_common = new CmsSearchControllerCommon(config.getGeneralConfig());
         m_controllers.add(m_common);
 
-        m_pagination = new CmsSearchControllerPagination(config.getPaginationConfig());
-        m_controllers.add(m_pagination);
+        if (config.getPaginationConfig() != null) {
+            m_pagination = new CmsSearchControllerPagination(config.getPaginationConfig());
+            m_controllers.add(m_pagination);
+        }
 
-        m_sorting = new CmsSearchControllerSorting(config.getSortConfig());
-        m_controllers.add(m_sorting);
+        if (config.getSortConfig() != null) {
+            m_sorting = new CmsSearchControllerSorting(config.getSortConfig());
+            m_controllers.add(m_sorting);
+        }
 
         m_fieldFacets = new CmsSearchControllerFacetsField(config.getFieldFacetConfigs());
         m_controllers.add(m_fieldFacets);
@@ -108,15 +113,15 @@ public class CmsSearchController implements I_CmsSearchControllerMain {
     }
 
     /**
-     * @see org.opencms.jsp.search.controller.I_CmsSearchController#addQueryParts(CmsSolrQuery)
+     * @see org.opencms.jsp.search.controller.I_CmsSearchController#addQueryParts(CmsSolrQuery, CmsObject)
      */
     @Override
-    public void addQueryParts(CmsSolrQuery query) {
+    public void addQueryParts(CmsSolrQuery query, CmsObject cms) {
 
         final Iterator<I_CmsSearchController> it = m_controllers.iterator();
-        it.next().addQueryParts(query);
+        it.next().addQueryParts(query, cms);
         while (it.hasNext()) {
-            it.next().addQueryParts(query);
+            it.next().addQueryParts(query, cms);
         }
         // fix for highlighting bug
         if ((getHighlighting() != null) && !((query.getParams("df") != null) || (query.getParams("type") != null))) {

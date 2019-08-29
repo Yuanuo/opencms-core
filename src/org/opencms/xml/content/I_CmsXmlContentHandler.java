@@ -45,6 +45,7 @@ import org.opencms.xml.CmsXmlContentDefinition;
 import org.opencms.xml.CmsXmlException;
 import org.opencms.xml.containerpage.CmsFormatterConfiguration;
 import org.opencms.xml.types.I_CmsXmlContentValue;
+import org.opencms.xml.types.I_CmsXmlContentValue.SearchContentType;
 import org.opencms.xml.types.I_CmsXmlSchemaType;
 
 import java.util.Arrays;
@@ -52,6 +53,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import javax.servlet.ServletRequest;
@@ -156,6 +158,24 @@ public interface I_CmsXmlContentHandler {
      * @return the configuration String value for the widget used to edit the given XML content schema type
      */
     String getConfiguration(I_CmsXmlSchemaType type);
+
+    /**
+     * Gets the widget configuration for the given sub-path.<p>
+     *
+     * @param remainingPath a sub-path
+     * @return the widget configuration for the given sub-path
+     */
+    String getConfiguration(String remainingPath);
+
+    /**
+     * Gets the configured display type for a given path.<p>
+     *
+     * @param path the path
+     * @param defaultVal the value to return if no configured display type is found
+     *
+     * @return the configured display type (or the default value)
+     */
+    DisplayType getConfiguredDisplayType(String path, DisplayType defaultVal);
 
     /**
      * Returns the resource-independent CSS resources to include into the html-page head.<p>
@@ -385,6 +405,22 @@ public interface I_CmsXmlContentHandler {
     CmsRelationType getRelationType(String xpath, CmsRelationType defaultType);
 
     /**
+     * Returns the search content type, ie., the way how to integrate the value into full text search.<p>
+     *
+     * For the full text search, the value of all elements in one locale of the XML content are combined
+     * to one big text, which is referred to as the "content" in the context of the full text search.
+     * With this option, it is possible to hide certain elements from this "content" that does not make sense
+     * to include in the full text search.<p>
+     *
+     * Moreover, if the value contains a link to another resource, the content of that other resource can be added.
+     *
+     * @param value the XML content value to check
+     *
+     * @return the search content type, indicating how the element should be added to the content for the full text search
+     */
+    SearchContentType getSearchContentType(I_CmsXmlContentValue value);
+
+    /**
      * Returns all configured Search fields for this XML content.<p>
      *
      * @return the Search fields for this XMl content
@@ -409,7 +445,7 @@ public interface I_CmsXmlContentHandler {
      *
      * @return the search field settings for this XML content schema
      */
-    Map<String, Boolean> getSearchSettings();
+    Map<String, SearchContentType> getSearchSettings();
 
     /**
      * Returns the element settings defined for the container page formatters.<p>
@@ -447,6 +483,22 @@ public interface I_CmsXmlContentHandler {
     String getTitleMapping(CmsObject cms, CmsXmlContent document, Locale locale);
 
     /**
+     * Gets the unconfigured complex widget defined for the given path.<p>
+     *
+     * @param path the value path
+     * @return the complex widget
+     */
+    I_CmsComplexWidget getUnconfiguredComplexWidget(String path);
+
+    /**
+     * Gets an unconfigured widget for a given sub-path, i.e. one without a configuration string.<p>
+     *
+     * @param path the sub-path
+     * @return the widget for the given path
+     */
+    I_CmsWidget getUnconfiguredWidget(String path);
+
+    /**
      * Returns the editor widget that should be used for the given XML content value.<p>
      *
      * The handler implementations should use the "appinfo" node of the XML content definition
@@ -458,6 +510,7 @@ public interface I_CmsXmlContentHandler {
      *
      * @throws CmsXmlException if something goes wrong
      */
+    @Deprecated
     I_CmsWidget getWidget(I_CmsXmlSchemaType value) throws CmsXmlException;
 
     /**
@@ -544,8 +597,14 @@ public interface I_CmsXmlContentHandler {
      * @param value the XML content value to check
      *
      * @return <code>true</code> in case the given value should be searchable
+     *
+     * @deprecated use {@link #getSearchContentType(I_CmsXmlContentValue)} instead. Will be removed if plain lucene search is removed.
      */
-    boolean isSearchable(I_CmsXmlContentValue value);
+    @Deprecated
+    default boolean isSearchable(I_CmsXmlContentValue value) {
+
+        return Objects.equals(getSearchContentType(value), SearchContentType.TRUE);
+    }
 
     /**
      * Returns if the given content field should be visible to the current user.<p>

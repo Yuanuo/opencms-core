@@ -73,7 +73,11 @@ public abstract class A_CmsModuleImportForm extends CssLayout {
      *
      * @param app the app instance for which this form is opened
      */
-    public A_CmsModuleImportForm(CmsModuleApp app, final VerticalLayout start, final VerticalLayout report) {
+    public A_CmsModuleImportForm(
+        CmsModuleApp app,
+        final VerticalLayout start,
+        final VerticalLayout report,
+        Runnable run) {
 
         report.setVisible(false);
         CmsObject cms = A_CmsUI.getCmsObject();
@@ -112,19 +116,33 @@ public abstract class A_CmsModuleImportForm extends CssLayout {
                 try {
                     start.setVisible(false);
                     report.setVisible(true);
+                    getOkButton().setVisible(false);
                     CmsObject importCms = OpenCms.initCmsObject(A_CmsUI.getCmsObject());
                     importCms.getRequestContext().setSiteRoot((String)(getSiteSelector().getValue()));
                     CmsModuleImportThread thread = new CmsModuleImportThread(
                         importCms,
                         m_importFile.getModule(),
                         m_importFile.getPath());
-                    thread.start();
+
                     CmsReportWidget reportWidget = new CmsReportWidget(thread);
                     reportWidget.setWidth("100%");
                     reportWidget.setHeight("100%");
+
                     report.addComponent(reportWidget);
+                    thread.start();
                     getOkButton().setEnabled(false);
                     getCancelButton().setCaption(CmsVaadinUtils.messageClose());
+                    getCancelButton().addClickListener(new ClickListener() {
+
+                        private static final long serialVersionUID = 1L;
+
+                        public void buttonClick(ClickEvent event) {
+
+                            run.run();
+
+                        }
+                    });
+
                 } catch (CmsException e) {
                     LOG.error(e.getLocalizedMessage(), e);
                     CmsErrorDialog.showErrorDialog(e);

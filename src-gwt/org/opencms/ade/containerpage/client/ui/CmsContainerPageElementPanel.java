@@ -336,7 +336,6 @@ implements I_CmsDraggable, HasClickHandlers, I_CmsInlineFormParent {
         setViewPermission(hasViewPermission);
         setWritePermission(hasWritePermission);
         setReleasedAndNotExpired(releasedAndNotExpired);
-        getElement().addClassName(I_CmsLayoutBundle.INSTANCE.dragdropCss().dragElement());
         m_elementView = elementView;
         getElement().setPropertyBoolean(PROP_IS_MODEL_GROUP, modelGroupId != null);
         getElement().setPropertyBoolean(PROP_WAS_MODEL_GROUP, wasModelGroup);
@@ -695,7 +694,8 @@ implements I_CmsDraggable, HasClickHandlers, I_CmsInlineFormParent {
                                         CmsEditorBase.markForInlineFocus(target);
                                         controller.getHandler().openEditorForElement(
                                             CmsContainerPageElementPanel.this,
-                                            true);
+                                            true,
+                                            isNew());
                                         removeEditorHandler();
                                         event.cancel();
                                         break;
@@ -847,8 +847,11 @@ implements I_CmsDraggable, HasClickHandlers, I_CmsInlineFormParent {
         }
         m_elementOptionBar = elementOptionBar;
         if (m_elementOptionBar != null) {
+            getElement().addClassName(I_CmsLayoutBundle.INSTANCE.dragdropCss().dragElement());
             insert(m_elementOptionBar, 0);
             updateOptionBarPosition();
+        } else {
+            getElement().removeClassName(I_CmsLayoutBundle.INSTANCE.dragdropCss().dragElement());
         }
     }
 
@@ -992,7 +995,7 @@ implements I_CmsDraggable, HasClickHandlers, I_CmsInlineFormParent {
 
         boolean editableContainer = true;
         if (m_parent instanceof CmsContainerPageContainer) {
-            editableContainer = ((CmsContainerPageContainer)m_parent).isEditable();
+            editableContainer = CmsContainerpageController.get().isContainerEditable(m_parent);
         }
         for (CmsListCollectorEditor editor : m_editables.values()) {
             editor.updateVisibility(editableContainer);
@@ -1133,7 +1136,9 @@ implements I_CmsDraggable, HasClickHandlers, I_CmsInlineFormParent {
     @Override
     protected void onLoad() {
 
-        if (!hasCheckedHeight() && (getParentTarget() instanceof CmsContainerPageContainer)) {
+        if ((getParentTarget() instanceof CmsContainerPageContainer)
+            && ((CmsContainerPageContainer)getParentTarget()).isEditable()
+            && !hasCheckedHeight()) {
             Scheduler.get().scheduleDeferred(new ScheduledCommand() {
 
                 public void execute() {

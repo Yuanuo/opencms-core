@@ -252,6 +252,9 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
     /** The parent model page entries. */
     private Map<CmsUUID, CmsModelPageTreeItem> m_parentModelPageTreeItems = new HashMap<CmsUUID, CmsModelPageTreeItem>();
 
+    /** The sitemap tree root item. */
+    private CmsSitemapTreeItem m_rootItem;
+
     /** The sitemap toolbar. */
     private CmsSitemapToolbar m_toolbar;
 
@@ -315,8 +318,33 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
      *
      * @param categoryData the category data
      * @param openLocalCategories true if the local category tree should be opened
+     * @param openItemId the id of the item to open
      */
-    public void displayCategoryData(CmsSitemapCategoryData categoryData, final boolean openLocalCategories) {
+    public void displayCategoryData(
+        CmsSitemapCategoryData categoryData,
+        final boolean openLocalCategories,
+        CmsUUID openItemId) {
+
+        final Set<CmsUUID> openIds = new HashSet<CmsUUID>();
+        if (openLocalCategories) {
+            if (openItemId != null) {
+                openIds.add(openItemId);
+            }
+            for (Widget item : m_categoryTree) {
+                if (item instanceof CmsTreeItem) {
+                    ((CmsTreeItem)item).visit(new Function<CmsTreeItem, Boolean>() {
+
+                        public Boolean apply(CmsTreeItem input) {
+
+                            if (input.isOpen() && (input instanceof CmsCategoryTreeItem)) {
+                                openIds.add(((CmsCategoryTreeItem)input).getStructureId());
+                            }
+                            return null;
+                        }
+                    });
+                }
+            }
+        }
 
         m_categoryTree.clear();
 
@@ -416,7 +444,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
                             }
                         });
                     }
-                    if (((finalRoot == localRoot) && openLocalCategories)
+                    if (((finalRoot == localRoot) && openLocalCategories && openIds.contains(id))
                         || (input == nonlocalRoot)
                         || (input == localRoot)) {
                         input.setOpen(true);
@@ -501,7 +529,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
             m_parentModelPageRoot = CmsModelPageTreeItem.createRootItem(
                 false,
                 Messages.get().key(Messages.GUI_PARENT_MODEL_PAGE_TREE_ROOT_TITLE_0),
-                Messages.get().key(Messages.GUI_PARENT_MODEL_PAGE_TREE_ROOT_SUBTITLE_0));
+                "");
 
             for (CmsModelPageEntry parentModel : modelPageData.getParentModelPages()) {
                 if (parentModel.isDisabled()) {
@@ -1150,6 +1178,12 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
         m_noGalleriesLabel.getElement().setInnerHTML(Messages.get().key(Messages.GUI_NO_GALLERIES_AVAILABLE_0));
         m_noGalleriesLabel.getElement().getStyle().setDisplay(Display.NONE);
         page.add(m_noGalleriesLabel);
+
+        CmsClientSitemapEntry root = m_controller.getData().getRoot();
+        m_rootItem = createSitemapItem(root);
+        m_rootItem.onFinishLoading();
+        m_rootItem.setOpen(true);
+        m_tree.addItem(m_rootItem);
         // draw tree items
         Scheduler.get().scheduleDeferred(new ScheduledCommand() {
 
@@ -1260,7 +1294,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
                     m_localeComparison.setVisible(false);
                     m_toolbar.setNewEnabled(false, Messages.get().key(Messages.GUI_TOOLBAR_NEW_DISABLE_0));
                     m_toolbar.setClipboardEnabled(false, Messages.get().key(Messages.GUI_TOOLBAR_CLIPBOARD_DISABLE_0));
-                    getController().loadCategories(false);
+                    getController().loadCategories(false, null);
                     break;
                 case compareLocales:
                     m_tree.getElement().getStyle().setDisplay(Display.NONE);
@@ -1281,9 +1315,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
 
             }
             // check if the tree has been drawn yet
-            if (m_tree.getWidgetCount() > 0) {
-                getRootItem().updateEditorMode();
-            }
+            getRootItem().updateEditorMode();
             m_toolbar.setMode(editorMode);
         }
     }
@@ -1376,7 +1408,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
      */
     protected CmsSitemapTreeItem getRootItem() {
 
-        return (CmsSitemapTreeItem)(m_tree.getWidget(0));
+        return m_rootItem;
     }
 
     /**
@@ -1440,7 +1472,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
      *
      * @return the widget for that category bean, with widgets for its descendants attached
      */
-    CmsTreeItem createCategoryTreeItem(CmsCategoryTreeEntry entry) {
+    CmsCategoryTreeItem createCategoryTreeItem(CmsCategoryTreeEntry entry) {
 
         CmsCategoryTreeItem result = new CmsCategoryTreeItem(entry);
         for (CmsCategoryTreeEntry child : entry.getChildren()) {
@@ -1457,11 +1489,7 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
      */
     void initiateTreeItems(FlowPanel page, Label loadingLabel) {
 
-        CmsClientSitemapEntry root = m_controller.getData().getRoot();
-        CmsSitemapTreeItem rootItem = createSitemapItem(root);
-        rootItem.onFinishLoading();
-        rootItem.setOpen(true);
-        m_tree.addItem(rootItem);
+        CmsSitemapTreeItem rootItem = getRootItem();
         m_controller.addPropertyUpdateHandler(new CmsStatusIconUpdateHandler());
         m_controller.recomputeProperties();
         rootItem.updateSitePath();
@@ -1681,8 +1709,8 @@ implements I_CmsSitemapChangeHandler, I_CmsSitemapLoadHandler {
      * Initializes the Vaadin part of the sitemap editor.<p>
      */
     private native void initVaadin() /*-{
-                                     $wnd.initVaadin();
-                                     }-*/;
+		$wnd.initVaadin();
+    }-*/;
 
     /**
      * Checks if the given entry represents the last opened page.<p>

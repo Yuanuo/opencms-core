@@ -36,11 +36,13 @@
 			</tabs>
 			<mappings>
 				<mapping element="Title" mapto="property:Title" useDefault="true" />
+                <mapping element="Title" mapto="urlName" useDefault="true" />
 			</mappings>
 			<defaults>
 				<default element="CategoryMode" value="OR" />
 			</defaults>
 			<layouts>
+				<layout element="TypesToCollect" widget="DisplayTypeSelectWidget" configuration="template.display.types|matchTypes" />
 				<layout element="SearchFolder" widget="VfsFileWidget" configuration="excludefiles" />
 				<layout element="Category" widget="CategoryWidget" configuration="onlyleafs=false" />
 				<layout element="CategoryMode" widget="SelectorWidget" configuration="AND:%(key.list_config.categoryModeAnd)|OR:%(key.list_config.categoryModeOr)" />
@@ -52,6 +54,9 @@
 					ORDER_ASC:%(key.list_config.sort.orderasc)|
 					ORDER_DESC:%(key.list_config.sort.orderdesc)" />
 			</layouts>
+			<validationrules>
+				<validationrule element="TypesToCollect" regex=".+" type="error" message="%(key.err.typestocollect.notempty)" />
+			</validationrules>
 			<nestedformatters>
 				<nestedformatter element="TypesToCollect"/>
 			</nestedformatters>

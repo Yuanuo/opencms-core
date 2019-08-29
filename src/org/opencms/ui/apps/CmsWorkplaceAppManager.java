@@ -56,10 +56,12 @@ import org.opencms.ui.apps.dbmanager.CmsDbPropertiesAppConfiguration;
 import org.opencms.ui.apps.dbmanager.CmsDbRemovePubLocksConfiguration;
 import org.opencms.ui.apps.dbmanager.CmsDbStaticExportConfiguration;
 import org.opencms.ui.apps.dbmanager.CmsDbSynchronizationConfiguration;
+import org.opencms.ui.apps.dbmanager.sqlconsole.CmsSqlConsoleAppConfiguration;
 import org.opencms.ui.apps.filehistory.CmsFileHistoryClearConfiguration;
 import org.opencms.ui.apps.filehistory.CmsFileHistoryConfiguration;
 import org.opencms.ui.apps.filehistory.CmsFileHistoryFolder;
 import org.opencms.ui.apps.git.CmsGitAppConfiguration;
+import org.opencms.ui.apps.linkvalidation.CmsLinkInFolderValidationConfiguration;
 import org.opencms.ui.apps.linkvalidation.CmsLinkValidationConfiguration;
 import org.opencms.ui.apps.linkvalidation.CmsLinkValidationExternalConfiguration;
 import org.opencms.ui.apps.linkvalidation.CmsLinkValidationFolder;
@@ -100,6 +102,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -228,6 +231,8 @@ public class CmsWorkplaceAppManager {
     /** Legacy apps explicitly hidden from new workplace. */
     private static final Set<String> LEGACY_BLACKLIST = Sets.newConcurrentHashSet(
         Arrays.asList(
+            "/accounts",
+            "/contenttools",
             "/git",
             "/scheduler",
             "/galleryoverview",
@@ -252,6 +257,9 @@ public class CmsWorkplaceAppManager {
         CmsSitemapEditorConfiguration.APP_ID,
         CmsFileExplorerConfiguration.APP_ID,
         CmsAppHierarchyConfiguration.APP_ID};
+
+    /** The additional style sheets. */
+    private Collection<String> m_additionalStyleSheets;
 
     /** The admin cms context. */
     private CmsObject m_adminCms;
@@ -296,6 +304,24 @@ public class CmsWorkplaceAppManager {
      */
     protected CmsWorkplaceAppManager() {
         // nothing to do
+    }
+
+    /**
+     * Returns the additional style sheets provided by I_CmsWorkplaceStylesheetProvider services.<p>
+     *
+     * @return the additional style sheets
+     */
+    public Collection<String> getAdditionalStyleSheets() {
+
+        if (m_additionalStyleSheets == null) {
+            Set<String> stylesheets = new LinkedHashSet<>();
+            for (I_CmsWorkplaceStylesheetProvider provider : ServiceLoader.load(
+                I_CmsWorkplaceStylesheetProvider.class)) {
+                stylesheets.addAll(provider.getStylesheets());
+            }
+            m_additionalStyleSheets = Collections.unmodifiableSet(stylesheets);
+        }
+        return m_additionalStyleSheets;
     }
 
     /**
@@ -442,8 +468,12 @@ public class CmsWorkplaceAppManager {
 
         List<I_CmsEditor> editors = new ArrayList<I_CmsEditor>();
         for (int i = 0; i < EDITORS.length; i++) {
-            if (EDITORS[i].matchesResource(resource, plainText)) {
-                editors.add(EDITORS[i]);
+            try {
+                if (EDITORS[i].matchesResource(resource, plainText)) {
+                    editors.add(EDITORS[i]);
+                }
+            } catch (Exception e) {
+                LOG.error(e.getLocalizedMessage(), e);
             }
         }
         I_CmsEditor result = null;
@@ -779,7 +809,6 @@ public class CmsWorkplaceAppManager {
                 new CmsAppHierarchyConfiguration(),
                 new CmsEditorConfiguration(),
                 new CmsQuickLaunchEditorConfiguration(),
-                new CmsTraditionalWorkplaceConfiguration(),
                 new CmsProjectManagerConfiguration(),
                 new CmsProjectOverviewConfiguration(),
                 new CmsCacheAdminConfiguration(),
@@ -789,11 +818,13 @@ public class CmsWorkplaceAppManager {
                 new CmsFileHistoryClearConfiguration(),
                 new CmsLinkValidationConfiguration(),
                 new CmsLinkValidationExternalConfiguration(),
+                new CmsLinkInFolderValidationConfiguration(),
                 new CmsDbManagerConfiguration(),
                 new CmsDbImportHTTPConfiguration(),
                 new CmsDbImportServerConfiguration(),
                 new CmsDbExportConfiguration(),
                 new CmsDbStaticExportConfiguration(),
+                new CmsSqlConsoleAppConfiguration(),
                 new CmsDbRemovePubLocksConfiguration(),
                 new CmsDbSynchronizationConfiguration(),
                 new CmsDbPropertiesAppConfiguration(),

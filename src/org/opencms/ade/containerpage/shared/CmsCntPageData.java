@@ -27,11 +27,13 @@
 
 package org.opencms.ade.containerpage.shared;
 
+import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.util.CmsUUID;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.google.gwt.user.client.rpc.IsSerializable;
 
@@ -85,11 +87,17 @@ public final class CmsCntPageData implements IsSerializable {
     /** Key 'elements' used within the JSON representation of a container object. */
     public static final String JSONKEY_ELEMENTS = "elements";
 
+    /** Key 'isDetailViewContainer' used within the JSON representation of a container object. */
+    public static final String JSONKEY_ISDETAILVIEWCONTAINER = "isDetailViewContainer";
+
     /** Key 'maxElements' used within the JSON representation of a container object. */
     public static final String JSONKEY_MAXELEMENTS = "maxElements";
 
     /** Key 'name' used within the JSON representation of a container object. */
     public static final String JSONKEY_NAME = "name";
+
+    /** JSON key for presets. */
+    public static final String JSONKEY_PRESETS = "presets";
 
     /** Key 'type' used within the JSON representation of a container object. */
     public static final String JSONKEY_TYPE = "type";
@@ -99,6 +107,9 @@ public final class CmsCntPageData implements IsSerializable {
 
     /** The editor back-link URI. */
     private static final String BACKLINK_URI = "/system/modules/org.opencms.ade.containerpage/editor-backlink.html";
+
+    /** Temporary flag to disable the option to edit settings in content editor. */
+    private boolean m_allowSettingsInEditor;
 
     /** The app title to display in the toolbar. */
     private String m_appTitle;
@@ -111,6 +122,9 @@ public final class CmsCntPageData implements IsSerializable {
 
     /** The detail structure id, if available. */
     private CmsUUID m_detailId;
+
+    /** The set of names of types for which the current page is registered as a detail page. */
+    private Set<String> m_detailTypes;
 
     /** Flag which determines whether small elements should be editable initially. */
     private boolean m_editSmallElementsInitially;
@@ -154,6 +168,9 @@ public final class CmsCntPageData implements IsSerializable {
     /** The online link to the current page. */
     private String m_onlineLink;
 
+    /** The current page info. */
+    private CmsListInfoBean m_pageInfo;
+
     /** The original request parameters. */
     private String m_requestParams;
 
@@ -185,8 +202,10 @@ public final class CmsCntPageData implements IsSerializable {
      * @param sitemapManager if the user has the sitemap manager role
      * @param detailId the detail resource id, if available
      * @param detailContainerPage the detail view container resource path
+     * @param detailTypes the set of names of types for which this page is registered as detail page
      * @param lastModified the last modification date of the page
      * @param lockInfo lock information, if the page is locked by another user
+     * @param pageInfo the current page info
      * @param locale the content locale
      * @param useClassicEditor <code>true</code> to use the classic XmlContent editor
      * @param contextInfo the template context information
@@ -211,8 +230,10 @@ public final class CmsCntPageData implements IsSerializable {
         boolean sitemapManager,
         CmsUUID detailId,
         String detailContainerPage,
+        Set<String> detailTypes,
         long lastModified,
         String lockInfo,
+        CmsListInfoBean pageInfo,
         String locale,
         boolean useClassicEditor,
         CmsTemplateContextInfo contextInfo,
@@ -236,9 +257,11 @@ public final class CmsCntPageData implements IsSerializable {
         m_sitemapManager = sitemapManager;
         m_lastModified = lastModified;
         m_lockInfo = lockInfo;
+        m_pageInfo = pageInfo;
         m_locale = locale;
         m_detailId = detailId;
         m_detailContainerPage = detailContainerPage;
+        m_detailTypes = detailTypes;
         m_useClassicEditor = useClassicEditor;
         m_templateContextInfo = contextInfo;
         m_editSmallElementsInitially = showSmallElementsInitially;
@@ -261,6 +284,16 @@ public final class CmsCntPageData implements IsSerializable {
     protected CmsCntPageData() {
 
         // empty
+    }
+
+    /**
+     * Returns whether editing settings in the content editor is allowed.<p>
+     *
+     * @return <code>true</code> in case editing settings in the content editor is allowed
+     */
+    public boolean allowSettingsInEditor() {
+
+        return m_allowSettingsInEditor;
     }
 
     /**
@@ -321,6 +354,16 @@ public final class CmsCntPageData implements IsSerializable {
     public CmsUUID getDetailId() {
 
         return m_detailId;
+    }
+
+    /**
+     * Gets the set of names of types for which the container page is registered as a detail page.
+     *
+     * @return the set of names of detail types
+     */
+    public Set<String> getDetailTypes() {
+
+        return m_detailTypes;
     }
 
     /**
@@ -436,6 +479,16 @@ public final class CmsCntPageData implements IsSerializable {
     }
 
     /**
+     * Returns the current page info.<p>
+     *
+     * @return the current page info
+     */
+    public CmsListInfoBean getPageInfo() {
+
+        return m_pageInfo;
+    }
+
+    /**
      * Returns the request parameters.<p>
      *
      * @return the request parameters
@@ -523,6 +576,16 @@ public final class CmsCntPageData implements IsSerializable {
     public boolean isUseClassicEditor() {
 
         return m_useClassicEditor;
+    }
+
+    /**
+     * Sets whether editing settings in the content editor is allowed.<p>
+     *
+     * @param allowSettingsInEditor <code>true</code> to set editing settings in the content editor is allowed
+     */
+    public void setAllowSettingsInEditor(boolean allowSettingsInEditor) {
+
+        m_allowSettingsInEditor = allowSettingsInEditor;
     }
 
     /**

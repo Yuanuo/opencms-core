@@ -33,6 +33,7 @@ import org.opencms.file.CmsProject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.lock.CmsLock;
@@ -74,6 +75,9 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsSearchReplaceThread.class);
+
+    /** The number of Solr search results to be processed at maximum. */
+    private static final int MAX_PROCESSED_SOLR_RESULTS = 10000;
 
     /** Number of errors while searching. */
     private int m_errorSearch;
@@ -392,7 +396,8 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
         I_CmsReport report,
         CmsFile file,
         byte[] contents,
-        boolean replace) throws Exception {
+        boolean replace)
+    throws Exception {
 
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_settings.getLocale())) {
             Locale contentLocale = CmsLocaleManager.getMainLocale(cmsObject, file);
@@ -644,10 +649,11 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                 if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
                     query.setResourceTypes(m_settings.getTypesArray());
                 }
-                query.setRows(new Integer(999999999));
+                query.setRows(new Integer(MAX_PROCESSED_SOLR_RESULTS));
                 query.ensureParameters();
                 try {
-                    resources.addAll(index.search(cmsObject, query, true));
+                    resources.addAll(
+                        index.search(cmsObject, query, true, null, false, null, MAX_PROCESSED_SOLR_RESULTS));
                 } catch (CmsSearchException e) {
                     LOG.error(e.getMessage(), e);
                 }
@@ -658,8 +664,8 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
             if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
                 for (String resTypeName : m_settings.getTypesArray()) {
                     try {
-                        int typeId = OpenCms.getResourceManager().getResourceType(resTypeName).getTypeId();
-                        filter = filter.addRequireType(typeId);
+                        I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(resTypeName);
+                        filter = filter.addRequireType(type);
                     } catch (CmsLoaderException e) {
                         // noop
                     } catch (NullPointerException e) {

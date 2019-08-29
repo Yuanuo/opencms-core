@@ -70,21 +70,7 @@ public class CmsJspDateSeriesBean {
          */
         public Object transform(Object date) {
 
-            Date d = null;
-            if (null != date) {
-                if (date instanceof Date) {
-                    d = (Date)date;
-                } else if (date instanceof Long) {
-                    d = new Date(((Long)date).longValue());
-                } else {
-                    try {
-                        long l = Long.parseLong(date.toString());
-                        d = new Date(l);
-                    } catch (Exception e) {
-                        // do nothing, just let d remain null
-                    }
-                }
-            }
+            Date d = toDate(date);
             if ((null != d) && m_dates.contains(d)) {
                 return new CmsJspInstanceDateBean((Date)d.clone(), CmsJspDateSeriesBean.this);
             } else {
@@ -266,6 +252,40 @@ public class CmsJspDateSeriesBean {
     }
 
     /**
+     * Returns the next event of this series relative to the current date.<p>
+     *
+     * In case this is just a single event and not a series, this is identical to the date of the event.<p>
+     *
+     * @return the next event of this series
+     */
+    public CmsJspInstanceDateBean getNext() {
+
+        return getNextFor(new Date());
+    }
+
+    /**
+     * Returns the next event of this series that takes place at the given date or after it.<p>
+     *
+     * In case this is just a single event and not a series, this is identical to the date of the event.<p>
+     *
+     *@param date the date relative to which the event is returned.
+     *
+     * @return the next event of this series
+     */
+    public CmsJspInstanceDateBean getNextFor(Object date) {
+
+        Date d = toDate(date);
+        if ((d != null) && (m_dates != null) && (!m_dates.isEmpty())) {
+            for (Date instanceDate : m_dates) {
+                if (!instanceDate.before(d)) {
+                    return new CmsJspInstanceDateBean((Date)instanceDate.clone(), CmsJspDateSeriesBean.this);
+                }
+            }
+        }
+        return getLast();
+    }
+
+    /**
      * Returns the parent series, if it is present, otherwise <code>null</code>.<p>
      *
      * @return the parent series, if it is present, otherwise <code>null</code>
@@ -288,6 +308,43 @@ public class CmsJspDateSeriesBean {
     }
 
     /**
+     * Returns the next event of this series relative to the current date.<p>
+     *
+     * In case this is just a single event and not a series, this is identical to the date of the event.<p>
+     *
+     * @return the next event of this series
+     */
+    public CmsJspInstanceDateBean getPrevious() {
+
+        return getPreviousFor(new Date());
+    }
+
+    /**
+     * Returns the next event of this series that takes place at the given date or after it.<p>
+     *
+     * In case this is just a single event and not a series, this is identical to the date of the event.<p>
+     *
+     *@param date the date relative to which the event is returned.
+     *
+     * @return the next event of this series
+     */
+    public CmsJspInstanceDateBean getPreviousFor(Object date) {
+
+        Date d = toDate(date);
+        if ((d != null) && (m_dates != null) && (!m_dates.isEmpty())) {
+            Date lastDate = m_dates.first();
+            for (Date instanceDate : m_dates) {
+                if (instanceDate.after(d)) {
+                    return new CmsJspInstanceDateBean((Date)lastDate.clone(), CmsJspDateSeriesBean.this);
+                }
+                lastDate = instanceDate;
+            }
+            return new CmsJspInstanceDateBean((Date)lastDate.clone(), CmsJspDateSeriesBean.this);
+        }
+        return getLast();
+    }
+
+    /**
      * Returns the gallery title of the series content.<p>
      *
      * @return the gallery title of the series content
@@ -302,7 +359,7 @@ public class CmsJspDateSeriesBean {
                 m_value.getLocale());
             return result.getTitle();
         } catch (CmsException e) {
-            LOG.error("Could not retrieve title of series content.", e);
+            LOG.warn("Could not retrieve title of series content.", e);
             return "";
         }
 
@@ -356,6 +413,33 @@ public class CmsJspDateSeriesBean {
     }
 
     /**
+     * Converts the provided object to a date, if possible.
+     *
+     * @param date the date.
+     *
+     * @return the date as {@link java.util.Date}
+     */
+    public Date toDate(Object date) {
+
+        Date d = null;
+        if (null != date) {
+            if (date instanceof Date) {
+                d = (Date)date;
+            } else if (date instanceof Long) {
+                d = new Date(((Long)date).longValue());
+            } else {
+                try {
+                    long l = Long.parseLong(date.toString());
+                    d = new Date(l);
+                } catch (Exception e) {
+                    // do nothing, just let d remain null
+                }
+            }
+        }
+        return d;
+    }
+
+    /**
      * Initialization based on the series definition.<p>
      *
      * @param seriesDefinition the series definition
@@ -369,7 +453,11 @@ public class CmsJspDateSeriesBean {
             m_dates = bean.getDates();
             m_duration = bean.getEventDuration();
         } else {
-            LOG.error("Could not read series definition: " + seriesDefinitionString);
+            try {
+                throw new Exception("Could not read series definition: " + seriesDefinitionString);
+            } catch (Exception e) {
+                LOG.debug(e.getMessage(), e);
+            }
             m_dates = new TreeSet<>();
         }
     }

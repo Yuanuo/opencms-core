@@ -41,17 +41,17 @@ import java.util.Set;
  */
 public class CmsFlexFormatterBean extends CmsFormatterBean {
 
-    /** The macro input. */
-    private String m_stringTemplate;
-
-    /** The placeholder macro input. */
-    private String m_placeholderStringTemplate;
-
     /** The root path to the default content. */
     private String m_defaultContentRootPath;
 
     /** The UUID of the default content resource. */
     private CmsUUID m_defaultContentStructureId;
+
+    /** The placeholder macro input. */
+    private String m_placeholderStringTemplate;
+
+    /** The macro input. */
+    private String m_stringTemplate;
 
     /**
      * Constructor for creating a new formatter configuration with resource structure id.<p>
@@ -73,10 +73,12 @@ public class CmsFlexFormatterBean extends CmsFormatterBean {
      * @param settings the settings configuration
      * @param isDetail <code>true</code> if detail formatter
      * @param isAutoEnabled <code>true</code> if auto enabled
-     * @param isDisplay the display flag
+     * @param displayType the display type
+     * @param isAllowsSettingsInEditor whether this formatter allows settings to be edited in the content editor
      * @param stringTemplate the string template
      * @param placeholderStringTemplate the placeholder string template
      * @param metaMappings the meta mappings
+     * @param useMetaMappingsForNormalElements if true, meta mappings will be evaluated for normal container elements, not just detail elements
      */
     public CmsFlexFormatterBean(
         Set<String> containerTypes,
@@ -96,10 +98,13 @@ public class CmsFlexFormatterBean extends CmsFormatterBean {
         Map<String, CmsXmlContentProperty> settings,
         boolean isAutoEnabled,
         boolean isDetail,
-        boolean isDisplay,
+        String displayType,
+        boolean isAllowsSettingsInEditor,
         String stringTemplate,
         String placeholderStringTemplate,
-        List<CmsMetaMapping> metaMappings) {
+        List<CmsMetaMapping> metaMappings,
+        boolean useMetaMappingsForNormalElements) {
+
         super(
             containerTypes,
             jspRootPath,
@@ -122,11 +127,13 @@ public class CmsFlexFormatterBean extends CmsFormatterBean {
             true,
             isAutoEnabled,
             isDetail,
-            isDisplay,
+            displayType,
+            isAllowsSettingsInEditor,
             false,
             false,
-            false,
-            metaMappings);
+            metaMappings,
+            Collections.emptyMap(),
+            useMetaMappingsForNormalElements);
         m_stringTemplate = stringTemplate;
         m_placeholderStringTemplate = placeholderStringTemplate;
         m_defaultContentRootPath = defaultContentRootPath;

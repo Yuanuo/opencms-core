@@ -57,6 +57,7 @@ import org.opencms.util.CmsStringUtil;
 import org.opencms.xml.CmsXmlErrorHandler;
 import org.opencms.xml.CmsXmlException;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -71,6 +72,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import org.apache.commons.digester3.Digester;
+import org.apache.commons.digester3.Rule;
 import org.apache.commons.logging.Log;
 
 import org.dom4j.Document;
@@ -193,8 +195,18 @@ public class CmsModuleImportExportHandler implements I_CmsImportExportHandler {
 
         // add this class to the Digester
         CmsModuleImportExportHandler handler = new CmsModuleImportExportHandler();
+        final String[] version = new String[] {null};
         digester.push(handler);
 
+        digester.addRule("*/export_version", new Rule() {
+
+            @Override
+            public void body(String namespace, String name, String text) throws Exception {
+
+                version[0] = text.trim();
+            }
+
+        });
         CmsModuleXmlHandler.addXmlDigesterRules(digester);
 
         InputStream stream = null;
@@ -243,14 +255,107 @@ public class CmsModuleImportExportHandler implements I_CmsImportExportHandler {
         }
 
         CmsModule importedModule = handler.getModule();
-
         // the digester must have set the module now
         if (importedModule == null) {
             throw new CmsConfigurationException(
                 Messages.get().container(Messages.ERR_IMPORT_MOD_ALREADY_INSTALLED_1, importResource));
+        } else {
+            importedModule.setExportVersion(version[0]);
         }
 
         return importedModule;
+    }
+
+    /**
+     * Reads a module object from an external file source.<p>
+     *
+     * @param manifest the manifest data
+     *
+     * @return the imported module
+     *
+     * @throws CmsConfigurationException if the module could not be imported
+     */
+    public static CmsModule readModuleFromManifest(byte[] manifest) throws CmsConfigurationException {
+
+        // instantiate Digester and enable XML validation
+        Digester digester = new Digester();
+        digester.setUseContextClassLoader(true);
+        digester.setValidating(false);
+        digester.setRuleNamespaceURI(null);
+        digester.setErrorHandler(new CmsXmlErrorHandler("manifest data"));
+
+        // add this class to the Digester
+        CmsModuleImportExportHandler handler = new CmsModuleImportExportHandler();
+        final String[] version = new String[] {null};
+        digester.push(handler);
+
+        digester.addRule("*/export_version", new Rule() {
+
+            @Override
+            public void body(String namespace, String name, String text) throws Exception {
+
+                version[0] = text.trim();
+            }
+
+        });
+        CmsModuleXmlHandler.addXmlDigesterRules(digester);
+
+        InputStream stream = new ByteArrayInputStream(manifest);
+
+        try {
+            digester.parse(stream);
+        } catch (IOException e) {
+            CmsMessageContainer message = Messages.get().container(Messages.ERR_IO_MODULE_IMPORT_1, "manifest data");
+            LOG.error(message.key(), e);
+            throw new CmsConfigurationException(message, e);
+        } catch (SAXException e) {
+            CmsMessageContainer message = Messages.get().container(Messages.ERR_SAX_MODULE_IMPORT_1, "manifest data");
+            LOG.error(message.key(), e);
+            throw new CmsConfigurationException(message, e);
+        }
+        CmsModule importedModule = handler.getModule();
+        // the digester must have set the module now
+        if (importedModule == null) {
+            throw new CmsConfigurationException(
+                Messages.get().container(Messages.ERR_IMPORT_MOD_ALREADY_INSTALLED_1, "manifest data"));
+        } else {
+            importedModule.setExportVersion(version[0]);
+        }
+
+        return importedModule;
+    }
+
+    /**
+     * Writes the messages for starting an import to the given report.<p>
+     *
+     * @param report the report to write to
+     * @param modulePackageName the module name
+     */
+    public static void reportBeginImport(I_CmsReport report, String modulePackageName) {
+
+        report.print(Messages.get().container(Messages.RPT_IMPORT_MODULE_BEGIN_0), I_CmsReport.FORMAT_HEADLINE);
+        if (report instanceof CmsHtmlReport) {
+            report.print(
+                org.opencms.report.Messages.get().container(
+                    org.opencms.report.Messages.RPT_ARGUMENT_1,
+                    "<i>" + modulePackageName + "</i>"));
+        } else {
+            report.print(
+                org.opencms.report.Messages.get().container(
+                    org.opencms.report.Messages.RPT_ARGUMENT_1,
+                    modulePackageName));
+        }
+        report.println(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
+    }
+
+    /**
+     * Writes the messages for finishing an import to the given report.<p>
+     *
+     * @param report the report to write to
+     */
+    public static void reportEndImport(I_CmsReport report) {
+
+        report.println(Messages.get().container(Messages.RPT_IMPORT_MODULE_END_0), I_CmsReport.FORMAT_HEADLINE);
     }
 
     /**
@@ -314,7 +419,11 @@ public class CmsModuleImportExportHandler implements I_CmsImportExportHandler {
             0,
             true,
             false,
-            module.getExportMode());
+            module.getExportMode(),
+            // provide the extra resources only in case of excluded resources, otherwise not needed
+            ((null == module.getExcludeResources()) || module.getExcludeResources().isEmpty())
+            ? null
+            : module.getResources());
 
         // export the module using the standard export
         CmsObject exportCms = cms;
@@ -442,19 +551,7 @@ public class CmsModuleImportExportHandler implements I_CmsImportExportHandler {
                 cms.getRequestContext().setSiteRoot(storedSiteRoot);
             }
 
-            report.print(Messages.get().container(Messages.RPT_IMPORT_MODULE_BEGIN_0), I_CmsReport.FORMAT_HEADLINE);
-            if (report instanceof CmsHtmlReport) {
-                report.print(
-                    org.opencms.report.Messages.get().container(
-                        org.opencms.report.Messages.RPT_ARGUMENT_1,
-                        "<i>" + modulePackageName + "</i>"));
-            } else {
-                report.print(
-                    org.opencms.report.Messages.get().container(
-                        org.opencms.report.Messages.RPT_ARGUMENT_1,
-                        modulePackageName));
-            }
-            report.print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
+            reportBeginImport(report, modulePackageName);
             importModule(cms, report, parameters);
             report.println(Messages.get().container(Messages.RPT_PUBLISH_PROJECT_BEGIN_0), I_CmsReport.FORMAT_HEADLINE);
             // now unlock and publish the project
@@ -463,7 +560,7 @@ public class CmsModuleImportExportHandler implements I_CmsImportExportHandler {
             OpenCms.getPublishManager().waitWhileRunning();
 
             report.println(Messages.get().container(Messages.RPT_PUBLISH_PROJECT_END_0), I_CmsReport.FORMAT_HEADLINE);
-            report.println(Messages.get().container(Messages.RPT_IMPORT_MODULE_END_0), I_CmsReport.FORMAT_HEADLINE);
+            reportEndImport(report);
         } finally {
             cms.getRequestContext().setCurrentProject(previousProject);
         }

@@ -71,6 +71,9 @@ import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.ui.apps.search.CmsSearchReplaceSettings;
 import org.opencms.ui.apps.search.CmsSearchReplaceThread;
 import org.opencms.ui.apps.search.CmsSourceSearchForm.SearchType;
+import org.opencms.ui.favorites.CmsFavoriteDAO;
+import org.opencms.ui.favorites.CmsFavoriteEntry;
+import org.opencms.ui.favorites.CmsFavoriteEntry.Type;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
@@ -119,6 +122,46 @@ class CmsShellCommands implements I_CmsShellCommands {
     protected CmsShellCommands() {
 
         // noop
+    }
+
+    /**
+     * Adds bookmark for the givne user/site root/path/project combination
+     *
+     * @param user the user for whom to set the bookmark
+     * @param siteRoot the site root
+     * @param sitePath the site path of the resource
+     * @param project the name of the project
+     *
+     * @throws Exception if something goes wrong
+     */
+    public void addBookmark(String user, String siteRoot, String sitePath, String project) throws Exception {
+
+        CmsObject cms = OpenCms.initCmsObject(m_cms);
+        if (project != null) {
+            cms.getRequestContext().setCurrentProject(cms.readProject(project));
+        }
+        cms.getRequestContext().setSiteRoot(siteRoot);
+        CmsFavoriteDAO favDao = new CmsFavoriteDAO(cms, user);
+        List<CmsFavoriteEntry> entries = favDao.loadFavorites();
+        CmsResource res = cms.readResource(sitePath);
+        CmsFavoriteEntry entry = new CmsFavoriteEntry();
+        CmsProject currProject = cms.getRequestContext().getCurrentProject();
+        if (res.isFolder()) {
+            entry.setType(Type.explorerFolder);
+            entry.setStructureId(res.getStructureId());
+            entry.setProjectId(currProject.getId());
+            entry.setSiteRoot(siteRoot);
+        } else {
+            if (currProject.isOnlineProject()) {
+                throw new IllegalArgumentException("Can not set bookmark for page in Online project.");
+            }
+            entry.setType(Type.page);
+            entry.setStructureId(res.getStructureId());
+            entry.setProjectId(currProject.getId());
+            entry.setSiteRoot(siteRoot);
+        }
+        entries.add(entry);
+        favDao.saveFavorites(entries);
     }
 
     /**
@@ -444,7 +487,7 @@ class CmsShellCommands implements I_CmsShellCommands {
      * Deletes a project by name.<p>
      *
      * @param name the name of the project to delete
-    
+
      * @throws Exception if something goes wrong
      *
      * @see CmsObject#deleteProject(CmsUUID)
@@ -1351,9 +1394,11 @@ class CmsShellCommands implements I_CmsShellCommands {
      */
     public void replaceModule(String importFile) throws Exception {
 
-        CmsModule module = CmsModuleImportExportHandler.readModuleFromImport(importFile);
-        String moduleName = module.getName();
-        replaceModule(moduleName, importFile);
+        OpenCms.getModuleManager().replaceModule(
+            m_cms,
+            importFile,
+            new CmsShellReport(m_cms.getRequestContext().getLocale()));
+
     }
 
     /**
@@ -1366,15 +1411,19 @@ class CmsShellCommands implements I_CmsShellCommands {
      */
     public void replaceModule(String moduleName, String importFile) throws Exception {
 
-        if (OpenCms.getModuleManager().getModule(moduleName) != null) {
-            OpenCms.getModuleManager().deleteModule(
-                m_cms,
-                moduleName,
-                true,
-                new CmsShellReport(m_cms.getRequestContext().getLocale()));
+        CmsModule module = CmsModuleImportExportHandler.readModuleFromImport(importFile);
+        if (moduleName.equals(module.getName())) {
+            replaceModule(importFile);
+        } else {
+            if (OpenCms.getModuleManager().getModule(moduleName) != null) {
+                OpenCms.getModuleManager().deleteModule(
+                    m_cms,
+                    moduleName,
+                    true,
+                    new CmsShellReport(m_cms.getRequestContext().getLocale()));
+            }
+            importModule(importFile);
         }
-
-        importModule(importFile);
     }
 
     /**
@@ -1529,6 +1578,22 @@ class CmsShellCommands implements I_CmsShellCommands {
     }
 
     /**
+     * Sets a string-valued additional info entry on the user.
+     *
+     * @param username the name of the user
+     * @param infoName the additional info key
+     * @param value the additional info value
+     *
+     * @throws CmsException if something goes wrong
+     */
+    public void setUserInfo(String username, String infoName, String value) throws CmsException {
+
+        CmsUser user = m_cms.readUser(username);
+        user.setAdditionalInfo(infoName, value);
+        m_cms.writeUser(user);
+    }
+
+    /**
      * @see org.opencms.main.I_CmsShellCommands#shellExit()
      */
     public void shellExit() {
@@ -1663,12 +1728,10 @@ class CmsShellCommands implements I_CmsShellCommands {
             m_shell.getOut().println("Previous version '" + oldVersion + "' detected");
             if (!oldVersion.equals(moduleVersion)) {
                 // the import version does not equal the present module version, replace the module
-                OpenCms.getModuleManager().deleteModule(
+                OpenCms.getModuleManager().replaceModule(
                     m_cms,
-                    moduleName,
-                    true,
+                    importFile,
                     new CmsShellReport(m_cms.getRequestContext().getLocale()));
-                importModule(importFile);
             }
         } else {
             importModule(importFile);

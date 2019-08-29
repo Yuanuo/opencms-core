@@ -84,6 +84,7 @@ import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.SortField;
 import org.apache.lucene.search.TermQuery;
@@ -203,8 +204,11 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsSearchIndex.class);
 
+    /** The serial version id. */
+    private static final long serialVersionUID = 8461682478204452718L;
+
     /** The configured Lucene analyzer used for this index. */
-    private Analyzer m_analyzer;
+    private transient Analyzer m_analyzer;
 
     /** Indicates if backup re-indexing is used by this index. */
     private boolean m_backupReindexing;
@@ -219,7 +223,7 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
     private boolean m_createExcerpt;
 
     /** Map of display query filters to use. */
-    private Map<String, Query> m_displayFilters;
+    private transient Map<String, Query> m_displayFilters;
 
     /**
      * Signals whether expiration dates should be ignored when checking permissions or not.<p>
@@ -228,7 +232,10 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
     private boolean m_ignoreExpiration;
 
     /** The Lucene index searcher to use. */
-    private IndexSearcher m_indexSearcher;
+    private transient IndexSearcher m_indexSearcher;
+
+    /** The Lucene index RAM buffer size, see {@link IndexWriterConfig#setRAMBufferSizeMB(double)}. */
+    private Double m_luceneRAMBufferSizeMB;
 
     /** Indicates how many hits are loaded at maximum. */
     private int m_maxHits;
@@ -239,11 +246,8 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
     /** Controls if a resource requires view permission to be displayed in the result list. */
     private boolean m_requireViewPermission;
 
-    /** The Lucene index RAM buffer size, see {@link IndexWriterConfig#setRAMBufferSizeMB(double)}. */
-    private Double m_luceneRAMBufferSizeMB;
-
     /** The cms specific Similarity implementation. */
-    private final Similarity m_sim = new CmsSearchSimilarity();
+    private final transient Similarity m_sim = new CmsSearchSimilarity();
 
     /**
      * Default constructor only intended to be used by the XML configuration. <p>
@@ -1061,6 +1065,9 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
                 searchResults.setCategories(categoryCollector.getCategoryCountResult());
             }
 
+            // get maxScore first, since Lucene 8, it's not computed automatically anymore
+            TopDocs scoreHits = searcher.search(query, 1);
+            float maxScore = scoreHits.scoreDocs.length == 0 ? Float.NaN : scoreHits.scoreDocs[0].score;
             // perform the search operation
             if ((params.getSort() == null) || (params.getSort() == CmsSearchParameters.SORT_DEFAULT)) {
                 // apparently scoring is always enabled by Lucene if no sort order is provided
@@ -1068,14 +1075,16 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
             } else {
                 // if  a sort order is provided, we must check if scoring must be calculated by the searcher
                 boolean isSortScore = isSortScoring(searcher, params.getSort());
-                hits = searcher.search(finalQuery, getMaxHits(), params.getSort(), isSortScore, isSortScore);
+                hits = searcher.search(finalQuery, getMaxHits(), params.getSort(), isSortScore);
             }
 
             timeLucene += System.currentTimeMillis();
             timeResultProcessing = -System.currentTimeMillis();
 
             if (hits != null) {
-                long hitCount = hits.totalHits > hits.scoreDocs.length ? hits.scoreDocs.length : hits.totalHits;
+                long hitCount = hits.totalHits.value > hits.scoreDocs.length
+                ? hits.scoreDocs.length
+                : hits.totalHits.value;
                 int page = params.getSearchPage();
                 long start = -1, end = -1;
                 if ((params.getMatchesPerPage() > 0) && (page > 0) && (hitCount > 0)) {
@@ -1110,7 +1119,8 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
                                     I_CmsTermHighlighter highlighter = OpenCms.getSearchManager().getHighlighter();
                                     excerpt = highlighter.getExcerpt(exDoc, this, params, fieldsQuery, getAnalyzer());
                                 }
-                                int score = Math.round((hits.scoreDocs[i].score / hits.getMaxScore()) * 100f);
+                                int score = Math.round(
+                                    (maxScore != Float.NaN ? (hits.scoreDocs[i].score / maxScore) * 100f : 0));
                                 searchResults.add(new CmsSearchResult(score, doc, excerpt));
                             }
                             cnt++;
@@ -1145,7 +1155,7 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
         if (LOG.isDebugEnabled()) {
             timeTotal += System.currentTimeMillis();
             Object[] logParams = new Object[] {
-                new Long(hits == null ? 0 : hits.totalHits),
+                new Long(hits == null ? 0 : hits.totalHits.value),
                 new Long(timeTotal),
                 new Long(timeLucene),
                 new Long(timeResultProcessing)};
@@ -1659,10 +1669,10 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
 
             BooleanQuery.Builder build = new BooleanQuery.Builder();
             terms.forEach(term -> build.add(new TermQuery(term), Occur.SHOULD));
-            Query termsQuery = build.build();//termsFilter
+            Query termsQuery = build.build(); //termsFilter
 
             try {
-                result = termsQuery.createWeight(m_indexSearcher, false, 1).getQuery();
+                result = termsQuery.createWeight(m_indexSearcher, ScoreMode.COMPLETE_NO_SCORES, 1).getQuery();
                 m_displayFilters.put(field + termsStr, result);
             } catch (IOException e) {
                 // TODO don't know what happend

@@ -28,7 +28,9 @@
 package org.opencms.ade.containerpage.shared;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.google.common.collect.Sets;
@@ -56,6 +58,9 @@ public class CmsContainer implements IsSerializable {
     /** The content to display in case the container is empty. */
     private String m_emptyContainerContent;
 
+    /** True if this is a detail view container. */
+    private boolean m_isDetailViewContainer;
+
     /**
      * Indicates whether this container not nested,
      * or in case of a detail only container page the starting point of a detail only container hierarchy.
@@ -74,6 +79,9 @@ public class CmsContainer implements IsSerializable {
     /** The parent instance id. */
     private String m_parentInstanceId;
 
+    /** Presets for settings. */
+    private Map<String, String> m_settingPresets = new HashMap<String, String>();
+
     /** The container type. */
     private String m_type;
 
@@ -88,11 +96,13 @@ public class CmsContainer implements IsSerializable {
      * @param emptyContainerContent content to display in case the container is empty
      * @param width the width of the container
      * @param maxElements the maximum number of elements displayed by this container
-     * @param detailView flag indicating this container is used for detail views
+     * @param isDetailViewContainer flag indicating this is a detail view container
+     * @param detailView flag indicating this container is currently used for a detail view
      * @param editable flag indicating the container is editable by the current user
      * @param elements the container elements id's
      * @param parentContainerName the parent container name
      * @param parentInstanceId the parent instance id
+     * @param settingPresets the presets for container element settings
      */
     public CmsContainer(
         String name,
@@ -100,11 +110,13 @@ public class CmsContainer implements IsSerializable {
         String emptyContainerContent,
         int width,
         int maxElements,
+        boolean isDetailViewContainer,
         boolean detailView,
         boolean editable,
         List<CmsContainerElement> elements,
         String parentContainerName,
-        String parentInstanceId) {
+        String parentInstanceId,
+        Map<String, String> settingPresets) {
 
         m_elements = elements;
         m_name = name;
@@ -112,10 +124,12 @@ public class CmsContainer implements IsSerializable {
         m_emptyContainerContent = emptyContainerContent;
         m_maxElements = maxElements;
         m_width = width;
+        m_isDetailViewContainer = isDetailViewContainer;
         m_detailView = detailView;
         m_editable = editable;
         m_parentContainerName = parentContainerName;
         m_parentInstanceId = parentInstanceId;
+        m_settingPresets = settingPresets != null ? settingPresets : new HashMap<String, String>();
     }
 
     /**
@@ -200,6 +214,16 @@ public class CmsContainer implements IsSerializable {
     }
 
     /**
+     * Gets the setting presets.
+     *
+     * @return the setting presets
+     */
+    public Map<String, String> getSettingPresets() {
+
+        return m_settingPresets;
+    }
+
+    /**
      * Returns the container type. Used to determine the formatter used to render the contained elements.<p>
      *
      * @return the container type
@@ -240,6 +264,16 @@ public class CmsContainer implements IsSerializable {
     }
 
     /**
+     * Checks if this is a detail view container.
+     *
+     * @return true if this is a detail view container
+     */
+    public boolean isDetailViewContainer() {
+
+        return m_isDetailViewContainer;
+    }
+
+    /**
      * Returns if the container is editable by the current user.<p>
      *
      * @return <code>true</code> if the container is editable by the current user
@@ -275,7 +309,7 @@ public class CmsContainer implements IsSerializable {
      *
      * @param detailOnly <code>true</code> if the container is displayed in detail view only
      */
-    public void setDeatilOnly(boolean detailOnly) {
+    public void setDetailOnly(boolean detailOnly) {
 
         m_detailOnly = detailOnly;
     }

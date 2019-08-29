@@ -39,17 +39,23 @@ import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.i18n.CmsEncoder;
 import org.opencms.i18n.CmsMessages;
+import org.opencms.i18n.I_CmsMessageBundle;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.security.CmsRole;
 import org.opencms.security.I_CmsPrincipal;
+import org.opencms.ui.apps.CmsAppWorkplaceUi;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.apps.user.CmsOUHandler;
+import org.opencms.ui.components.OpenCmsTheme;
+import org.opencms.ui.contextmenu.CmsContextMenu;
+import org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
+import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.CmsWorkplaceMessages;
 import org.opencms.workplace.explorer.CmsExplorerTypeSettings;
@@ -61,8 +67,11 @@ import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -81,6 +90,7 @@ import com.vaadin.server.ExternalResource;
 import com.vaadin.server.FontIcon;
 import com.vaadin.server.Resource;
 import com.vaadin.server.VaadinService;
+import com.vaadin.shared.MouseEventDetails.MouseButton;
 import com.vaadin.shared.Version;
 import com.vaadin.ui.AbstractComponent;
 import com.vaadin.ui.Alignment;
@@ -90,8 +100,10 @@ import com.vaadin.ui.Button.ClickListener;
 import com.vaadin.ui.Component;
 import com.vaadin.ui.ComponentContainer;
 import com.vaadin.ui.HasComponents;
+import com.vaadin.ui.JavaScript;
 import com.vaadin.ui.Panel;
 import com.vaadin.ui.SingleComponentContainer;
+import com.vaadin.ui.TextField;
 import com.vaadin.ui.UI;
 import com.vaadin.ui.Window;
 import com.vaadin.ui.declarative.Design;
@@ -100,17 +112,20 @@ import com.vaadin.v7.data.Container;
 import com.vaadin.v7.data.Container.Filter;
 import com.vaadin.v7.data.Item;
 import com.vaadin.v7.data.util.IndexedContainer;
+import com.vaadin.v7.event.ItemClickEvent;
 import com.vaadin.v7.shared.ui.combobox.FilteringMode;
 import com.vaadin.v7.ui.AbstractField;
 import com.vaadin.v7.ui.ComboBox;
 import com.vaadin.v7.ui.Label;
 import com.vaadin.v7.ui.OptionGroup;
+import com.vaadin.v7.ui.Table;
 import com.vaadin.v7.ui.VerticalLayout;
 
 /**
  * Vaadin utility functions.<p>
  *
  */
+@SuppressWarnings("deprecation")
 public final class CmsVaadinUtils {
 
     /**
@@ -185,7 +200,6 @@ public final class CmsVaadinUtils {
             return !((Boolean)item.getItemProperty(PropertyId.isFolder).getValue()).booleanValue();
         }
     };
-
     /** Container filter for the resource type container to show XML content types only. */
     public static final Filter FILTER_XML_CONTENTS = new Filter() {
 
@@ -276,6 +290,19 @@ public final class CmsVaadinUtils {
     }
 
     /**
+     * Closes the window containing the given component.
+     *
+     * @param component a component
+     */
+    public static void closeWindow(Component component) {
+
+        Window window = getWindow(component);
+        if (window != null) {
+            window.close();
+        }
+    }
+
+    /**
      * Creates a click listener which calls a Runnable when activated.<p>
      *
      * @param action the Runnable to execute on a click
@@ -294,6 +321,35 @@ public final class CmsVaadinUtils {
                 action.run();
             }
         };
+    }
+
+    /**
+     * Simple context menu handler for multi-select tables.
+     *
+     * @param table the table
+     * @param menu the table's context menu
+     * @param event the click event
+     * @param entries the context menu entries
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> void defaultHandleContextMenuForMultiselect(
+        Table table,
+        CmsContextMenu menu,
+        ItemClickEvent event,
+        List<I_CmsSimpleContextMenuEntry<Collection<T>>> entries) {
+
+        if (!event.isCtrlKey() && !event.isShiftKey()) {
+            if (event.getButton().equals(MouseButton.RIGHT)) {
+                Collection<T> oldValue = ((Collection<T>)table.getValue());
+                if (oldValue.isEmpty() || !oldValue.contains(event.getItemId())) {
+                    table.setValue(new HashSet<Object>(Arrays.asList(event.getItemId())));
+                }
+                Collection<T> selection = (Collection<T>)table.getValue();
+                menu.setEntries(entries, selection);
+                menu.openForTable(event, table);
+            }
+        }
+
     }
 
     /**
@@ -326,30 +382,30 @@ public final class CmsVaadinUtils {
      *
      * @param cms CmsObject
      * @param ouFqn ou name
-     * @param caption property
+     * @param propCaption property
      * @param propIcon property for icon
-     * @param idOu organizational unit
+     * @param propOu organizational unit
      * @param blackList blacklist
-     * @param cmsCssIcon icon
+     * @param iconProvider the icon provider
      * @return indexed container
      */
     public static IndexedContainer getAvailableGroupsContainerWithout(
         CmsObject cms,
         String ouFqn,
-        String caption,
+        String propCaption,
         String propIcon,
-        String idOu,
+        String propOu,
         List<CmsGroup> blackList,
-        CmsCssIcon cmsCssIcon) {
+        java.util.function.Function<CmsGroup, CmsCssIcon> iconProvider) {
 
         if (blackList == null) {
             blackList = new ArrayList<CmsGroup>();
         }
         IndexedContainer res = new IndexedContainer();
-        res.addContainerProperty(caption, String.class, "");
-        res.addContainerProperty(idOu, String.class, "");
+        res.addContainerProperty(propCaption, String.class, "");
+        res.addContainerProperty(propOu, String.class, "");
         if (propIcon != null) {
-            res.addContainerProperty(propIcon, CmsCssIcon.class, cmsCssIcon);
+            res.addContainerProperty(propIcon, CmsCssIcon.class, null);
         }
         try {
             for (CmsGroup group : OpenCms.getRoleManager().getManageableGroups(cms, ouFqn, true)) {
@@ -358,8 +414,11 @@ public final class CmsVaadinUtils {
                     if (item == null) {
                         continue;
                     }
-                    item.getItemProperty(caption).setValue(group.getSimpleName());
-                    item.getItemProperty(idOu).setValue(group.getOuFqn());
+                    if (iconProvider != null) {
+                        item.getItemProperty(propIcon).setValue(iconProvider.apply(group));
+                    }
+                    item.getItemProperty(propCaption).setValue(group.getSimpleName());
+                    item.getItemProperty(propOu).setValue(group.getOuFqn());
                 }
             }
 
@@ -413,20 +472,36 @@ public final class CmsVaadinUtils {
      */
     public static IndexedContainer getAvailableSitesContainer(CmsObject cms, String captionPropertyName) {
 
+        IndexedContainer availableSites = new IndexedContainer();
+        availableSites.addContainerProperty(captionPropertyName, String.class, null);
+        for (Map.Entry<String, String> entry : getAvailableSitesMap(cms).entrySet()) {
+            Item siteItem = availableSites.addItem(entry.getKey());
+            siteItem.getItemProperty(captionPropertyName).setValue(entry.getValue());
+        }
+        return availableSites;
+    }
+
+    /**
+     * Gets available sites as a LinkedHashMap, with site roots as keys and site labels as values.
+     *
+     * @param cms the current CMS context
+     * @return the map of available sites
+     */
+    public static LinkedHashMap<String, String> getAvailableSitesMap(CmsObject cms) {
+
         CmsSiteSelectorOptionBuilder optBuilder = new CmsSiteSelectorOptionBuilder(cms);
         optBuilder.addNormalSites(true, (new CmsUserSettings(cms)).getStartFolder());
         optBuilder.addSharedSite();
-        IndexedContainer availableSites = new IndexedContainer();
-        availableSites.addContainerProperty(captionPropertyName, String.class, null);
+        LinkedHashMap<String, String> result = new LinkedHashMap<String, String>();
         for (CmsSiteSelectorOption option : optBuilder.getOptions()) {
-            Item siteItem = availableSites.addItem(option.getSiteRoot());
-            siteItem.getItemProperty(captionPropertyName).setValue(option.getMessage());
+            result.put(option.getSiteRoot(), option.getMessage());
         }
         String currentSiteRoot = cms.getRequestContext().getSiteRoot();
-        if (!availableSites.containsId(currentSiteRoot)) {
-            availableSites.addItem(currentSiteRoot).getItemProperty(captionPropertyName).setValue(currentSiteRoot);
+        if (!result.containsKey(currentSiteRoot)) {
+            result.put(currentSiteRoot, currentSiteRoot);
         }
-        return availableSites;
+        return result;
+
     }
 
     /**
@@ -481,7 +556,7 @@ public final class CmsVaadinUtils {
      * @param iconProp property
      * @param ou ou
      * @param propStatus status property
-     * @param cmsCssIcon icon
+     * @param iconProvider the icon provider
      * @return Indexed Container
      */
     public static IndexedContainer getGroupsOfUser(
@@ -491,20 +566,23 @@ public final class CmsVaadinUtils {
         String iconProp,
         String ou,
         String propStatus,
-        CmsCssIcon cmsCssIcon) {
+        Function<CmsGroup, CmsCssIcon> iconProvider) {
 
         IndexedContainer container = new IndexedContainer();
         container.addContainerProperty(caption, String.class, "");
         container.addContainerProperty(ou, String.class, "");
         container.addContainerProperty(propStatus, Boolean.class, new Boolean(true));
-        if (cmsCssIcon != null) {
-            container.addContainerProperty(iconProp, CmsCssIcon.class, cmsCssIcon);
+        if (iconProvider != null) {
+            container.addContainerProperty(iconProp, CmsCssIcon.class, null);
         }
         try {
             for (CmsGroup group : cms.getGroupsOfUser(user.getName(), true)) {
                 Item item = container.addItem(group);
                 item.getItemProperty(caption).setValue(group.getSimpleName());
                 item.getItemProperty(ou).setValue(group.getOuFqn());
+                if (iconProvider != null) {
+                    item.getItemProperty(iconProp).setValue(iconProvider.apply(group));
+                }
             }
         } catch (CmsException e) {
             LOG.error("Unable to read groups from user", e);
@@ -558,6 +636,20 @@ public final class CmsVaadinUtils {
 
         return result;
 
+    }
+
+    /**
+     * Gets the message for the current locale and the given key and arguments.<p>
+     *
+     * @param messages the messages instance
+     * @param key the message key
+     * @param args the message arguments
+     *
+     * @return the message text for the current locale
+     */
+    public static String getMessageText(I_CmsMessageBundle messages, String key, Object... args) {
+
+        return messages.getBundle(A_CmsUI.get().getLocale()).key(key, args);
     }
 
     /**
@@ -712,9 +804,25 @@ public final class CmsVaadinUtils {
 
         IndexedContainer result = new IndexedContainer();
         result.addContainerProperty(captionPropertyName, String.class, null);
+        for (Map.Entry<CmsUUID, String> entry : getProjectsMap(cms).entrySet()) {
+            Item projectItem = result.addItem(entry.getKey());
+            projectItem.getItemProperty(captionPropertyName).setValue(entry.getValue());
+        }
+        return result;
+    }
+
+    /**
+     * Gets the available projects for the current user as a map, wth project ids as keys and project names as values.
+     *
+     * @param cms the current CMS context
+     * @return the map of projects
+     */
+    public static LinkedHashMap<CmsUUID, String> getProjectsMap(CmsObject cms) {
+
         Locale locale = A_CmsUI.get().getLocale();
         List<CmsProject> projects = getAvailableProjects(cms);
         boolean isSingleOu = isSingleOu(projects);
+        LinkedHashMap<CmsUUID, String> result = new LinkedHashMap<>();
         for (CmsProject project : projects) {
             String projectName = project.getSimpleName();
             if (!isSingleOu && !project.isOnlineProject()) {
@@ -728,10 +836,10 @@ public final class CmsVaadinUtils {
                     projectName = projectName + " - " + project.getOuFqn();
                 }
             }
-            Item projectItem = result.addItem(project.getUuid());
-            projectItem.getItemProperty(captionPropertyName).setValue(projectName);
+            result.put(project.getUuid(), projectName);
         }
         return result;
+
     }
 
     /**
@@ -839,7 +947,68 @@ public final class CmsVaadinUtils {
      */
     public static String getWorkplaceLink() {
 
-        return CmsStringUtil.joinPaths("/", OpenCms.getSystemInfo().getContextPath(), "workplace");
+        return OpenCms.getSystemInfo().getWorkplaceContext();
+    }
+
+    /**
+     * Returns the workplace link for the given app.<p>
+     *
+     * @param appId the app id
+     *
+     * @return the workplace link
+     */
+    public static String getWorkplaceLink(String appId) {
+
+        return getWorkplaceLink() + CmsAppWorkplaceUi.WORKPLACE_APP_ID_SEPARATOR + appId;
+    }
+
+    /**
+     * Returns the workplace link to the given app with the given state.<p>
+     *
+     * @param appId the app id
+     * @param appState the app state
+     *
+     * @return the workplace link
+     */
+    public static String getWorkplaceLink(String appId, String appState) {
+
+        return getWorkplaceLink(appId) + CmsAppWorkplaceUi.WORKPLACE_STATE_SEPARATOR + appState;
+    }
+
+    /**
+     * Returns the workplace link to the given app with the given state including the given request parameters.<p>
+     *
+     * @param appId the app id
+     * @param appState the app state
+     * @param requestParameters the request parameters
+     *
+     * @return the workplace link
+     */
+    public static String getWorkplaceLink(String appId, String appState, Map<String, String[]> requestParameters) {
+
+        String result = getWorkplaceLink();
+        if ((requestParameters != null) && !requestParameters.isEmpty()) {
+            boolean first = true;
+            for (Entry<String, String[]> param : requestParameters.entrySet()) {
+                for (String value : param.getValue()) {
+                    if (first) {
+                        result += "?";
+                    } else {
+                        result += "&";
+                    }
+                    result += param.getKey() + "=" + value;
+                    first = false;
+                }
+            }
+        }
+
+        if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(appId)) {
+            result += CmsAppWorkplaceUi.WORKPLACE_APP_ID_SEPARATOR + appId;
+        }
+        if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(appState)) {
+            result += CmsAppWorkplaceUi.WORKPLACE_STATE_SEPARATOR + appState;
+        }
+        return result;
     }
 
     /**
@@ -875,6 +1044,23 @@ public final class CmsVaadinUtils {
     public static boolean hasPathAsItemId(Container cnt, String path) {
 
         return cnt.containsId(path) || cnt.containsId(CmsFileUtil.toggleTrailingSeparator(path));
+    }
+
+    /**
+     * Checks if a button is pressed.<p>
+     *
+     * @param button the button
+     *
+     * @return true if the button is pressed
+     */
+    public static boolean isButtonPressed(Button button) {
+
+        if (button == null) {
+            return false;
+        }
+        List<String> styles = Arrays.asList(button.getStyleName().split(" "));
+
+        return styles.contains(OpenCmsTheme.BUTTON_PRESSED);
     }
 
     /**
@@ -1028,6 +1214,21 @@ public final class CmsVaadinUtils {
     }
 
     /**
+     * Configures a text field to look like a filter box for a table.
+     *
+     * @param searchBox the text field to configure
+     */
+    public static void setFilterBoxStyle(TextField searchBox) {
+
+        searchBox.setIcon(FontOpenCms.FILTER);
+
+        searchBox.setPlaceholder(
+            org.opencms.ui.apps.Messages.get().getBundle(UI.getCurrent().getLocale()).key(
+                org.opencms.ui.apps.Messages.GUI_EXPLORER_FILTER_0));
+        searchBox.addStyleName(ValoTheme.TEXTFIELD_INLINE_ICON);
+    }
+
+    /**
      * Sets the value of a text field which may be set to read-only mode.<p>
      *
      * When setting a Vaadin field to read-only, you also can't set its value programmatically anymore.
@@ -1103,6 +1304,20 @@ public final class CmsVaadinUtils {
     }
 
     /**
+     * Sets style of a toggle button depending on its current state.<p>
+     *
+     * @param button the button to update
+     */
+    public static void toggleButton(Button button) {
+
+        if (isButtonPressed(button)) {
+            button.removeStyleName(OpenCmsTheme.BUTTON_PRESSED);
+        } else {
+            button.addStyleName(OpenCmsTheme.BUTTON_PRESSED);
+        }
+    }
+
+    /**
      * Updates the component error of a component, but only if it differs from the currently set
      * error.<p>
      *
@@ -1148,8 +1363,26 @@ public final class CmsVaadinUtils {
     }
 
     /**
-     * Reads the given design and resolves the given macros and localizations.<p>
+     * Waggle the component.<p>
+     *
+     * @param component to be waggled
+     */
+    public static void waggleMeOnce(Component component) {
 
+        //TODO Until now, the component gets a waggler class which can not be removed again here..
+        component.addStyleName("waggler");
+        //Add JavaScript code, which adds the waggle class and removes it after a short time.
+        JavaScript.getCurrent().execute(
+            "waggler=document.querySelectorAll(\".waggler\")[0];"
+                + "waggler.className=waggler.className + \" waggle\";"
+                + "setTimeout(function () {\n"
+                + "waggler.className=waggler.className.replace(/\\bwaggle\\b/g, \"\");"
+                + "    }, 1500);");
+    }
+
+    /**
+     * Reads the given design and resolves the given macros and localizations.<p>
+    
      * @param component the component whose design to read
      * @param designStream stream to read the design from
      * @param messages the message bundle to use for localization in the design (may be null)

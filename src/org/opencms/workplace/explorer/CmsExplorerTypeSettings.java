@@ -29,15 +29,14 @@ package org.opencms.workplace.explorer;
 
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
-import org.opencms.i18n.CmsMessages;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsPermissionSet;
 import org.opencms.security.CmsRole;
 import org.opencms.util.CmsStringUtil;
-import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.CmsWorkplaceManager;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -55,7 +54,7 @@ import org.apache.commons.logging.Log;
  *
  * @since 6.0.0
  */
-public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettings> {
+public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettings>, Serializable {
 
     /** The default big file type icon style class. */
     public static final String ICON_STYLE_DEFAULT_BIG = "oc-icon-24-default";
@@ -122,6 +121,9 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
         }
     };
 
+    /** The serial version id. */
+    private static final long serialVersionUID = 7014251115525259136L;
+
     /** The explorer type access. */
     private CmsExplorerTypeAccess m_access;
 
@@ -139,15 +141,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
 
     /** The big icon CSS style class. */
     private String m_bigIconStyle;
-
-    /** The context menu. */
-    private CmsExplorerContextMenu m_contextMenu;
-
-    /** The context menu entries. */
-    private List<CmsExplorerContextMenuItem> m_contextMenuEntries;
-
-    /** The description image. */
-    private String m_descriptionImage;
 
     /** The element view for this explorer type. */
     private String m_elementView;
@@ -176,17 +169,11 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     /** The name pattern. */
     private String m_namePattern;
 
-    /** Optional class name for a new resource handler. */
-    private String m_newResourceHandlerClassName;
-
     /** The new resource order value. */
     private Integer m_newResourceOrder;
 
-    /** The new resource page. */
-    private String m_newResourcePage;
-
-    /** The new resource URI. */
-    private String m_newResourceUri;
+    /** The creatable flag, <code>false</code> for types that can not be created through the workplace UI. */
+    private boolean m_creatable;
 
     /** The properties. */
     private List<String> m_properties;
@@ -216,8 +203,7 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
 
         m_access = new CmsExplorerTypeAccess();
         m_properties = new ArrayList<String>();
-        m_contextMenuEntries = new ArrayList<CmsExplorerContextMenuItem>();
-        m_contextMenu = new CmsExplorerContextMenu();
+        m_creatable = true;
         m_hasEditOptions = false;
         m_propertiesEnabled = false;
         m_showNavigation = false;
@@ -237,34 +223,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     public static Integer getDefaultViewOrder(String typeName) {
 
         return m_defaultViewOrders.get(typeName);
-    }
-
-    /**
-     * Adds a menu entry to the list of context menu items.<p>
-     *
-     * @param item the entry item to add to the list
-     */
-    public void addContextMenuEntry(CmsExplorerContextMenuItem item) {
-
-        item.setType(CmsExplorerContextMenuItem.TYPE_ENTRY);
-        m_contextMenuEntries.add(item);
-        if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_ADD_MENU_ENTRY_2, item.getKey(), item.getUri()));
-        }
-    }
-
-    /**
-     * Adds a menu separator to the list of context menu items.<p>
-     *
-     * @param item the separator item to add to the list
-     */
-    public void addContextMenuSeparator(CmsExplorerContextMenuItem item) {
-
-        item.setType(CmsExplorerContextMenuItem.TYPE_SEPARATOR);
-        m_contextMenuEntries.add(item);
-        if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_ADD_MENU_SEPARATOR_1, item.getType()));
-        }
     }
 
     /**
@@ -313,8 +271,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
         result.m_autoSetTitle = m_autoSetTitle;
         result.m_bigIcon = m_bigIcon;
         result.m_bigIconStyle = m_bigIconStyle;
-        result.m_contextMenu = (CmsExplorerContextMenu)m_contextMenu.clone();
-        result.m_descriptionImage = m_descriptionImage;
         result.m_elementView = m_elementView;
         result.m_hasEditOptions = m_hasEditOptions;
         result.m_icon = m_icon;
@@ -323,10 +279,7 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
         result.m_key = m_key;
         result.m_name = m_name;
         result.m_namePattern = m_namePattern;
-        result.m_newResourceHandlerClassName = m_newResourceHandlerClassName;
         result.m_newResourceOrder = m_newResourceOrder;
-        result.m_newResourcePage = m_newResourcePage;
-        result.m_newResourceUri = m_newResourceUri;
         result.m_properties = new ArrayList<String>(m_properties);
         result.m_propertiesEnabled = m_propertiesEnabled;
         result.m_reference = m_reference;
@@ -338,12 +291,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
         for (Map.Entry<String, CmsIconRule> rule : m_iconRules.entrySet()) {
             result.m_iconRules.put(rule.getKey(), (CmsIconRule)rule.getValue().clone());
         }
-
-        result.m_contextMenuEntries = new ArrayList<CmsExplorerContextMenuItem>();
-        for (CmsExplorerContextMenuItem entry : m_contextMenuEntries) {
-            result.m_contextMenuEntries.add(entry);
-        }
-
         return result;
     }
 
@@ -356,35 +303,9 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
             return 0;
         }
         if (other != null) {
-            String myPage = getNewResourcePage();
-            String otherPage = other.getNewResourcePage();
-            if (CmsStringUtil.isEmptyOrWhitespaceOnly(myPage)) {
-                myPage = "";
-            }
-            if (CmsStringUtil.isEmptyOrWhitespaceOnly(otherPage)) {
-                otherPage = "";
-            }
-            int result = myPage.compareTo(otherPage);
-            if (result == 0) {
-                result = m_newResourceOrder.compareTo(other.m_newResourceOrder);
-            }
-            return result;
+            return m_newResourceOrder.compareTo(other.m_newResourceOrder);
         }
         return 0;
-    }
-
-    /**
-     * Adds all context menu entries to the context menu object.<p>
-     *
-     * This method has to be called when all context menu entries have been
-     * added to the list of entries.<p>
-     */
-    public void createContextMenu() {
-
-        m_contextMenu.addEntries(getContextMenuEntries());
-        if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_CREATE_CONTEXT_MENU_1, getName()));
-        }
     }
 
     /**
@@ -437,39 +358,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
-     * Returns the context menu.<p>
-     * @return the context menu
-     */
-    public CmsExplorerContextMenu getContextMenu() {
-
-        if ((m_reference != null) && (m_contextMenu.isEmpty())) {
-            m_contextMenu = (CmsExplorerContextMenu)OpenCms.getWorkplaceManager().getExplorerTypeSetting(
-                m_reference).getContextMenu().clone();
-        }
-        return m_contextMenu;
-    }
-
-    /**
-     * Returns the list of context menu entries of the explorer type setting.<p>
-     *
-     * @return the list of context menu entries of the explorer type setting
-     */
-    public List<CmsExplorerContextMenuItem> getContextMenuEntries() {
-
-        return m_contextMenuEntries;
-    }
-
-    /**
-     * Returns the descriptionImage.<p>
-     *
-     * @return the descriptionImage
-     */
-    public String getDescriptionImage() {
-
-        return m_descriptionImage;
-    }
-
-    /**
      * Gets the element view name.<p>
      *
      * @return the element view name
@@ -510,34 +398,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
-     * Builds the Javascript to create the context menu.<p>
-     *
-     * @param settings the explorer type settings for which the context menu is created
-     * @param resTypeId the id of the resource type which uses the context menu
-     * @param messages the messages to generate the context menu with (should be the workplace messages)
-     *
-     * @return the JavaScript output to create the context menu
-     */
-    public String getJSEntries(CmsExplorerTypeSettings settings, int resTypeId, CmsMessages messages) {
-
-        // entries not yet in Map, so generate them
-        StringBuffer result = new StringBuffer(4096);
-
-        // create the JS for the resource object
-        result.append("\nvi.resource[").append(resTypeId).append("]=new res(\"").append(settings.getName()).append(
-            "\", ");
-        result.append("\"");
-        result.append(messages.key(settings.getKey()));
-        result.append("\", vi.skinPath + \"" + CmsWorkplace.RES_PATH_FILETYPES);
-        result.append(settings.getIcon());
-        result.append("\", \"");
-        result.append(settings.getNewResourceUri());
-        result.append("\", true);\n");
-
-        return result.toString();
-    }
-
-    /**
      * Returns the key name of the explorer type setting.<p>
      *
      * @return the key name of the explorer type setting
@@ -568,16 +428,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
-     * Returns the class name of the new resource handler used to create new resources of a specified resource type.<p>
-     *
-     * @return the class name of the new resource handler
-     */
-    public String getNewResourceHandlerClassName() {
-
-        return m_newResourceHandlerClassName;
-    }
-
-    /**
      * Returns the order for the new resource dialog of the explorer type setting.<p>
      *
      * @return the order for the new resource dialog of the explorer type setting
@@ -585,26 +435,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     public String getNewResourceOrder() {
 
         return String.valueOf(m_newResourceOrder);
-    }
-
-    /**
-     * Returns the page.<p>
-     *
-     * @return the page
-     */
-    public String getNewResourcePage() {
-
-        return m_newResourcePage;
-    }
-
-    /**
-     * Returns the URI for the new resource dialog of the explorer type setting.<p>
-     *
-     * @return the URI for the new resource dialog of the explorer type setting
-     */
-    public String getNewResourceUri() {
-
-        return m_newResourceUri;
     }
 
     /**
@@ -729,6 +559,16 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
+     * Returns if this type is creatable.<p>
+     *
+     * @return <code>true</code> in case this type is creatable
+     */
+    public boolean isCreatable() {
+
+        return m_creatable;
+    }
+
+    /**
      * Checks if the current user has write permissions on the given resource.<p>
      *
      * @param cms the current cms context
@@ -844,27 +684,23 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
-     * Sets the list of context menu entries of the explorer type setting.<p>
+     * Sets the creatable flag.<p>
      *
-     * @param entries the list of context menu entries of the explorer type setting
+     * @param creatable the non creatable flag to set
      */
-    public void setContextMenuEntries(List<CmsExplorerContextMenuItem> entries) {
+    public void setCreatable(boolean creatable) {
 
-        m_contextMenuEntries = entries;
+        m_creatable = creatable;
     }
 
     /**
-     * Sets the descriptionImage.<p>
+     * Sets the creatable flag.<p>
      *
-     * @param descriptionImage the descriptionImage to set
+     * @param creatable the creatable flag to set
      */
-    public void setDescriptionImage(String descriptionImage) {
+    public void setCreatable(String creatable) {
 
-        m_descriptionImage = descriptionImage;
-        if (LOG.isDebugEnabled()) {
-            LOG.debug(
-                Messages.get().getBundle().key(Messages.LOG_SET_NEW_RESOURCE_DESCRIPTION_IMAGE_1, descriptionImage));
-        }
+        m_creatable = Boolean.parseBoolean(creatable);
     }
 
     /**
@@ -944,16 +780,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
     }
 
     /**
-     * Sets the class name of the new resource handler used to create new resources of a specified resource type.<p>
-     *
-     * @param newResourceHandlerClassName the class name of the new resource handler
-     */
-    public void setNewResourceHandlerClassName(String newResourceHandlerClassName) {
-
-        m_newResourceHandlerClassName = newResourceHandlerClassName;
-    }
-
-    /**
      * Sets the order for the new resource dialog of the explorer type setting.<p>
      *
      * @param newResourceOrder the order for the new resource dialog of the explorer type setting
@@ -971,29 +797,6 @@ public class CmsExplorerTypeSettings implements Comparable<CmsExplorerTypeSettin
                 LOG.info(e);
             }
             m_newResourceOrder = new Integer(0);
-        }
-    }
-
-    /**
-     * Sets the page.<p>
-     *
-     * @param page the page to set
-     */
-    public void setNewResourcePage(String page) {
-
-        m_newResourcePage = page;
-    }
-
-    /**
-     * Sets the URI for the new resource dialog of the explorer type setting.<p>
-     *
-     * @param newResourceUri the URI for the new resource dialog of the explorer type setting
-     */
-    public void setNewResourceUri(String newResourceUri) {
-
-        m_newResourceUri = newResourceUri;
-        if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_SET_NEW_RESOURCE_URI_1, newResourceUri));
         }
     }
 

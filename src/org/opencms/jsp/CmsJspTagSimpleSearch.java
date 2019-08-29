@@ -42,6 +42,7 @@ import org.opencms.jsp.search.controller.I_CmsSearchControllerCommon;
 import org.opencms.jsp.search.controller.I_CmsSearchControllerMain;
 import org.opencms.jsp.search.result.CmsSearchResultWrapper;
 import org.opencms.jsp.search.result.I_CmsSearchResultWrapper;
+import org.opencms.jsp.util.CmsJspElFunctions;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsIllegalArgumentException;
 import org.opencms.main.CmsLog;
@@ -83,7 +84,7 @@ public class CmsJspTagSimpleSearch extends CmsJspScopedVarBodyTagSuport implemen
     private Integer m_addContentInfoForEntries;
 
     /** The "configFile" tag attribute. */
-    private String m_configFile;
+    private Object m_configFile;
 
     /** The "configString" tag attribute. */
     private String m_configString;
@@ -167,7 +168,7 @@ public class CmsJspTagSimpleSearch extends CmsJspScopedVarBodyTagSuport implemen
 
         try {
             I_CmsSearchConfiguration config = null;
-            CmsResource resource = cms.readResource(m_configFile);
+            CmsResource resource = CmsJspElFunctions.convertRawResource(cms, m_configFile);
             ListConfigurationBean configBean = CmsListManager.parseListConfiguration(cms, resource);
             config = new CmsSearchConfiguration(
                 new CmsSimpleSearchConfigurationParser(cms, configBean, m_configString));
@@ -197,7 +198,7 @@ public class CmsJspTagSimpleSearch extends CmsJspScopedVarBodyTagSuport implemen
             && (null == m_searchController.getCommon().getConfig().getSolrIndex())
             && (null != m_addContentInfoForEntries)) {
             CmsSolrQuery query = new CmsSolrQuery();
-            m_searchController.addQueryParts(query);
+            m_searchController.addQueryParts(query, cms);
             query.setStart(Integer.valueOf(0));
             query.setRows(m_addContentInfoForEntries);
             CmsContentLoadCollectorInfo info = new CmsContentLoadCollectorInfo();
@@ -222,7 +223,7 @@ public class CmsJspTagSimpleSearch extends CmsJspScopedVarBodyTagSuport implemen
      *
      * @return the config file
      */
-    public String getConfigFile() {
+    public Object getConfigFile() {
 
         return m_configFile;
     }
@@ -328,13 +329,13 @@ public class CmsJspTagSimpleSearch extends CmsJspScopedVarBodyTagSuport implemen
             }
         }
         CmsSolrQuery query = new CmsSolrQuery(null, queryParams);
-        m_searchController.addQueryParts(query);
+        m_searchController.addQueryParts(query, cms);
         try {
             // use "complicated" constructor to allow more than 50 results -> set ignoreMaxResults to true
             // also set resource filter to allow for returning unreleased/expired resources if necessary.
             CmsSolrResultList solrResultList = m_index.search(
                 cms,
-                query,
+                query.clone(), // use a clone of the query, since the search function manipulates the query (removes highlighting parts), but we want to keep the original one.
                 true,
                 isEditMode ? CmsResourceFilter.IGNORE_EXPIRATION : null);
             return new CmsSearchResultWrapper(m_searchController, solrResultList, query, cms, null);

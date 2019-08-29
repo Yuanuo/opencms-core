@@ -66,6 +66,7 @@ import org.opencms.xml.types.CmsXmlHtmlValue;
 import org.opencms.xml.types.CmsXmlVarLinkValue;
 import org.opencms.xml.types.CmsXmlVfsFileValue;
 import org.opencms.xml.types.I_CmsXmlContentValue;
+import org.opencms.xml.types.I_CmsXmlContentValue.SearchContentType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -86,14 +87,17 @@ import com.google.common.collect.Lists;
  */
 public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
 
-    /** The name for the choose model file form action. */
-    public static final String DIALOG_CHOOSEMODEL = "choosemodel";
-
     /** Configuration key for the (optional) schema. */
     public static final String CONFIGURATION_SCHEMA = "schema";
 
+    /** The name for the choose model file form action. */
+    public static final String DIALOG_CHOOSEMODEL = "choosemodel";
+
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsResourceTypeXmlContent.class);
+
+    /** The serial version id. */
+    private static final long serialVersionUID = 2271469830431937731L;
 
     /** The (optional) schema of this resource. */
     private String m_schema;
@@ -527,6 +531,33 @@ public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
                     CmsLink link = refValue.getLink(cms);
                     if ((link != null) && link.isInternal()) {
                         links.add(link);
+                    }
+                }
+                if (SearchContentType.CONTENT.equals(xmlContent.getHandler().getSearchContentType(value))) {
+                    String stringValue = value.getStringValue(cms);
+                    try {
+                        if ((null != stringValue) && !stringValue.trim().isEmpty() && cms.existsResource(stringValue)) {
+                            CmsResource res = cms.readResource(stringValue);
+                            if (CmsResourceTypeXmlContent.isXmlContent(res)) {
+                                CmsLink link = new CmsLink(
+                                    "",
+                                    CmsRelationType.INDEX_CONTENT,
+                                    res.getStructureId(),
+                                    res.getRootPath(),
+                                    true);
+                                links.add(link);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        if (LOG.isErrorEnabled()) {
+                            LOG.error(
+                                "Failed to add INDEX_CONTENT relation from resource "
+                                    + file.getRootPath()
+                                    + " to linked resource "
+                                    + stringValue
+                                    + ".",
+                                t);
+                        }
                     }
                 }
             }

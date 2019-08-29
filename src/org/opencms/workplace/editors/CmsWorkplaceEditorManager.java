@@ -27,13 +27,15 @@
 
 package org.opencms.workplace.editors;
 
-import org.opencms.ade.contenteditor.CmsContentTypeVisitor;
+import org.opencms.cache.CmsVfsMemoryObjectCache;
+import org.opencms.configuration.CmsParameterConfiguration;
 import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.types.CmsResourceTypeXmlPage;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.main.CmsException;
@@ -44,6 +46,7 @@ import org.opencms.workplace.explorer.CmsExplorerTypeSettings;
 import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentFactory;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -144,11 +147,10 @@ public class CmsWorkplaceEditorManager {
      * @param resource the resource to check
      *
      * @return false if for some fields the new Acacia widgets are not available
-     *
-     * @throws CmsException if something goes wrong
      */
     public static boolean checkAcaciaEditorAvailable(CmsObject cms, CmsResource resource) {
 
+        boolean result = false;
         if (resource == null) {
             try {
                 // we want a stack trace
@@ -156,20 +158,23 @@ public class CmsWorkplaceEditorManager {
             } catch (Exception e) {
                 LOG.error("Can't check widget availability because resource is null!", e);
             }
-            return false;
-        }
-        try {
-            CmsFile file = (resource instanceof CmsFile) ? (CmsFile)resource : cms.readFile(resource);
-            CmsXmlContent content = CmsXmlContentFactory.unmarshal(cms, file);
-            if (content.getContentDefinition().getContentHandler().isAcaciaEditorDisabled()) {
-                return false;
+        } else {
+            try {
+                CmsFile file = (resource instanceof CmsFile) ? (CmsFile)resource : cms.readFile(resource);
+                if (file.getContents().length > 0) {
+                    CmsXmlContent content = CmsXmlContentFactory.unmarshal(cms, file);
+                    if (!content.getContentDefinition().getContentHandler().isAcaciaEditorDisabled()) {
+                        result = true;
+                    }
+                }
+            } catch (CmsException e) {
+                LOG.info(
+                    "error thrown in checkAcaciaEditorAvailable for " + resource + " : " + e.getLocalizedMessage(),
+                    e);
+                result = true;
             }
-            CmsContentTypeVisitor visitor = new CmsContentTypeVisitor(cms, file, cms.getRequestContext().getLocale());
-            return visitor.isEditorCompatible(content.getContentDefinition());
-        } catch (CmsException e) {
-            LOG.info("error thrown in checkAcaciaEditorAvailable for " + resource + " : " + e.getLocalizedMessage(), e);
-            return true;
         }
+        return result;
     }
 
     /**
@@ -232,6 +237,37 @@ public class CmsWorkplaceEditorManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Gets the value of a global editor configuration parameter.
+     *
+     * @param cms the CMS context
+     * @param editor the editor name
+     * @param param the name of the parameter
+     *
+     * @return the editor parameter value
+     */
+    public String getEditorParameter(CmsObject cms, String editor, String param) {
+
+        String path = OpenCms.getSystemInfo().getConfigFilePath(cms, "editors/" + editor + ".properties");
+        CmsVfsMemoryObjectCache cache = CmsVfsMemoryObjectCache.getVfsMemoryObjectCache();
+        CmsParameterConfiguration config = (CmsParameterConfiguration)cache.getCachedObject(cms, path);
+        if (config == null) {
+            try {
+                CmsFile file = cms.readFile(path);
+                try (ByteArrayInputStream input = new ByteArrayInputStream(file.getContents())) {
+                    config = new CmsParameterConfiguration(input); // Uses ISO-8859-1, should be OK for config parameters
+                    cache.putCachedObject(cms, path, config);
+                }
+            } catch (CmsVfsResourceNotFoundException e) {
+                return null;
+            } catch (Exception e) {
+                LOG.error(e.getLocalizedMessage(), e);
+                return null;
+            }
+        }
+        return config.getString(param, null);
     }
 
     /**

@@ -901,18 +901,6 @@
 					uri="newresource.jsp?newresourcetype=linkgallery" order="30"
 					autosetnavigation="false" autosettitle="false" />
 			</explorertype>
-			<explorertype name="htmlgallery" key="fileicon.htmlgallery"
-				icon="htmlgallery.gif" reference="downloadgallery">
-				<newresource page="extendedfolder"
-					uri="newresource.jsp?newresourcetype=htmlgallery" order="40"
-					autosetnavigation="false" autosettitle="false" />
-			</explorertype>
-			<explorertype name="tablegallery" key="fileicon.tablegallery"
-				icon="tablegallery.gif" reference="downloadgallery">
-				<newresource page="extendedfolder"
-					uri="newresource.jsp?newresourcetype=tablegallery" order="50"
-					autosetnavigation="false" autosettitle="false" />
-			</explorertype>
 			<explorertype name="xmlcontent" key="fileicon.xmlcontent"
 				icon="xmlcontent.gif">
 				<newresource page="structurecontent"
@@ -1260,10 +1248,8 @@
 				<preference name="editor.xmlcontent" value="bestavailable" />
 				<preference name="editor.xmlpage" value="bestavailable" />
 				<preference name="gallery.linkgallery" />
-				<preference name="gallery.tablegallery" />
 				<preference name="gallery.imagegallery" />
 				<preference name="gallery.downloadgallery" />
-				<preference name="gallery.htmlgallery" />
 			</preference-tab>
 			<preference-tab name="hidden">
 				<preference name="workplaceButtonStyle" value="textimage" />
@@ -1276,12 +1262,6 @@
 				<preference name="uploadAppletClientFolder" value="" />
 			</preference-tab>
 		</default-preferences>
-		<workplace-customfoot>
-			<color>InfoText</color>
-			<background-color>InfoBackground</background-color>
-			<text replace="true">[Custom] (%(key.GUI_LABEL_USER_0)
-				%(currentuser.name))</text>
-		</workplace-customfoot>
 		<tool-manager>
 			<roots>
 				<root>

@@ -37,6 +37,9 @@ import org.opencms.ui.apps.I_CmsAppUIContext;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.components.extensions.CmsGwtDialogExtension;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.vaadin.server.Page.BrowserWindowResizeEvent;
 import com.vaadin.server.Page.BrowserWindowResizeListener;
 import com.vaadin.server.Responsive;
@@ -61,6 +64,8 @@ public class CmsAppViewLayout extends CssLayout implements I_CmsAppUIContext, Br
     /** The app id. */
     private String m_appId;
 
+    private Map<String, Object> m_attributes = new HashMap<>();
+
     /** The info area grid. */
     private CssLayout m_infoArea;
 
@@ -79,13 +84,16 @@ public class CmsAppViewLayout extends CssLayout implements I_CmsAppUIContext, Br
         Responsive.makeResponsive(this);
         // setting the width to 100% within the java code is required by the responsive resize listeners
         setWidth("100%");
-        m_toolbar.init(m_appId);
+        m_toolbar.init(m_appId, this);
     }
 
     /**
-     * @see org.opencms.ui.apps.I_CmsAppUIContext#addPublishButton(org.opencms.ui.I_CmsUpdateListener)
+     * Creates the publish button.
+     *
+     * @param updateListener the update listener
+     * @return the publish button
      */
-    public Button addPublishButton(final I_CmsUpdateListener<String> updateListener) {
+    public static Button createPublishButton(final I_CmsUpdateListener<String> updateListener) {
 
         Button publishButton = CmsToolBar.createButton(
             FontOpenCms.PUBLISH,
@@ -107,6 +115,15 @@ public class CmsAppViewLayout extends CssLayout implements I_CmsAppUIContext, Br
                 extension.openPublishDialog();
             }
         });
+        return publishButton;
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsAppUIContext#addPublishButton(org.opencms.ui.I_CmsUpdateListener)
+     */
+    public Button addPublishButton(final I_CmsUpdateListener<String> updateListener) {
+
+        Button publishButton = createPublishButton(updateListener);
 
         addToolbarButton(publishButton);
         return publishButton;
@@ -169,6 +186,14 @@ public class CmsAppViewLayout extends CssLayout implements I_CmsAppUIContext, Br
     }
 
     /**
+     * @see org.opencms.ui.apps.I_CmsAppUIContext#getAttribute(java.lang.String)
+     */
+    public Object getAttribute(String key) {
+
+        return m_attributes.get(key);
+    }
+
+    /**
      * @see org.opencms.ui.apps.I_CmsAppUIContext#hideToolbar()
      */
     public void hideToolbar() {
@@ -214,6 +239,15 @@ public class CmsAppViewLayout extends CssLayout implements I_CmsAppUIContext, Br
 
         CmsAppWorkplaceUi.setWindowTitle(title);
         m_toolbar.setAppTitle(title);
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsAppUIContext#setAttribute(java.lang.String, java.lang.Object)
+     */
+    public void setAttribute(String key, Object value) {
+
+        m_attributes.put(key, value);
+
     }
 
     /**

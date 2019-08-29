@@ -32,10 +32,16 @@ import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.i18n.CmsMessages;
+import org.opencms.jsp.CmsJspNavBuilder.NavContext;
+import org.opencms.main.CmsLog;
 import org.opencms.util.CmsCollectionsGenericWrapper;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import org.apache.commons.logging.Log;
 
 /**
  * Bean to collect navigation information from a resource in the OpenCms VFS.<p>
@@ -53,8 +59,14 @@ import java.util.Map;
  */
 public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
 
+    /** The log instance for  this class. */
+    private static final Log LOG = CmsLog.getLog(CmsJspNavElement.class);
+
     /** The locale for which the property should be read. */
     protected Locale m_locale;
+
+    /** The navigation context. */
+    protected CmsJspNavBuilder.NavContext m_navContext;
 
     /** The navigation position has changed flag. */
     private boolean m_changedNavPos;
@@ -88,6 +100,8 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
 
     /** The navigation text. */
     private String m_text;
+
+    private List<CmsJspNavElement> m_subNavigation;
 
     /**
      * Empty constructor required for every JavaBean, does nothing.<p>
@@ -133,8 +147,8 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
      * @see #init(String, Map, int, Locale)
      */
     public CmsJspNavElement(String sitePath, CmsResource resource, Map<String, String> properties, int navTreeLevel) {
-        this(sitePath, resource, properties, navTreeLevel, null);
 
+        this(sitePath, resource, properties, navTreeLevel, null);
     }
 
     /**
@@ -287,6 +301,16 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
     }
 
     /**
+     * Returns the navigation builder context.
+     *
+     * @return the navigation builder context
+     */
+    public NavContext getNavContext() {
+
+        return m_navContext;
+    }
+
+    /**
      * Returns the value of the property <code>{@link CmsPropertyDefinition#PROPERTY_NAVIMAGE}</code> of this
      * navigation element, or <code>null</code> if this property is not set.<p>
      *
@@ -339,7 +363,7 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
      */
     public int getNavTreeLevel() {
 
-        if (m_navTreeLevel < 0) {
+        if (m_navTreeLevel == Integer.MIN_VALUE) {
             // use "lazy initializing"
             m_navTreeLevel = CmsResource.getPathLevel(m_sitePath);
         }
@@ -408,6 +432,36 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
     public String getResourceName() {
 
         return m_sitePath;
+    }
+
+    /**
+     * Gets the sub-entries of the navigation entry.
+     *
+     * @return the sub-entries
+     */
+    public List<CmsJspNavElement> getSubNavigation() {
+
+        if (m_subNavigation == null) {
+            if (m_resource.isFile()) {
+                m_subNavigation = Collections.emptyList();
+            } else if (m_navContext == null) {
+                try {
+                    throw new Exception("Can not get subnavigation because navigation context is not set.");
+                } catch (Exception e) {
+                    LOG.warn(e.getLocalizedMessage(), e);
+                    m_subNavigation = Collections.emptyList();
+                }
+            } else {
+                CmsJspNavBuilder navBuilder = m_navContext.getNavBuilder();
+                m_subNavigation = navBuilder.getNavigationForFolder(
+                    navBuilder.getCmsObject().getSitePath(m_resource),
+                    m_navContext.getVisibility(),
+                    m_navContext.getFilter());
+            }
+
+        }
+        return m_subNavigation;
+
     }
 
     /**
@@ -581,6 +635,16 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
     }
 
     /**
+     * Sets the navigation builder context.
+     *
+     * @param navContext the navigation builder context
+     */
+    public void setNavContext(NavContext navContext) {
+
+        m_navContext = navContext;
+    }
+
+    /**
      * Sets the value that will be returned by the {@link #getNavPosition()}
      * method of this class.<p>
      *
@@ -593,7 +657,52 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
     }
 
     /**
-     * Returns the site path of the target resource. This may not be the same as the navigation resource.<p>
+     * Sets the navigation text.<p>
+     *
+     * @param text the text to set
+     */
+    public void setNavText(String text) {
+
+        m_text = text;
+    }
+
+    /**
+     * Sets the navigation tree level.<p>
+     *
+     * @param navTreeLevel the navigation tree level to set
+     */
+    public void setNavTreeLevel(int navTreeLevel) {
+
+        m_navTreeLevel = navTreeLevel;
+    }
+
+    /**
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+
+        StringBuffer result = new StringBuffer();
+
+        result.append("[");
+        result.append(this.getClass().getName());
+        result.append(", sitePath: ");
+        result.append(m_sitePath);
+        result.append(", navPosition: ");
+        result.append(getNavPosition());
+        result.append(", navText ");
+        result.append(getNavText());
+        result.append(", navTreeLevel: ");
+        result.append(getNavTreeLevel());
+        result.append("]");
+
+        return result.toString();
+    }
+
+    /**
+     * Returns the site path of the target resource.<p>
+     *
+     * This may not be the same as the navigation resource.<p>
      *
      * @return the target resource site path
      */
@@ -614,6 +723,7 @@ public class CmsJspNavElement implements Comparable<CmsJspNavElement> {
 
     /**
      * Helper to get locale specific properties.
+     *
      * @return the locale specific properties map.
      */
     private Map<String, String> getLocaleProperties() {

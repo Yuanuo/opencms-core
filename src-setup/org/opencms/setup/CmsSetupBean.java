@@ -93,6 +93,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import javax.servlet.ServletConfig;
+import javax.servlet.ServletContext;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
 import javax.servlet.jsp.JspWriter;
@@ -140,7 +141,7 @@ public class CmsSetupBean implements I_CmsShellCommands {
     public static final String FOLDER_LIB = "lib" + File.separatorChar;
 
     /** Folder constant name.<p> */
-    public static final String FOLDER_SETUP = "setup" + File.separatorChar;
+    public static final String FOLDER_SETUP = "WEB-INF/setupdata" + File.separatorChar;
 
     /** DB provider constant. */
     public static final String GENERIC_PROVIDER = "generic";
@@ -199,21 +200,8 @@ public class CmsSetupBean implements I_CmsShellCommands {
     /** Contains HTML fragments for the output in the JSP pages of the setup wizard. */
     private static Properties m_htmlProps;
 
-    /** Required files per database setup (for AS400 and DB2). */
-    private static final String[] REQUIRED_DB2_DB_SETUP_FILES = {
-        "step_4_database_setup.jsp",
-        "database.properties",
-        "create_tables.sql",
-        "drop_tables.sql"};
-
     /** Required files per database setup (for sql supported dbs). */
-    private static final String[] REQUIRED_SQL_DB_SETUP_FILES = {
-        "step_4_database_setup.jsp",
-        "database.properties",
-        "create_db.sql",
-        "create_tables.sql",
-        "drop_db.sql",
-        "drop_tables.sql"};
+    private static final String[] REQUIRED_SQL_DB_SETUP_FILES = {"database.properties"};
 
     /** A map with all available modules. */
     protected Map<String, CmsModule> m_availableModules;
@@ -257,13 +245,15 @@ public class CmsSetupBean implements I_CmsShellCommands {
     private boolean m_autoMode;
 
     /** Contains all defined components. */
-    private CmsIdentifiableObjectContainer<CmsSetupComponent> m_components;
+    protected CmsIdentifiableObjectContainer<CmsSetupComponent> m_components;
 
     /** The absolute path to the config sub directory of the OpenCms web application. */
     private String m_configRfsPath;
 
     /** Contains the properties of "opencms.properties". */
     private CmsParameterConfiguration m_configuration;
+
+    private String m_contextPath;
 
     /** Key of the selected database server (e.g. "mysql", "generic" or "oracle") */
     private String m_databaseKey;
@@ -289,6 +279,9 @@ public class CmsSetupBean implements I_CmsShellCommands {
     /** The full key of the selected database including the "_jpa" or "_sql" information. */
     private String m_fullDatabaseKey;
 
+    /** Flag which is set to true after module import if there is an index.html file in the default site. */
+    private boolean m_hasIndexHtml;
+
     /** The Database Provider used in setup. */
     private String m_provider;
 
@@ -300,6 +293,8 @@ public class CmsSetupBean implements I_CmsShellCommands {
 
     /** The servlet mapping (in web.xml). */
     private String m_servletMapping;
+
+    private CmsShell m_shell;
 
     /** List of sorted keys by ranking of all available database server setups (e.g. "mysql", "generic" or "oracle") */
     private List<String> m_sortedDatabaseKeys;
@@ -555,6 +550,11 @@ public class CmsSetupBean implements I_CmsShellCommands {
     public String getConfigRfsPath() {
 
         return m_configRfsPath;
+    }
+
+    public String getContextPath() {
+
+        return m_contextPath;
     }
 
     /**
@@ -1155,6 +1155,16 @@ public class CmsSetupBean implements I_CmsShellCommands {
     }
 
     /**
+     * Returns true if there is an index.html file in the default site after the module import.
+     *
+     * @return true if there is an index.html file
+     */
+    public boolean hasIndexHtml() {
+
+        return m_hasIndexHtml;
+    }
+
+    /**
      * Returns the html code for component selection.<p>
      *
      * @return html code
@@ -1239,7 +1249,16 @@ public class CmsSetupBean implements I_CmsShellCommands {
                     e.printStackTrace(System.err);
                 }
             }
+            m_hasIndexHtml = false;
+            try {
+                m_cms.readResource("/index.html");
+                m_hasIndexHtml = true;
+            } catch (Exception e) {
+
+            }
+
         }
+
     }
 
     /**
@@ -1249,18 +1268,25 @@ public class CmsSetupBean implements I_CmsShellCommands {
      */
     public void init(PageContext pageContext) {
 
+        ServletContext servCtx = pageContext.getServletContext();
+        ServletConfig servConfig = pageContext.getServletConfig();
+
+        init(servCtx, servConfig);
+    }
+
+    public void init(ServletContext servCtx, ServletConfig servConfig) {
+
         // check for OpenCms installation directory path
-        String webAppRfsPath = pageContext.getServletConfig().getServletContext().getRealPath("/");
+        String webAppRfsPath = servConfig.getServletContext().getRealPath("/");
 
         // read the the OpenCms servlet mapping from the servlet context parameters
-        String servletMapping = pageContext.getServletContext().getInitParameter(
-            OpenCmsServlet.SERVLET_PARAM_OPEN_CMS_SERVLET);
+        String servletMapping = servCtx.getInitParameter(OpenCmsServlet.SERVLET_PARAM_OPEN_CMS_SERVLET);
 
         // read the the default context name from the servlet context parameters
-        String defaultWebApplication = pageContext.getServletContext().getInitParameter(
-            OpenCmsServlet.SERVLET_PARAM_DEFAULT_WEB_APPLICATION);
+        String defaultWebApplication = servCtx.getInitParameter(OpenCmsServlet.SERVLET_PARAM_DEFAULT_WEB_APPLICATION);
 
-        m_servletConfig = pageContext.getServletConfig();
+        m_servletConfig = servConfig;
+        m_contextPath = servCtx.getContextPath();
 
         init(webAppRfsPath, servletMapping, defaultWebApplication);
     }
@@ -1344,6 +1370,7 @@ public class CmsSetupBean implements I_CmsShellCommands {
     public void initShellCmsObject(CmsObject cms, CmsShell shell) {
 
         m_cms = cms;
+        m_shell = shell;
     }
 
     /**
@@ -1794,7 +1821,6 @@ public class CmsSetupBean implements I_CmsShellCommands {
         String historyDriver;
         String subscriptionDriver;
         String sqlManager;
-
         vfsDriver = getDbProperty(m_databaseKey + ".vfs.driver");
         userDriver = getDbProperty(m_databaseKey + ".user.driver");
         projectDriver = getDbProperty(m_databaseKey + ".project.driver");
@@ -1813,9 +1839,23 @@ public class CmsSetupBean implements I_CmsShellCommands {
         setExtProperty("db.history.sqlmanager", sqlManager);
         setExtProperty("db.subscription.driver", subscriptionDriver);
         setExtProperty("db.subscription.sqlmanager", sqlManager);
-        String additionalProps = (String)(getDatabaseProperties().get(m_databaseKey).get("additionalProperties"));
-        if (additionalProps != null) {
-            m_additionalProperties.put("dbprops", additionalProps);
+        Properties dbProps = getDatabaseProperties().get(databaseKey);
+        String prefix = "additional.";
+        String dbPropBlock = "";
+        for (Map.Entry<Object, Object> entry : dbProps.entrySet()) {
+            if (entry.getKey() instanceof String) {
+                String key = (String)entry.getKey();
+                if (key.startsWith(prefix)) {
+                    key = key.substring(prefix.length());
+                    String val = (String)(entry.getValue());
+                    setExtProperty(key, val);
+                    dbPropBlock += key + "=" + val + "\n";
+                }
+            }
+
+        }
+        if (!CmsStringUtil.isEmptyOrWhitespaceOnly(dbPropBlock)) {
+            m_additionalProperties.put("dbprops", dbPropBlock);
         }
     }
 
@@ -2230,9 +2270,9 @@ public class CmsSetupBean implements I_CmsShellCommands {
      */
     public void shellExit() {
 
-        System.out.println();
-        System.out.println();
-        System.out.println("The setup is finished!\nThe OpenCms system used for the setup will now shut down.");
+        m_shell.getOut().println();
+        m_shell.getOut().println();
+        m_shell.getOut().println("The setup is finished!\nThe OpenCms system used for the setup will now shut down.");
     }
 
     /**
@@ -2240,21 +2280,21 @@ public class CmsSetupBean implements I_CmsShellCommands {
      */
     public void shellStart() {
 
-        System.out.println();
-        System.out.println("Starting Workplace import and database setup for OpenCms!");
+        m_shell.getOut().println();
+        m_shell.getOut().println("Starting Workplace import and database setup for OpenCms!");
 
         String[] copy = org.opencms.main.Messages.COPYRIGHT_BY_ALKACON;
         for (int i = copy.length - 1; i >= 0; i--) {
-            System.out.println(copy[i]);
+            m_shell.getOut().println(copy[i]);
         }
-        System.out.println(
+        m_shell.getOut().println(
             "This is OpenCms "
                 + OpenCms.getSystemInfo().getVersionNumber()
                 + " ["
                 + OpenCms.getSystemInfo().getVersionId()
                 + "]");
-        System.out.println();
-        System.out.println();
+        m_shell.getOut().println();
+        m_shell.getOut().println();
     }
 
     /**
@@ -2663,12 +2703,7 @@ public class CmsSetupBean implements I_CmsShellCommands {
             // create the properties with all possible configurations
             if (databaseSetupFolder.exists()) {
                 for (String key : databaseKeys) {
-                    String dbDir = m_webAppRfsPath
-                        + "setup"
-                        + File.separatorChar
-                        + "database"
-                        + File.separatorChar
-                        + key;
+                    String dbDir = m_webAppRfsPath + CmsSetupBean.FOLDER_SETUP + "database" + File.separatorChar + key;
                     String configPath = dbDir + File.separatorChar + "database.properties";
                     try {
                         input = new FileInputStream(new File(configPath));
@@ -2690,20 +2725,9 @@ public class CmsSetupBean implements I_CmsShellCommands {
                     if (childResource.exists() && childResource.isDirectory() && childResource.canRead()) {
                         String dataBasekey = childResource.getName().trim();
                         Properties props = databaseProperties.get(dataBasekey);
-                        boolean supportsSQL = true;
-                        boolean isAS400orDB2 = dataBasekey.equalsIgnoreCase(AS400_PROVIDER)
-                            || dataBasekey.equalsIgnoreCase(DB2_PROVIDER);
-
-                        if (isAS400orDB2) {
-                            if (checkFilesExists(REQUIRED_DB2_DB_SETUP_FILES, childResource)) {
-                                m_databaseKeys.add(childResource.getName().trim());
-                                m_databaseProperties.put(dataBasekey, props);
-                            }
-                        } else {
-                            if (checkFilesExists(REQUIRED_SQL_DB_SETUP_FILES, childResource)) {
-                                m_databaseKeys.add(childResource.getName().trim());
-                                m_databaseProperties.put(dataBasekey, props);
-                            }
+                        if (checkFilesExists(REQUIRED_SQL_DB_SETUP_FILES, childResource)) {
+                            m_databaseKeys.add(childResource.getName().trim());
+                            m_databaseProperties.put(dataBasekey, props);
                         }
                     }
                 }
@@ -2843,6 +2867,21 @@ public class CmsSetupBean implements I_CmsShellCommands {
     private String getReqValue(Map<String, String[]> map, String key) {
 
         return map.get(key) != null ? map.get(key)[0] : null;
+    }
+
+    private String paramsToString(Map<String, String[]> request) {
+
+        String result = "";
+        for (Map.Entry<String, String[]> entry : request.entrySet()) {
+            String strEntry = entry.getKey() + "=(";
+            for (String val : entry.getValue()) {
+                strEntry += val + " ";
+            }
+            strEntry += ")";
+            result += strEntry + " ";
+        }
+        return "{" + result + "}";
+
     }
 
     /**

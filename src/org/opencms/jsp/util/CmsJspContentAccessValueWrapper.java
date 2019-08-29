@@ -291,9 +291,6 @@ public final class CmsJspContentAccessValueWrapper extends A_CmsJspValueWrapper 
     /** The lazy initialized Map that checks if a value is available. */
     private Map<String, Boolean> m_hasValue;
 
-    /** Date information as instance date bean. */
-    private CmsJspInstanceDateBean m_instanceDate;
-
     /** The macro resolver used to resolve macros for this value. */
     private CmsMacroResolver m_macroResolver;
 
@@ -630,28 +627,6 @@ public final class CmsJspContentAccessValueWrapper extends A_CmsJspValueWrapper 
     }
 
     /**
-     * Returns <code>true</code> in case the value is set in the content,
-     * i.e. the value exists and is not empty or whitespace only.<p>
-     *
-     * In case the XML content value does exist and has a non empty value, <code>true</code> is returned.<p>
-     *
-     * Usage example on a JSP with the JSTL:<pre>
-     * &lt;cms:contentload ... &gt;
-     *     &lt;cms:contentaccess var="content" /&gt;
-     *     &lt;c:if test="${content.value['Link'].isSet}" &gt;
-     *         The content of the "Link" value is not empty.
-     *     &lt;/c:if&gt;
-     * &lt;/cms:contentload&gt;</pre>
-     *
-     * @return <code>true</code> in case the value is set
-     */
-    @Override
-    public boolean getIsSet() {
-
-        return !getIsEmptyOrWhitespaceOnly();
-    }
-
-    /**
      * Returns the Locale of the current XML content value.<p>
      *
      * In case the XML content value does not exist, the OpenCms system default Locale is returned.<p>
@@ -881,20 +856,6 @@ public final class CmsJspContentAccessValueWrapper extends A_CmsJspValueWrapper 
     }
 
     /**
-     * Converts a date to an instance date bean.
-     * @return the instance date bean.
-     */
-    public CmsJspInstanceDateBean getToInstanceDate() {
-
-        if (m_instanceDate == null) {
-            m_instanceDate = new CmsJspInstanceDateBean(
-                getToDate(),
-                new CmsJspDateSeriesBean(this, m_cms.getRequestContext().getLocale()));
-        }
-        return m_instanceDate;
-    }
-
-    /**
      * Transforms the current value into a parameter map.<p>
      *
      * The current value must be a nested content with sub-values that
@@ -1114,6 +1075,28 @@ public final class CmsJspContentAccessValueWrapper extends A_CmsJspValueWrapper 
             // nested types should not be called this way by the user
             return "";
         }
+    }
+
+    /**
+     * Returns a value wrapper for the provided default in case this value is empty.<p>
+     *
+     * For XML content access value wrappers like this,
+     * the default object returned is of type  {@link CmsJspObjectValueWrapper}.
+     * This means you can only use simple "get me the value as type X" operations on the result safely.<p>
+     *
+     * @param defaultValue the string to generate the default value from
+     *
+     * @return  a value wrapper for the provided default in case this value is empty.
+     *
+     * @see CmsJspObjectValueWrapper#createWrapper(CmsObject, Object)
+     */
+    @Override
+    public A_CmsJspValueWrapper useDefault(Object defaultValue) {
+
+        if (getIsEmptyOrWhitespaceOnly()) {
+            return CmsJspObjectValueWrapper.createWrapper(m_cms, defaultValue);
+        }
+        return this;
     }
 
     /**

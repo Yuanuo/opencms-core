@@ -65,6 +65,69 @@ import org.apache.commons.logging.Log;
  */
 public class CmsJspNavBuilder {
 
+    /**
+     * Navigation builder context.
+     *
+     * Stored in nav elements so they can ask the navigation builder for sub-navigation entries, with appropriate resource filter etc.
+     */
+    public static class NavContext {
+
+        /** The resource filter used. */
+        private CmsResourceFilter m_filter;
+
+        /** The nav builder used. */
+        private CmsJspNavBuilder m_navBuilder;
+
+        /** The visibility option used. */
+        private Visibility m_visibility;
+
+        /**
+         * Creates a new instance.
+         *
+         * @param navBuilder the navigation builder
+         * @param visibility the visibility
+         * @param filter the resource filter
+         */
+        public NavContext(CmsJspNavBuilder navBuilder, Visibility visibility, CmsResourceFilter filter) {
+
+            super();
+            m_visibility = visibility;
+            m_filter = filter;
+            m_navBuilder = navBuilder;
+        }
+
+        /**
+         * Gets the resource filter.
+         *
+         * @return the resource filter
+         */
+        public CmsResourceFilter getFilter() {
+
+            return m_filter;
+        }
+
+        /**
+         * Gets the navigation builder.
+         *
+         * @return the navigation builder
+         */
+        public CmsJspNavBuilder getNavBuilder() {
+
+            return m_navBuilder;
+        }
+
+        /**
+         * Gets the visibility setting.
+         *
+         * @return the visibility setting
+         */
+        public Visibility getVisibility() {
+
+            return m_visibility;
+        }
+
+    }
+
     /** The visibility mode. */
     public static enum Visibility {
         /** All entries. */
@@ -286,6 +349,16 @@ public class CmsJspNavBuilder {
     }
 
     /**
+     * Gets the CMS context used for building the navigation.
+     *
+     * @return the CMS context
+     */
+    public CmsObject getCmsObject() {
+
+        return m_cms;
+    }
+
+    /**
      * Build a "bread crumb" path navigation to the current folder.<p>
      *
      * @return ArrayList sorted list of navigation elements
@@ -487,6 +560,7 @@ public class CmsJspNavBuilder {
             if ((element != null)
                 && (includeAll
                     || (element.isInNavigation() && (includeHidden || !element.isHiddenNavigationEntry())))) {
+                element.setNavContext(new NavContext(this, visibility, resourceFilter));
                 result.add(element);
             }
         }
@@ -514,7 +588,11 @@ public class CmsJspNavBuilder {
      */
     public CmsJspNavElement getNavigationForResource(String sitePath) {
 
-        return getNavigationForResource(sitePath, CmsResourceFilter.DEFAULT, false);
+        CmsJspNavElement result = getNavigationForResource(sitePath, CmsResourceFilter.DEFAULT, false);
+        if ((result != null) && (result.getNavContext() == null)) {
+            result.setNavContext(new NavContext(this, Visibility.navigation, CmsResourceFilter.DEFAULT));
+        }
+        return result;
     }
 
     /**
@@ -675,7 +753,7 @@ public class CmsJspNavBuilder {
      */
     public void init(CmsObject cms) {
 
-        init(cms, null);
+        init(cms, null, cms.getRequestContext().getUri());
     }
 
     /**
@@ -686,9 +764,21 @@ public class CmsJspNavBuilder {
      */
     public void init(CmsObject cms, Locale locale) {
 
+        init(cms, locale, cms.getRequestContext().getUri());
+    }
+
+    /**
+     * Initializes this bean.<p>
+     *
+     * @param cms the current cms context
+     * @param locale the locale for which properties should be read
+     * @param requestUri the request URI
+     */
+    public void init(CmsObject cms, Locale locale, String requestUri) {
+
         m_cms = cms;
         m_locale = locale;
-        m_requestUri = m_cms.getRequestContext().getUri();
+        m_requestUri = requestUri;
         m_requestUriFolder = CmsResource.getFolderPath(m_requestUri);
     }
 

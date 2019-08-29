@@ -33,13 +33,16 @@ import org.opencms.letsencrypt.CmsLetsEncryptConfiguration.Trigger;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.site.CmsSite;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsCssIcon;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.FontOpenCms;
-import org.opencms.ui.I_CmsUpdateListener;
 import org.opencms.ui.apps.A_CmsWorkplaceApp;
+import org.opencms.ui.apps.I_CmsAppUIContext;
+import org.opencms.ui.apps.I_CmsCRUDApp;
 import org.opencms.ui.apps.Messages;
+import org.opencms.ui.apps.sitemanager.CmsSitesTable.TableProperty;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.ui.components.CmsInfoButton;
@@ -71,7 +74,7 @@ import com.vaadin.v7.ui.TextField;
  * Manager class for the Site manager app.
  */
 
-public class CmsSiteManager extends A_CmsWorkplaceApp {
+public class CmsSiteManager extends A_CmsWorkplaceApp implements I_CmsCRUDApp<CmsSite> {
 
     /**Bundel name for the sites which are used as templates for new sites.*/
     public static final String BUNDLE_NAME = "siteMacroBundle";
@@ -103,23 +106,23 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
     /**Path to the sites folder.*/
     static final String PATH_SITES = "/sites/";
 
-    /** The site table. */
-    CmsSitesTable m_sitesTable;
-
     /** The currently opened dialog window. */
-    private Window m_dialogWindow;
+    protected Window m_dialogWindow;
 
-    /** The root cms object. */
-    private CmsObject m_rootCms;
+    /** The site table. */
+    protected CmsSitesTable m_sitesTable;
 
     /** The file table filter input. */
-    private TextField m_siteTableFilter;
+    protected TextField m_siteTableFilter;
+
+    /**Info Button. */
+    private CmsInfoButton m_infoButton;
 
     /**The publish button.*/
     private Button m_publishButton;
 
-    /**Is or should the publish button be visible.*/
-    private boolean m_isPublishVisible;
+    /** The root cms object. */
+    private CmsObject m_rootCms;
 
     /**
      * Method to check if a folder under given path contains a bundle for macro resolving.<p>
@@ -176,8 +179,75 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
             m_dialogWindow = null;
         }
         if (updateTable) {
-            m_sitesTable.loadSites();
+            A_CmsUI.get().reload();
         }
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#createElement(java.lang.Object)
+     */
+    public void createElement(CmsSite element) {
+
+        try {
+            OpenCms.getSiteManager().addSite(getRootCmsObject(), element);
+        } catch (CmsException e) {
+            LOG.error("unable to save site", e);
+        }
+
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#defaultAction(java.lang.String)
+     */
+    public void defaultAction(String elementId) {
+
+        openEditDialog(elementId);
+
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#deleteElements(java.util.List)
+     */
+    public void deleteElements(List<String> elementId) {
+
+        for (String siteRoot : elementId) {
+            try {
+                CmsSite site = getElement(siteRoot);
+                if (site != null) {
+                    OpenCms.getSiteManager().removeSite(getRootCmsObject(), site);
+                }
+            } catch (CmsException e) {
+                LOG.error("Unable to delete site", e);
+            }
+        }
+        updateInfo();
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#getAllElements()
+     */
+    public List<CmsSite> getAllElements() {
+
+        List<CmsSite> res = OpenCms.getSiteManager().getAvailableSites(getRootCmsObject(), false);
+        return res;
+    }
+
+    /**
+     * Get corrupted sites.<p>
+     *
+     * @return List<CmsSite>
+     */
+    public List<CmsSite> getCorruptedSites() {
+
+        return OpenCms.getSiteManager().getAvailableCorruptedSites(getRootCmsObject(), true);
+    }
+
+    /**
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#getElement(java.lang.String)
+     */
+    public CmsSite getElement(String elementId) {
+
+        return OpenCms.getSiteManager().getSiteForSiteRoot(elementId);
     }
 
     /**
@@ -203,21 +273,26 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
     }
 
     /**
+     * @see org.opencms.ui.apps.A_CmsWorkplaceApp#initUI(org.opencms.ui.apps.I_CmsAppUIContext)
+     */
+    @Override
+    public void initUI(I_CmsAppUIContext context) {
+
+        context.addPublishButton(changes -> {
+            A_CmsUI.get().reload();
+        });
+        super.initUI(context);
+    }
+
+    /**
      * Opens the delete dialog for the given sites.<p>
      *
      * @param data the site roots
      */
     public void openDeleteDialog(Set<String> data) {
 
-        if (m_dialogWindow != null) {
-            m_dialogWindow.close();
-        }
-        m_dialogWindow = CmsBasicDialog.prepareWindow(DialogWidth.narrow);
         CmsDeleteSiteDialog form = new CmsDeleteSiteDialog(this, data);
-        m_dialogWindow.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_DELETE_0));
-        m_dialogWindow.setContent(form);
-        A_CmsUI.get().addWindow(m_dialogWindow);
-        m_dialogWindow.center();
+        openDialog(form, CmsVaadinUtils.getMessageText(Messages.GUI_SITE_DELETE_0));
     }
 
     /**
@@ -225,27 +300,20 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
      *
      * @param siteRoot the site root of the site to edit, if <code>null</code>
      */
-    public void openEditDailog(String siteRoot) {
+    public void openEditDialog(String siteRoot) {
 
-        if (m_dialogWindow != null) {
-            m_dialogWindow.close();
-        }
-
-        m_dialogWindow = CmsBasicDialog.prepareWindow(DialogWidth.wide);
         CmsEditSiteForm form;
+        String caption;
         if (siteRoot != null) {
             form = new CmsEditSiteForm(m_rootCms, this, siteRoot);
-            m_dialogWindow.setCaption(
-                CmsVaadinUtils.getMessageText(
-                    Messages.GUI_SITE_CONFIGURATION_EDIT_1,
-                    m_sitesTable.getItem(siteRoot).getItemProperty(CmsSitesTable.PROP_TITLE).getValue()));
+            caption = CmsVaadinUtils.getMessageText(
+                Messages.GUI_SITE_CONFIGURATION_EDIT_1,
+                m_sitesTable.getContainer().getItem(siteRoot).getItemProperty(TableProperty.Title).getValue());
         } else {
             form = new CmsEditSiteForm(m_rootCms, this);
-            m_dialogWindow.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_ADD_0));
+            caption = CmsVaadinUtils.getMessageText(Messages.GUI_SITE_ADD_0);
         }
-        m_dialogWindow.setContent(form);
-        A_CmsUI.get().addWindow(m_dialogWindow);
-        m_dialogWindow.center();
+        openDialog(form, caption);
     }
 
     /**
@@ -253,16 +321,8 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
      */
     public void openSettingsDailog() {
 
-        if (m_dialogWindow != null) {
-            m_dialogWindow.close();
-        }
-
-        m_dialogWindow = CmsBasicDialog.prepareWindow(DialogWidth.wide);
         CmsGlobalForm form = new CmsGlobalForm(this);
-        m_dialogWindow.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_GLOBAL_CONFIGURATION_0));
-        m_dialogWindow.setContent(form);
-        A_CmsUI.get().addWindow(m_dialogWindow);
-        m_dialogWindow.center();
+        openDialog(form, CmsVaadinUtils.getMessageText(Messages.GUI_SITE_GLOBAL_CONFIGURATION_0));
     }
 
     /**
@@ -270,29 +330,22 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
      */
     public void openUpdateServerConfigDailog() {
 
-        if (m_dialogWindow != null) {
-            m_dialogWindow.close();
-        }
-
-        m_dialogWindow = CmsBasicDialog.prepareWindow(DialogWidth.wide);
         CmsWebServerConfigForm form = new CmsWebServerConfigForm(this);
-        m_dialogWindow.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_WEBSERVERCONFIG_0));
-        m_dialogWindow.setContent(form);
-        A_CmsUI.get().addWindow(m_dialogWindow);
-        m_dialogWindow.center();
+        openDialog(form, CmsVaadinUtils.getMessageText(Messages.GUI_SITE_WEBSERVERCONFIG_0));
     }
 
     /**
-     * Sets the visibility of the publish button.<p>
-     *
-     * @param visible true-> publish button visible, false -> not visible
+     * @see org.opencms.ui.apps.I_CmsCRUDApp#writeElement(java.lang.Object)
      */
-    public void showPublishButton(boolean visible) {
+    public void writeElement(CmsSite element) {
 
-        m_isPublishVisible = visible;
-        if (m_publishButton != null) {
-            m_publishButton.setVisible(visible);
+        try {
+            OpenCms.getSiteManager().updateSite(m_rootCms, getElement(element.getSiteRoot()), element);
+        } catch (CmsException e) {
+            LOG.error("Unabel to update site", e);
         }
+        //updateInfo();
+        //m_sitesTable.loadSites();
     }
 
     /**
@@ -339,7 +392,7 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
 
             public void textChange(TextChangeEvent event) {
 
-                m_sitesTable.filterTable(event.getText());
+                m_sitesTable.filter(event.getText());
             }
         });
         m_infoLayout.addComponent(m_siteTableFilter);
@@ -373,19 +426,38 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
     }
 
     /**
+     * Opens a given dialog.<p>
+     *
+     * @param dialog to be shown
+     * @param windowCaption caption of window
+     */
+    protected void openDialog(CmsBasicDialog dialog, String windowCaption) {
+
+        if (m_dialogWindow != null) {
+            m_dialogWindow.close();
+        }
+
+        m_dialogWindow = CmsBasicDialog.prepareWindow(DialogWidth.wide);
+        m_dialogWindow.setContent(dialog);
+        m_dialogWindow.setCaption(windowCaption);
+
+        A_CmsUI.get().addWindow(m_dialogWindow);
+        m_dialogWindow.center();
+    }
+
+    /**
+     * Update the info button.<p>
+     */
+    protected void updateInfo() {
+
+        m_infoButton.replaceData(getInfoMap());
+    }
+
+    /**
      * Adds the toolbar buttons.<p>
      */
     private void addToolbarButtons() {
 
-        m_publishButton = m_uiContext.addPublishButton(new I_CmsUpdateListener<String>() {
-
-            @Override
-            public void onUpdate(List<String> updatedItems) {
-
-                A_CmsUI.get().reload();
-            }
-        });
-        m_publishButton.setVisible(m_isPublishVisible);
         Button add = CmsToolBar.createButton(FontOpenCms.WAND, CmsVaadinUtils.getMessageText(Messages.GUI_SITE_ADD_0));
         add.addClickListener(new ClickListener() {
 
@@ -393,7 +465,7 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
 
             public void buttonClick(ClickEvent event) {
 
-                openEditDailog(null);
+                openEditDialog(null);
             }
         });
         m_uiContext.addToolbarButton(add);
@@ -427,23 +499,32 @@ public class CmsSiteManager extends A_CmsWorkplaceApp {
             m_uiContext.addToolbarButton(webServer);
         }
 
+        m_infoButton = new CmsInfoButton(getInfoMap());
+
+        m_infoButton.setWindowCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_CAPTION_0));
+        m_infoButton.setDescription(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_CAPTION_0));
+        m_uiContext.addToolbarButton(m_infoButton);
+    }
+
+    /**
+     * Get info map.<p>
+     *
+     * @return map of sites info
+     */
+    private Map<String, String> getInfoMap() {
+
         Map<String, String> infos = new LinkedHashMap<String, String>();
-        int corruptedSites = OpenCms.getSiteManager().getAvailableCorruptedSites(m_rootCms, false).size();
+        int corruptedSites = getCorruptedSites().size();
         infos.put(
             CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_NUM_WEBSITES_0),
-            String.valueOf(OpenCms.getSiteManager().getAvailableSites(m_rootCms, false).size() + corruptedSites));
+            String.valueOf(getAllElements().size() + corruptedSites));
 
         if (corruptedSites > 0) {
             infos.put(
                 CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_NUM_CORRUPTED_WEBSITES_0),
                 String.valueOf(corruptedSites));
         }
-        infos.put(
-            CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_NUM_WORKPLACESERVER_0),
-            String.valueOf(OpenCms.getSiteManager().getWorkplaceServers().size()));
-        CmsInfoButton infoButton = new CmsInfoButton(infos);
-        infoButton.setWindowCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_CAPTION_0));
-        infoButton.setDescription(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_STATISTICS_CAPTION_0));
-        m_uiContext.addToolbarButton(infoButton);
+
+        return infos;
     }
 }

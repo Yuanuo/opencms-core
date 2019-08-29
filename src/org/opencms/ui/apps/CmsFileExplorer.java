@@ -81,19 +81,9 @@ import org.apache.commons.logging.Log;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import com.vaadin.v7.data.Container;
-import com.vaadin.v7.data.Item;
-import com.vaadin.v7.data.Property.ValueChangeEvent;
-import com.vaadin.v7.data.Property.ValueChangeListener;
-import com.vaadin.v7.data.util.HierarchicalContainer;
-import com.vaadin.v7.data.util.IndexedContainer;
 import com.vaadin.event.Action;
 import com.vaadin.event.FieldEvents.BlurEvent;
 import com.vaadin.event.FieldEvents.FocusEvent;
-import com.vaadin.v7.event.FieldEvents.TextChangeEvent;
-import com.vaadin.v7.event.FieldEvents.TextChangeListener;
-import com.vaadin.v7.event.ItemClickEvent;
-import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
 import com.vaadin.event.ShortcutAction;
 import com.vaadin.event.ShortcutAction.KeyCode;
 import com.vaadin.event.dd.DragAndDropEvent;
@@ -103,16 +93,28 @@ import com.vaadin.event.dd.acceptcriteria.ServerSideCriterion;
 import com.vaadin.navigator.ViewChangeListener;
 import com.vaadin.server.Page;
 import com.vaadin.server.Sizeable.Unit;
-import com.vaadin.v7.shared.ui.combobox.FilteringMode;
-import com.vaadin.v7.ui.AbstractSelect.AbstractSelectTargetDetails;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
-import com.vaadin.v7.ui.ComboBox;
 import com.vaadin.ui.CssLayout;
-import com.vaadin.v7.ui.HorizontalLayout;
 import com.vaadin.ui.HorizontalSplitPanel;
 import com.vaadin.ui.Notification;
+import com.vaadin.ui.UI;
+import com.vaadin.ui.themes.ValoTheme;
+import com.vaadin.v7.data.Container;
+import com.vaadin.v7.data.Item;
+import com.vaadin.v7.data.Property.ValueChangeEvent;
+import com.vaadin.v7.data.Property.ValueChangeListener;
+import com.vaadin.v7.data.util.HierarchicalContainer;
+import com.vaadin.v7.data.util.IndexedContainer;
+import com.vaadin.v7.event.FieldEvents.TextChangeEvent;
+import com.vaadin.v7.event.FieldEvents.TextChangeListener;
+import com.vaadin.v7.event.ItemClickEvent;
+import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
+import com.vaadin.v7.shared.ui.combobox.FilteringMode;
+import com.vaadin.v7.ui.AbstractSelect.AbstractSelectTargetDetails;
+import com.vaadin.v7.ui.ComboBox;
+import com.vaadin.v7.ui.HorizontalLayout;
 import com.vaadin.v7.ui.Table;
 import com.vaadin.v7.ui.Table.TableDragMode;
 import com.vaadin.v7.ui.TextField;
@@ -123,12 +125,11 @@ import com.vaadin.v7.ui.Tree.ExpandEvent;
 import com.vaadin.v7.ui.Tree.ExpandListener;
 import com.vaadin.v7.ui.Tree.ItemStyleGenerator;
 import com.vaadin.v7.ui.Tree.TreeDragMode;
-import com.vaadin.ui.UI;
-import com.vaadin.ui.themes.ValoTheme;
 
 /**
  * The file explorer app.<p>
  */
+@SuppressWarnings("deprecation")
 public class CmsFileExplorer
 implements I_CmsWorkplaceApp, I_CmsCachableApp, ViewChangeListener, I_CmsWindowCloseListener, I_CmsHasShortcutActions,
 I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
@@ -140,7 +141,7 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         private static final long serialVersionUID = 5392136127699472654L;
 
         /** The copy move action. */
-        final I_CmsWorkplaceAction m_copyMoveAction = new CmsCopyDialogAction();
+        transient final I_CmsWorkplaceAction m_copyMoveAction = new CmsCopyDialogAction();
 
         /**
          * @see com.vaadin.event.dd.DropHandler#drop(com.vaadin.event.dd.DragAndDropEvent)
@@ -352,7 +353,7 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
          */
         public static StateBean parse(String state) {
 
-            List<String> fields = CmsStringUtil.splitAsList(state, "!!");
+            List<String> fields = CmsStringUtil.splitAsList(state, A_CmsWorkplaceApp.PARAM_SEPARATOR);
             if (fields.size() >= 3) {
                 String projectId = fields.get(0);
                 String siteRoot = fields.get(1);
@@ -374,7 +375,12 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
          */
         public String asString() {
 
-            String result = m_projectId + "!!" + m_siteRoot + "!!" + m_folder + "!!";
+            String result = m_projectId
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
+                + m_siteRoot
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
+                + m_folder
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR;
             return result;
         }
 
@@ -429,6 +435,9 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         }
     }
 
+    /** The file explorer attribute key. */
+    public static final String ATTR_KEY = "CmsFileExplorer";
+
     /** The in line editable resource properties. */
     public static final Collection<CmsResourceTableProperty> INLINE_EDIT_PROPERTIES = Arrays.asList(
         CmsResourceTableProperty.PROPERTY_RESOURCE_NAME,
@@ -448,9 +457,6 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
 
     /** Site selector site root property. */
     public static final String SITE_ROOT = "site_root";
-
-    /** The state separator string. */
-    public static final String STATE_SEPARATOR = "!!";
 
     /** Threshold for updating the complete folder after file changes. */
     public static final int UPDATE_FOLDER_THRESHOLD = 200;
@@ -482,11 +488,23 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         ShortcutAction.KeyCode.A,
         new int[] {ShortcutAction.ModifierKey.CTRL});
 
+    /** The select all shortcut, (using Apple CMD as modifier). */
+    private static final Action ACTION_SELECT_ALL_CMD = new ShortcutAction(
+        "CMD+A",
+        ShortcutAction.KeyCode.A,
+        new int[] {ShortcutAction.ModifierKey.META});
+
     /** The switch online shortcut. */
     private static final Action ACTION_SWITCH_ONLINE = new ShortcutAction(
         "Ctrl+O",
         ShortcutAction.KeyCode.O,
         new int[] {ShortcutAction.ModifierKey.CTRL});
+
+    /** The switch online shortcut, (using Apple CMD as modifier). */
+    private static final Action ACTION_SWITCH_ONLINE_CMD = new ShortcutAction(
+        "CMD+O",
+        ShortcutAction.KeyCode.O,
+        new int[] {ShortcutAction.ModifierKey.META});
 
     /** The files and folder resource filter. */
     private static final CmsResourceFilter FILES_N_FOLDERS = CmsResourceFilter.ONLY_VISIBLE;
@@ -610,22 +628,25 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
                 }
             }
         });
-
-        m_shortcutActions.put(ACTION_SELECT_ALL, new Runnable() {
+        Runnable selectAll = new Runnable() {
 
             public void run() {
 
                 m_fileTable.selectAll();
             }
-        });
+        };
+        m_shortcutActions.put(ACTION_SELECT_ALL, selectAll);
+        m_shortcutActions.put(ACTION_SELECT_ALL_CMD, selectAll);
 
-        m_shortcutActions.put(ACTION_SWITCH_ONLINE, new Runnable() {
+        Runnable switchOnline = new Runnable() {
 
             public void run() {
 
                 toggleOnlineOffline();
             }
-        });
+        };
+        m_shortcutActions.put(ACTION_SWITCH_ONLINE, switchOnline);
+        m_shortcutActions.put(ACTION_SWITCH_ONLINE_CMD, switchOnline);
 
         m_fileTable = new CmsFileTable(this);
         m_fileTable.setSizeFull();
@@ -901,6 +922,7 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
     public void initUI(I_CmsAppUIContext context) {
 
         m_appContext = context;
+        m_appContext.setAttribute(ATTR_KEY, this);
         m_appContext.setMenuDialogContext(
             new CmsExplorerDialogContext(ContextType.appToolbar, m_fileTable, this, null));
         HorizontalSplitPanel sp = new HorizontalSplitPanel();
@@ -1118,6 +1140,9 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         } catch (CmsException e) {
             CmsErrorDialog.showErrorDialog(e);
         }
+        if (!CmsStringUtil.isEmptyOrWhitespaceOnly(m_searchField.getValue())) {
+            filterTable(m_searchField.getValue());
+        }
     }
 
     /**
@@ -1250,15 +1275,11 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
             m_searchField.clear();
         }
         CmsResource folder = cms.readResource(folderId, FOLDERS);
-        String p = RandomStringUtils.randomAlphanumeric(5) + " readFolder ";
-        LOG.debug(p + "siteRoot = " + cms.getRequestContext().getSiteRoot());
-        LOG.debug(p + "folder = " + folder.getRootPath());
         m_currentFolder = folderId;
         String folderPath = cms.getSitePath(folder);
         if (OpenCms.getSiteManager().isSharedFolder(cms.getRequestContext().getSiteRoot())) {
             folderPath = folderPath.substring(cms.getRequestContext().getSiteRoot().length());
         }
-        LOG.debug(p + "folderPath = " + folderPath);
         setPathInfo(folderPath);
         List<CmsResource> childResources = cms.readResources(folder, FILES_N_FOLDERS, false);
         m_fileTable.fillTable(cms, childResources, clearFilter);
@@ -1271,15 +1292,20 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         }
         m_treeContainer.setChildrenAllowed(folderId, hasFolderChild);
         String sitePath = folder.getRootPath().equals(cms.getRequestContext().getSiteRoot() + "/") ? "" : folderPath;
-        LOG.debug(p + "sitePath = " + sitePath);
-
         String state = new StateBean(
             cms.getRequestContext().getSiteRoot(),
             sitePath,
             cms.getRequestContext().getCurrentProject().getUuid().toString()).asString();
-        LOG.debug(p + "state = " + state);
-        LOG.debug(p + "m_currentState = " + m_currentState);
-        LOG.debug(p + "m_currentState.asString = " + StateBean.parse(m_currentState).asString());
+        if (LOG.isDebugEnabled()) {
+            String p = RandomStringUtils.randomAlphanumeric(5) + " readFolder ";
+            LOG.debug(p + "siteRoot = " + cms.getRequestContext().getSiteRoot());
+            LOG.debug(p + "folder = " + folder.getRootPath());
+            LOG.debug(p + "folderPath = " + folderPath);
+            LOG.debug(p + "sitePath = " + sitePath);
+            LOG.debug(p + "state = " + state);
+            LOG.debug(p + "m_currentState = " + m_currentState);
+            LOG.debug(p + "m_currentState.asString = " + StateBean.parse(m_currentState).asString());
+        }
         if ((m_currentState == null) || !(state).equals(StateBean.parse(m_currentState).asString())) {
             m_currentState = state;
             CmsAppWorkplaceUi.get().changeCurrentAppState(m_currentState);
@@ -1305,6 +1331,10 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         m_fileTable.update(removeIds, true);
         CmsObject cms = A_CmsUI.getCmsObject();
         try {
+            // current folder may be filtered, so we clear the filters and restore them later
+            // to make updates work for filtered out resources
+            m_fileTable.saveFilters();
+            m_fileTable.clearFilters();
             CmsResource folder = cms.readResource(m_currentFolder, FOLDERS);
             List<CmsResource> childResources = cms.readResources(cms.getSitePath(folder), FILES_N_FOLDERS, false);
             Set<CmsUUID> ids = new HashSet<CmsUUID>();
@@ -1315,6 +1345,8 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         } catch (CmsException e) {
             CmsErrorDialog.showErrorDialog(e);
             LOG.error(e.getLocalizedMessage(), e);
+        } finally {
+            m_fileTable.restoreFilters();
         }
     }
 
@@ -1868,9 +1900,9 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
     private String normalizeState(String state) {
 
         String result = "";
-        if (state.contains(STATE_SEPARATOR)) {
+        if (state.contains(A_CmsWorkplaceApp.PARAM_SEPARATOR)) {
             result = state;
-            while (result.startsWith("/")) {
+            while (result.startsWith(CmsAppWorkplaceUi.WORKPLACE_STATE_SEPARATOR)) {
                 result = result.substring(1);
             }
         }

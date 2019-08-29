@@ -82,6 +82,7 @@ import com.vaadin.v7.ui.ComboBox.ItemStyleGenerator;
 /**
  * The copy move dialog.<p>
  */
+@SuppressWarnings("deprecation")
 public class CmsCopyMoveDialog extends CmsBasicDialog {
 
     /** The copy/move actions. */
@@ -142,6 +143,9 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
     /** Indicates the copy folder has a default file of the type container page. */
     private boolean m_hasContainerPageDefaultFile;
 
+    /**Dialog for editing key value pairs used as macros. Only used for sitemap folder*/
+    private CmsMacroResolverDialog m_macroDialog;
+
     /** The OK button. */
     private Button m_okButton;
 
@@ -156,9 +160,6 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
 
     /** The resources to update after dialog close. */
     private Set<CmsUUID> m_updateResources;
-
-    /**Dialog for editing key value pairs used as macros. Only used for sitemap folder*/
-    private CmsMacroResolverDialog m_macroDialog;
 
     /**
      * Constructor.<p>
@@ -410,6 +411,22 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
 
             CmsResource copyResource = getRootCms().readResource(finalTarget);
             m_updateResources.add(copyResource.getStructureId());
+        }
+    }
+
+    /**
+     * Updates the 'overwrite existing' checkbox state depending on the currently selected mode.<p>
+     */
+    protected void updateOverwriteExisting() {
+
+        if (m_overwriteExisting != null) {
+            boolean move = (m_dialogMode == DialogMode.move) || (m_actionCombo.getValue() == Action.move);
+            if (move) {
+                m_overwriteExisting.setValue(Boolean.FALSE);
+                m_overwriteExisting.setVisible(false);
+            } else {
+                m_overwriteExisting.setVisible(true);
+            }
         }
     }
 
@@ -688,10 +705,6 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
             CmsVaadinUtils.getMessageText(Messages.GUI_COPY_MOVE_SELECT_TARGET_CAPTION_0));
         m_targetPath.setResourceFilter(CmsResourceFilter.ONLY_VISIBLE_NO_DELETED.addRequireFolder());
         m_targetPath.setWidth("100%");
-        //        if ((m_dialogMode.equals(DialogMode.copy) | m_dialogMode.equals(DialogMode.copy_and_move))
-        //            && (m_context.getResources().size() == 1)) {
-        //            m_targetPath.setFileSelectButtonVisible(false);
-        //        }
         form.addComponent(m_targetPath);
 
         if (m_dialogMode != DialogMode.move) {
@@ -700,11 +713,6 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
             m_actionCombo.setNullSelectionAllowed(false);
             m_actionCombo.setNewItemsAllowed(false);
             m_actionCombo.setWidth("100%");
-            //            m_actionCombo.addItem(Action.automatic);
-            //            m_actionCombo.setItemCaption(
-            //                Action.automatic,
-            //                CmsVaadinUtils.getMessageText(Messages.GUI_COPY_MOVE_AUTOMATIC_0));
-            //            m_actionCombo.setValue(Action.automatic);
             if (m_context.getResources().size() == 1) {
                 if (m_context.getResources().get(0).isFile()) {
                     m_actionCombo.addItem(Action.copy_all);
@@ -803,12 +811,16 @@ public class CmsCopyMoveDialog extends CmsBasicDialog {
                 }
             });
             form.addComponent(m_actionCombo);
+            m_actionCombo.addValueChangeListener(event -> updateOverwriteExisting());
         }
+
         if (m_context.getResources().size() > 1) {
             m_overwriteExisting = new CheckBox(
                 CmsVaadinUtils.getMessageText(org.opencms.workplace.commons.Messages.GUI_COPY_MULTI_OVERWRITE_0));
             m_overwriteExisting.setValue(Boolean.FALSE);
             form.addComponent(m_overwriteExisting);
+
+            updateOverwriteExisting();
         }
 
         return form;

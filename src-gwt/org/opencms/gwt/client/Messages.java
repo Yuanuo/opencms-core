@@ -752,6 +752,9 @@ public final class Messages {
     public static final String GUI_TOOLBAR_EXIT_0 = "GUI_TOOLBAR_EXIT_0";
 
     /** Message constant for key in the resource bundle. */
+    public static final String GUI_TOOLBAR_FAVORITES_0 = "GUI_TOOLBAR_FAVORITES_0";
+
+    /** Message constant for key in the resource bundle. */
     public static final String GUI_TOOLBAR_GALLERY_0 = "GUI_TOOLBAR_GALLERY_0";
 
     /** Message constant for key in the resource bundle. */
@@ -759,6 +762,9 @@ public final class Messages {
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_TOOLBAR_INHERITED_0 = "GUI_TOOLBAR_INHERITED_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_TOOLBAR_LIST_0 = "GUI_TOOLBAR_LIST_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_TOOLBAR_MOVE_IN_0 = "GUI_TOOLBAR_MOVE_IN_0";

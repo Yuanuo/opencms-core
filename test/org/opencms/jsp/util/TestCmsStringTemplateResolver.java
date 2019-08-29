@@ -68,6 +68,7 @@ public class TestCmsStringTemplateResolver extends OpenCmsTestCase {
      * @param arg0 JUnit parameters
      */
     public TestCmsStringTemplateResolver(String arg0) {
+
         super(arg0);
     }
 
@@ -158,13 +159,15 @@ public class TestCmsStringTemplateResolver extends OpenCmsTestCase {
         assertEquals(
             "/index.jsp",
             CmsStringTemplateRenderer.renderTemplate(cms, "%content.value.(\"Cascade[2]/VfsLink\")%", bean, null));
-        assertEquals("\n"
-            + "<a href=\"http://www.alkacon.com\">Alkacon</a>\n"
-            + "<a href=\"/noexist/index.html\">Index page</a>\n"
-            + "<a href=\"/noexist/folder1/index.html?a=b&c=d#anchor\">Index page</a>\n"
-            + "Please note: The internal link targets must not exist,\n"
-            + "because otherwise the link management will add <uuid> nodes which are unknown in the test case.\n"
-            + "", CmsStringTemplateRenderer.renderTemplate(cms, "%content.value.Cascade/Html%", bean, null));
+        assertEquals(
+            "\n"
+                + "<a href=\"http://www.alkacon.com\">Alkacon</a>\n"
+                + "<a href=\"/noexist/index.html\">Index page</a>\n"
+                + "<a href=\"/noexist/folder1/index.html?a=b&c=d#anchor\">Index page</a>\n"
+                + "Please note: The internal link targets must not exist,\n"
+                + "because otherwise the link management will add <uuid> nodes which are unknown in the test case.\n"
+                + "",
+            CmsStringTemplateRenderer.renderTemplate(cms, "%content.value.Cascade/Html%", bean, null));
 
         assertEquals(
             "<a href='/index.html' /><a href='/test.html' />",
@@ -256,19 +259,16 @@ public class TestCmsStringTemplateResolver extends OpenCmsTestCase {
             CmsStringTemplateRenderer.renderTemplate(cms, "%content.value.Title%", article, null));
         assertEquals(
             "7/18/17 8:40 AM",
-            CmsStringTemplateRenderer.renderTemplate(cms, "%content.value.Release.toDate%", article, null));
-        assertEquals(
-            "7/18/17 8:40 AM",
             CmsStringTemplateRenderer.renderTemplate(
                 cms,
-                "%content.value.Release.toDate; format=\"short\"%",
+                "%content.value.Release.toDate; format=\"M/d/yy h:mm a\"%",
                 article,
                 null));
         assertEquals(
             "July 18, 2017 8:40:00 AM CEST",
             CmsStringTemplateRenderer.renderTemplate(
                 cms,
-                "%content.value.Release.toDate; format=\"long\"%",
+                "%content.value.Release.toDate; format=\"MMMMM d, yyyy h:mm:ss a z\"%",
                 article,
                 null));
 
@@ -276,14 +276,14 @@ public class TestCmsStringTemplateResolver extends OpenCmsTestCase {
             "8:40 AM",
             CmsStringTemplateRenderer.renderTemplate(
                 cms,
-                "%content.value.Release.toDate; format=\"time:short\"%",
+                "%content.value.Release.toDate; format=\"h:mm a\"%",
                 article,
                 null));
         assertEquals(
             "7/18/17",
             CmsStringTemplateRenderer.renderTemplate(
                 cms,
-                "%content.value.Release.toDate; format=\"date:short\"%",
+                "%content.value.Release.toDate; format=\"M/d/yy\"%",
                 article,
                 null));
         assertEquals(
@@ -380,21 +380,12 @@ public class TestCmsStringTemplateResolver extends OpenCmsTestCase {
 
         assertEquals(
             "This is the article 4 text\n"
-                + "\n"
-                + "Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum\n"
-                + "dolore eu feugiat nulla facilisis at vero et accumsan et iusto odio dignissim qui blandit praesent\n"
-                + "luptatum zzril delenit augue duis dolore te feugait nulla facilisi .\n"
-                + "\n"
-                + "   * Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod\n"
-                + "     tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
-                + "   * Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod\n"
-                + "     tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
-                + "   * Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod\n"
-                + "     tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
-                + "\n"
-                + "Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat , vel illum\n"
-                + "dolore eu feugiat nulla facilisis at vero et accumsan et iusto odio dignissim qui blandit praesent\n"
-                + "luptatum zzril delenit augue duis dolore te feugait nulla facilisi.",
+                + "Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.\n"
+                + "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
+                + "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
+                + "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat.\n"
+                + "Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.",
+
             CmsStringTemplateRenderer.renderTemplate(
                 cms,
                 "%trim(fn.(content.value.Text).stripHtml)%",

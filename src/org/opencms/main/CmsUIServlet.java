@@ -79,6 +79,7 @@ import com.vaadin.server.VaadinService;
 import com.vaadin.server.VaadinServlet;
 import com.vaadin.server.VaadinServletService;
 import com.vaadin.server.VaadinSession;
+import com.vaadin.shared.ApplicationConstants;
 import com.vaadin.ui.UI;
 
 /**
@@ -195,11 +196,17 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
         SLF4JBridgeHandler.install();
     }
 
+    /** The VAADIN heartbeat request path prefix. */
+    private static final String HEARTBEAT_PREFIX = '/' + ApplicationConstants.HEARTBEAT_PATH + '/';
+
     /** The current CMS context. */
     private ThreadLocal<CmsObject> m_perThreadCmsObject;
 
     /** Map of stored system messages objects. */
     private Map<Locale, SystemMessages> m_systemMessages = new HashMap<Locale, SystemMessages>();
+
+    /** Stores whether the current request is a broadcast poll. */
+    private ThreadLocal<Boolean> m_perThreadBroadcastPoll;
 
     /**
      * Checks whether the given request was referred from the login page.<p>
@@ -260,6 +267,17 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
     }
 
     /**
+     * Sets that the current request is a broadcast call.<p>
+     */
+    public void setBroadcastPoll() {
+
+        if (m_perThreadBroadcastPoll == null) {
+            m_perThreadBroadcastPoll = new ThreadLocal<>();
+        }
+        m_perThreadBroadcastPoll.set(Boolean.TRUE);
+    }
+
+    /**
      * Sets the current cms context.<p>
      *
      * @param cms the current cms context to set
@@ -291,6 +309,10 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
     protected void service(HttpServletRequest request, HttpServletResponse response)
     throws ServletException, IOException {
 
+        if (request.getRequestURI().contains("/VAADIN")) {
+            super.service(request, response);
+            return;
+        }
         // check to OpenCms runlevel
         int runlevel = OpenCmsCore.getInstance().getRunLevel();
 
@@ -322,8 +344,7 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
         try {
             OpenCmsCore.getInstance().initCmsContextForUI(request, response, this);
             super.service(request, response);
-            OpenCms.getSessionManager().updateSessionInfo(getCmsObject(), request);
-
+            OpenCms.getSessionManager().updateSessionInfo(getCmsObject(), request, isHeartbeatRequest(request));
         } catch (CmsRoleViolationException rv) {
             // don't log these into the error channel
             LOG.debug(rv.getLocalizedMessage(), rv);
@@ -336,8 +357,18 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
                 // can be ignored
                 LOG.error(e.getLocalizedMessage(), e);
             }
+        } catch (IOException io) {
+            // probably connection aborted by client, no need to write to the ERROR channel
+            LOG.warn(io.getLocalizedMessage(), io);
+            // try so set status and send error in any case
+            int status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+            response.setStatus(status);
+            try {
+                response.sendError(status, io.toString());
+            } catch (Exception e) {
+                // can be ignored
+            }
         } catch (Throwable t) {
-            // error code not set - set "internal server error" (500)
             LOG.error(t.getLocalizedMessage(), t);
             int status = HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
             response.setStatus(status);
@@ -349,7 +380,7 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
             }
         } finally {
             // remove the thread local cms context
-            setCms(null);
+            clearThreadLocal();
         }
     }
 
@@ -362,6 +393,19 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
         super.servletInitialized();
         getService().setSystemMessagesProvider(this);
         getService().addSessionInitListener(this);
+    }
+
+    /**
+     * Clears the thread local storage.<p>
+     */
+    private void clearThreadLocal() {
+
+        if (m_perThreadCmsObject != null) {
+            m_perThreadCmsObject.set(null);
+        }
+        if (m_perThreadBroadcastPoll != null) {
+            m_perThreadBroadcastPoll.remove();
+        }
     }
 
     /**
@@ -388,5 +432,23 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
         systemMessages.setInternalErrorMessage(messages.key(Messages.GUI_SYSTEM_INTERNAL_ERROR_MESSAGE_0));
         systemMessages.setInternalErrorNotificationEnabled(true);
         return systemMessages;
+    }
+
+    /**
+     * Checks whether the given request is a heartbeat request.<p>
+     *
+     * @param request the request
+     *
+     * @return <code>true</code> in case of VAADIN heartbeat requests
+     */
+    private boolean isHeartbeatRequest(HttpServletRequest request) {
+
+        if ((m_perThreadBroadcastPoll != null)
+            && (m_perThreadBroadcastPoll.get() != null)
+            && m_perThreadBroadcastPoll.get().booleanValue()) {
+            return true;
+        }
+        String pathInfo = request.getPathInfo();
+        return (pathInfo != null) && pathInfo.startsWith(HEARTBEAT_PREFIX);
     }
 }

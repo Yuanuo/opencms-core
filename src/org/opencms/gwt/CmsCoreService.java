@@ -49,7 +49,6 @@ import org.opencms.gwt.shared.CmsTinyMCEData;
 import org.opencms.gwt.shared.CmsUserSettingsBean;
 import org.opencms.gwt.shared.CmsValidationQuery;
 import org.opencms.gwt.shared.CmsValidationResult;
-import org.opencms.gwt.shared.CmsWorkplaceLinkMode;
 import org.opencms.gwt.shared.rpc.I_CmsCoreService;
 import org.opencms.i18n.CmsMessages;
 import org.opencms.lock.CmsLock;
@@ -72,8 +71,10 @@ import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.I_CmsDialogContext;
 import org.opencms.ui.I_CmsDialogContextWithAdeContext;
 import org.opencms.ui.actions.I_CmsADEAction;
+import org.opencms.ui.apps.A_CmsWorkplaceApp;
 import org.opencms.ui.apps.CmsFileExplorerConfiguration;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.I_CmsContextMenuItem;
 import org.opencms.ui.dialogs.CmsEmbeddedDialogsUI;
 import org.opencms.util.CmsFileUtil;
@@ -81,7 +82,6 @@ import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.CmsWorkplaceLoginHandler;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 import org.opencms.xml.containerpage.CmsADESessionCache;
 
 import java.util.ArrayList;
@@ -229,8 +229,14 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
 
         Map<String, CmsContextMenuEntryBean> entries = new LinkedHashMap<String, CmsContextMenuEntryBean>();
         try {
+            final List<CmsResource> resources;
             CmsResource resource = cms.readResource(structureId, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
-            final List<CmsResource> resources = Collections.singletonList(resource);
+            // in case of sitemap editor check visibility with empty list
+            if (context.equals(AdeContext.sitemapeditor)) {
+                resources = Collections.emptyList();
+            } else {
+                resources = Collections.singletonList(resource);
+            }
             Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
             // context to check item visibility
             I_CmsDialogContext dcontext = new I_CmsDialogContextWithAdeContext() {
@@ -426,14 +432,12 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
      */
     public static String getFileExplorerLink(CmsObject cms, String siteRoot) {
 
-        return CmsVaadinUtils.getWorkplaceLink()
-            + "#!"
-            + CmsFileExplorerConfiguration.APP_ID
-            + "/"
-            + cms.getRequestContext().getCurrentProject().getUuid()
-            + "!!"
-            + siteRoot
-            + "!!";
+        return CmsVaadinUtils.getWorkplaceLink(
+            CmsFileExplorerConfiguration.APP_ID,
+            cms.getRequestContext().getCurrentProject().getUuid()
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
+                + siteRoot
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR);
     }
 
     /**
@@ -701,8 +705,10 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     /**
      * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getBroadcast()
      */
+    @SuppressWarnings("unchecked")
     public List<CmsBroadcastMessage> getBroadcast() {
 
+        setBroadcastPoll();
         Set<CmsBroadcast> repeatedBroadcasts = new HashSet<CmsBroadcast>();
         OpenCms.getWorkplaceManager().checkWorkplaceRequest(getRequest(), getCmsObject());
         CmsSessionInfo sessionInfo = OpenCms.getSessionManager().getSessionInfo(getRequest().getSession());
@@ -933,9 +939,9 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     }
 
     /**
-     * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getWorkplaceLink(org.opencms.util.CmsUUID, org.opencms.gwt.shared.CmsWorkplaceLinkMode)
+     * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getWorkplaceLink(org.opencms.util.CmsUUID)
      */
-    public String getWorkplaceLink(CmsUUID structureId, CmsWorkplaceLinkMode linkMode) throws CmsRpcException {
+    public String getWorkplaceLink(CmsUUID structureId) throws CmsRpcException {
 
         String result = null;
         CmsObject cms = getCmsObject();
@@ -944,24 +950,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             ? CmsResource.getFolderPath(
                 cms.readResource(structureId, CmsResourceFilter.ONLY_VISIBLE_NO_DELETED).getRootPath())
             : cms.getRequestContext().getSiteRoot();
-
-            switch (linkMode) {
-                case oldWorkplace:
-                    result = CmsWorkplace.getWorkplaceExplorerLink(cms, resourceRootFolder);
-                    break;
-                case newWorkplace:
-                    result = getVaadinWorkplaceLink(cms, resourceRootFolder);
-                    break;
-                case auto:
-                default:
-                    boolean newWp = CmsWorkplace.getWorkplaceSettings(
-                        cms,
-                        getRequest()).getUserSettings().usesNewWorkplace();
-                    result = getWorkplaceLink(
-                        structureId,
-                        newWp ? CmsWorkplaceLinkMode.newWorkplace : CmsWorkplaceLinkMode.oldWorkplace);
-                    break;
-            }
+            result = getVaadinWorkplaceLink(cms, resourceRootFolder);
         } catch (Throwable e) {
             error(e);
         }
@@ -1179,6 +1168,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             OpenCms.getSystemInfo().getStaticResourceContext(),
             CmsEmbeddedDialogsUI.getEmbeddedDialogsContextPath(),
             cms.getRequestContext().getSiteRoot(),
+            cms.getRequestContext().getCurrentProject().getId(),
             cms.getRequestContext().getLocale().toString(),
             wpLocale.toString(),
             cms.getRequestContext().getUri(),

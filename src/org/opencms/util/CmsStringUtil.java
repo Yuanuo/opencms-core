@@ -37,6 +37,8 @@ import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 
 import java.awt.Color;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.Charset;
@@ -56,6 +58,10 @@ import java.util.regex.PatternSyntaxException;
 import org.apache.commons.logging.Log;
 import org.apache.oro.text.perl.MalformedPerl5PatternException;
 import org.apache.oro.text.perl.Perl5Util;
+
+import org.antlr.stringtemplate.StringTemplateErrorListener;
+import org.antlr.stringtemplate.StringTemplateGroup;
+import org.antlr.stringtemplate.language.DefaultTemplateLexer;
 
 import com.cybozu.labs.langdetect.Detector;
 import com.cybozu.labs.langdetect.DetectorFactory;
@@ -1098,6 +1104,22 @@ public final class CmsStringUtil {
     }
 
     /**
+     * Checks if the first path is a prefix of the second path, but not equivalent to it.<p>
+     *
+     * @param firstPath the first path
+     * @param secondPath the second path
+     *
+     * @return true if the first path is a prefix path of the second path, but not equivalent
+     */
+    public static boolean isProperPrefixPath(String firstPath, String secondPath) {
+
+        firstPath = CmsStringUtil.joinPaths(firstPath, "/");
+        secondPath = CmsStringUtil.joinPaths(secondPath, "/");
+        return secondPath.startsWith(firstPath) && !firstPath.equals(secondPath);
+
+    }
+
+    /**
      * Checks if the given class name is a valid Java class name.<p>
      *
      * <b>Directly exposed for JSP EL</b>, not through {@link org.opencms.jsp.util.CmsJspElFunctions}.<p>
@@ -1368,6 +1390,41 @@ public final class CmsStringUtil {
             millis = defaultValue;
         }
         return millis;
+    }
+
+    /**
+     * Reads a stringtemplate group from a stream.
+     *
+     * This will always return a group (empty if necessary), even if reading it from the stream fails.
+     *
+     * @param stream the stream to read from
+     * @return the string template group
+     */
+    public static StringTemplateGroup readStringTemplateGroup(InputStream stream) {
+
+        try {
+            return new StringTemplateGroup(
+                new InputStreamReader(stream, "UTF-8"),
+                DefaultTemplateLexer.class,
+                new StringTemplateErrorListener() {
+
+                    @SuppressWarnings("synthetic-access")
+                    public void error(String arg0, Throwable arg1) {
+
+                        LOG.error(arg0 + ": " + arg1.getMessage(), arg1);
+                    }
+
+                    @SuppressWarnings("synthetic-access")
+                    public void warning(String arg0) {
+
+                        LOG.warn(arg0);
+
+                    }
+                });
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+            return new StringTemplateGroup("dummy");
+        }
     }
 
     /**

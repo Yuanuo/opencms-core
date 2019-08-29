@@ -36,7 +36,9 @@ import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
 import org.opencms.file.CmsProperty;
+import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
+import org.opencms.file.CmsResourceBuilder;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
 import org.opencms.file.CmsVfsResourceNotFoundException;
@@ -51,7 +53,6 @@ import org.opencms.main.CmsException;
 import org.opencms.main.CmsIllegalStateException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
-import org.opencms.relations.CmsRelation;
 import org.opencms.relations.CmsRelationType;
 import org.opencms.relations.I_CmsLinkParseable;
 import org.opencms.report.I_CmsReport;
@@ -74,6 +75,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -87,12 +89,17 @@ import java.util.zip.ZipFile;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.digester3.Digester;
+import org.apache.commons.digester3.Rule;
 import org.apache.commons.logging.Log;
 
 import org.dom4j.Document;
+import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 
+import com.google.common.base.Objects;
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ComparisonChain;
+import com.google.common.collect.Multimap;
 
 /**
  * Adds the XML handler rules for import and export of resources and accounts.<p>
@@ -100,6 +107,92 @@ import com.google.common.collect.ComparisonChain;
  * @since 7.0.4
  */
 public class CmsImportVersion10 implements I_CmsImport {
+
+    /**
+     * Data class to temporarily keep track of relation data for a resource to be imported.<p>
+     */
+    public static class RelationData {
+
+        /** The relation target. */
+        private String m_target;
+
+        /** The target structure id. */
+        private CmsUUID m_targetId;
+
+        /** The relation type. */
+        private CmsRelationType m_type;
+
+        /**
+         * Creates a new instance.<p>
+         *
+         * @param target the relation target path
+         * @param targetId the relation target structure id
+         * @param type the relation type
+         */
+        public RelationData(String target, CmsUUID targetId, CmsRelationType type) {
+
+            super();
+            m_target = target;
+            m_type = type;
+            m_targetId = targetId;
+        }
+
+        /**
+         * @see java.lang.Object#equals(java.lang.Object)
+         */
+        @Override
+        public boolean equals(Object otherObj) {
+
+            if (!(otherObj instanceof RelationData)) {
+                return false;
+            }
+            RelationData other = (RelationData)otherObj;
+            return Objects.equal(m_target, other.m_target)
+                && Objects.equal(m_type, other.m_type)
+                && Objects.equal(m_targetId, other.m_targetId);
+        }
+
+        /**
+         * Gets the relation target path.<p>
+         *
+         * @return the relation target path
+         */
+        public String getTarget() {
+
+            return m_target;
+        }
+
+        /**
+         * Gets the relation target structure id.<p>
+         *
+         * @return the relation target structure id
+         */
+        public CmsUUID getTargetId() {
+
+            return m_targetId;
+        }
+
+        /**
+         * Gets the relation type.<p>
+         *
+         * @return the relation type
+         */
+        public CmsRelationType getType() {
+
+            return m_type;
+        }
+
+        /**
+         * @see java.lang.Object#hashCode()
+         */
+        @Override
+        public int hashCode() {
+
+            return Objects.hashCode(m_target, m_type.getName(), m_targetId);
+
+        }
+
+    }
 
     /** Tag for the "userinfo / entry name" attribute, contains the additional user info entry name. */
     public static final String A_NAME = "name";
@@ -278,206 +371,198 @@ public class CmsImportVersion10 implements I_CmsImport {
     /** Value for the "shared" property type attribute value. */
     public static final String PROPERTY_ATTRIB_TYPE_SHARED = "shared";
 
-    /** Constant for an unspecified last modification date. */
-    private static final long DATE_LAST_MODIFICATION_UNSPECIFIED = -2;
+    /** Constant for the unspecified creation date. */
+    protected static final long DATE_CREATED_UNSPECIFIED = -1;
 
     /** Constant for using file time as last modification date on file import. */
-    private static final long DATE_LAST_MODIFICATION_FILETIME = -1;
+    protected static final long DATE_LAST_MODIFICATION_FILETIME = -1;
 
-    /** Constant for the unspecified creation date. */
-    private static final long DATE_CREATED_UNSPECIFIED = -1;
+    /** Constant for an unspecified last modification date. */
+    protected static final long DATE_LAST_MODIFICATION_UNSPECIFIED = -2;
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsImportVersion10.class);
 
     /** The ACE flags value. */
-    private int m_aceFlags;
+    protected int m_aceFlags;
 
     /** The ACE allowed permissions value. */
-    private int m_acePermissionsAllowed;
+    protected int m_acePermissionsAllowed;
 
     /** The ACE denied permissions value. */
-    private int m_acePermissionsDenied;
+    protected int m_acePermissionsDenied;
 
     /** The ACE principal id value. */
-    private CmsUUID m_acePrincipalId;
+    protected CmsUUID m_acePrincipalId;
 
     /** The list of ACEs for the current imported resource. */
-    private List<CmsAccessControlEntry> m_aces;
+    protected List<CmsAccessControlEntry> m_aces;
 
     /** The cms object. */
-    private CmsObject m_cms;
+    protected CmsObject m_cms;
 
     /** The set of resource ids of files which actually are contained in the zip file. */
-    private Set<CmsUUID> m_contentFiles = new HashSet<CmsUUID>();
-
-    /** The date created value. */
-    private long m_dateCreated = DATE_CREATED_UNSPECIFIED;
-
-    /** The date expired value. */
-    private long m_dateExpired = CmsResource.DATE_EXPIRED_DEFAULT;
-
-    /** The date last modified value. */
-    private long m_dateLastModified = DATE_LAST_MODIFICATION_UNSPECIFIED;
-
-    /** The date released value. */
-    private long m_dateReleased = CmsResource.DATE_RELEASED_DEFAULT;
+    protected Set<CmsUUID> m_contentFiles = new HashSet<CmsUUID>();
 
     /** The destination value. */
-    private String m_destination;
+    protected String m_destination;
 
     /** The current file counter. */
-    private int m_fileCounter;
-
-    /** The flags value. */
-    private int m_flags;
+    protected int m_fileCounter;
 
     /** The description of the current group to import. */
-    private String m_groupDescription;
+    protected String m_groupDescription;
 
     /** The flags of the current group to import. */
-    private int m_groupFlags;
+    protected int m_groupFlags;
 
     /** The name of the current group to import. */
-    private String m_groupName;
+    protected String m_groupName;
 
     /** The parent of the current group to import. */
-    private String m_groupParent;
+    protected String m_groupParent;
 
     /** Map of all parent groups that could not be set immediately, because of the import order. */
-    private Map<String, List<String>> m_groupParents;
+    protected Map<String, List<String>> m_groupParents;
+
+    /** True if a modification date has been set. */
+    protected boolean m_hasDateLastModified;
+
+    /** True if a structure id has been set. */
+    protected boolean m_hasStructureId;
 
     /** The import helper. */
-    private CmsImportHelper m_helper;
+    protected CmsImportHelper m_helper;
 
     /** List of ignored properties. */
-    private List<String> m_ignoredProperties;
+    protected List<String> m_ignoredProperties;
 
     /** List of immutable resources. */
-    private List<String> m_immutables;
+    protected List<String> m_immutables;
 
     /** The flag to import ACEs. */
-    private boolean m_importACEs;
+    protected boolean m_importACEs;
 
     /** The membership structure. */
-    private Map<String, Map<String, Map<String, String>>> m_membership;
+    protected Map<String, Map<String, Map<String, String>>> m_membership;
 
     /** The current imported organizational unit. */
-    private CmsOrganizationalUnit m_orgUnit;
+    protected CmsOrganizationalUnit m_orgUnit;
 
     /** The organizational unit description. */
-    private String m_orgUnitDescription;
+    protected String m_orgUnitDescription;
 
     /** The organizational unit flags. */
-    private int m_orgUnitFlags;
+    protected int m_orgUnitFlags;
 
     /** The organizational unit fqn. */
-    private String m_orgUnitName;
+    protected String m_orgUnitName;
 
     /** The map of organizational unit resources, this is a global field that will be use at the end of the import. */
-    private Map<String, List<String>> m_orgUnitResources;
+    protected Map<String, List<String>> m_orgUnitResources;
 
     /** The import parameters to use. */
-    private CmsImportParameters m_parameters;
+    protected CmsImportParameters m_parameters;
 
     /** The list of resource to be parsed, this is a global list, which will be handled at the end of the import. */
-    private List<CmsResource> m_parseables;
+    protected List<CmsResource> m_parseables;
 
     /** The project description. */
-    private String m_projectDescription;
+    protected String m_projectDescription;
 
     /** The project managers group name. */
-    private String m_projectManagers;
+    protected String m_projectManagers;
 
     /** The project fqn. */
-    private String m_projectName;
+    protected String m_projectName;
 
     /** The current read project resources. */
-    private List<String> m_projectResources;
+    protected List<String> m_projectResources;
 
     /** The project users group name. */
-    private String m_projectUsers;
+    protected String m_projectUsers;
 
     /** The map of properties for current imported resource. */
-    private Map<String, CmsProperty> m_properties;
+    protected Map<String, CmsProperty> m_properties;
 
     /** The property name value. */
-    private String m_propertyName;
+    protected String m_propertyName;
 
     /** The property value value. */
-    private String m_propertyValue;
+    protected String m_propertyValue;
 
     /** The relation id value. */
-    private CmsUUID m_relationId;
+    protected CmsUUID m_relationId;
 
     /** The relation path value. */
-    private String m_relationPath;
+    protected String m_relationPath;
 
-    /** The map of relations to be created, this is a global map, which will be handled at the end of the import. */
-    private Map<String, List<CmsRelation>> m_relations;
+    /** Holds the relation data for the resource to be imported. */
+    protected List<RelationData> m_relationsForResource;
 
     /** The relation type value. */
-    private CmsRelationType m_relationType;
+    protected CmsRelationType m_relationType;
 
     /** The report. */
-    private I_CmsReport m_report;
+    protected I_CmsReport m_report;
 
     /** The current imported resource. */
-    private CmsResource m_resource;
+    protected CmsResource m_resource;
 
-    /** The resource id value. */
-    private CmsUUID m_resourceId;
+    /** Holds the field values for the CmsResource object to be created. */
+    protected CmsResourceBuilder m_resourceBuilder;
 
     /** The source value. */
-    private String m_source;
-
-    /** The structure id value. */
-    private CmsUUID m_structureId;
+    protected String m_source;
 
     /** Possible exception during xml parsing. */
-    private Throwable m_throwable;
+    protected Throwable m_throwable;
 
     /** The total number of files to import. */
-    private int m_totalFiles;
-
-    /** The type value. */
-    private I_CmsResourceType m_type;
+    protected int m_totalFiles;
 
     /** The current imported user. */
-    private CmsUser m_user;
-
-    /** The user created value. */
-    private CmsUUID m_userCreated = CmsUUID.getNullUUID();
+    protected CmsUser m_user;
 
     /** The current user date created. */
-    private long m_userDateCreated;
+    protected long m_userDateCreated;
 
     /** The current user email. */
-    private String m_userEmail;
+    protected String m_userEmail;
 
     /** The current user first name. */
-    private String m_userFirstname;
+    protected String m_userFirstname;
 
     /** The current user flags. */
-    private int m_userFlags;
+    protected int m_userFlags;
 
     /** The additional information for the current imported user. */
-    private Map<String, Object> m_userInfos;
-
-    /** The user last modified value. */
-    private CmsUUID m_userLastModified;
+    protected Map<String, Object> m_userInfos;
 
     /** The current user last name. */
-    private String m_userLastname;
+    protected String m_userLastname;
 
     /** The current user name. */
-    private String m_userName;
+    protected String m_userName;
 
     /** The current user password. */
-    private String m_userPassword;
+    protected String m_userPassword;
 
     /** The export version. */
-    private int m_version;
+    protected int m_version;
+
+    /**
+     * Maps index of files in import to structure ids of imported resources.
+     * Necessary because not all entries in the manifest may have a structure id, and even for entries
+     * with a structure id, there may be a pre-existing resource at the same path with a different structure id.
+     */
+    private Map<Integer, CmsUUID> m_indexToStructureId;
+
+    /** Map to keep track of relation data for resources to be imported. */
+    private Multimap<Integer, RelationData> m_relationData;
+
+    /** True if the resource id has not been set. */
+    private boolean m_resourceIdWasNull;
 
     /**
      * Public constructor.<p>
@@ -488,6 +573,100 @@ public class CmsImportVersion10 implements I_CmsImport {
     }
 
     /**
+     * Parses the links.<p>
+     *
+     * @param cms the CMS context to use
+     * @param parseables the list of resources for which to parse the links
+     * @param report the report
+     */
+    public static void parseLinks(CmsObject cms, List<CmsResource> parseables, I_CmsReport report) {
+
+        int i = 0;
+
+        sortParseableResources(parseables);
+        for (CmsResource parsableRes : parseables) {
+            String resName = cms.getSitePath(parsableRes);
+
+            report.print(
+                org.opencms.report.Messages.get().container(
+                    org.opencms.report.Messages.RPT_SUCCESSION_2,
+                    String.valueOf(i + 1),
+                    String.valueOf(parseables.size())),
+                I_CmsReport.FORMAT_NOTE);
+
+            LOG.info("Rewriting parsable resource: " + resName);
+            report.print(Messages.get().container(Messages.RPT_PARSE_LINKS_FOR_1, resName), I_CmsReport.FORMAT_NOTE);
+            report.print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
+
+            try {
+                CmsFile file = cms.readFile(resName);
+                // make sure the date last modified is kept...
+                file.setDateLastModified(file.getDateLastModified());
+                // make sure the file is locked
+                CmsLock lock = cms.getLock(file);
+                if (lock.isUnlocked()) {
+                    cms.lockResource(resName);
+                } else if (!lock.isDirectlyOwnedInProjectBy(cms)) {
+                    cms.changeLock(resName);
+                }
+                // rewrite the file
+                cms.writeFile(file);
+
+                report.println(
+                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_OK_0),
+                    I_CmsReport.FORMAT_OK);
+            } catch (Throwable e) {
+                report.addWarning(e);
+                report.println(
+                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_FAILED_0),
+                    I_CmsReport.FORMAT_ERROR);
+                if (LOG.isWarnEnabled()) {
+                    LOG.warn(Messages.get().getBundle().key(Messages.LOG_IMPORTEXPORT_REWRITING_1, resName));
+                    LOG.warn(e.getMessage(), e);
+                }
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(e.getLocalizedMessage(), e);
+                }
+            }
+            i++;
+        }
+        cms.getRequestContext().removeAttribute(CmsLogEntry.ATTR_LOG_ENTRY);
+    }
+
+    /**
+     * Sorts the parsealble resources before we actually parse the links.<p>
+     *
+     * This is needed because we may, for example, have resources A and B such that A has a link to B, and B requires
+     * the relation corresponding to that link to be present for some functionality (e.g. the page_title macro in gallery name
+     * mappings), so we need to parse the links for A first to create the relation before B is processed.
+     *
+     * @param parseables the list of parseable resources which should be sorted in place
+     *
+     */
+    protected static void sortParseableResources(List<CmsResource> parseables) {
+
+        Collections.sort(parseables, new Comparator<CmsResource>() {
+
+            public int compare(CmsResource a, CmsResource b) {
+
+                return ComparisonChain.start().compare(getRank(a), getRank(b)).compare(
+                    a.getRootPath(),
+                    b.getRootPath()).result();
+            }
+
+            int getRank(CmsResource res) {
+
+                if (CmsResourceTypeXmlContainerPage.isContainerPage(res)) {
+                    return 0;
+                } else {
+                    return 1;
+                }
+            }
+        });
+
+    }
+
+    /**
      * Adds an ACE from the current xml data.<p>
      *
      * @see #addResourceAceRules(Digester, String)
@@ -495,17 +674,13 @@ public class CmsImportVersion10 implements I_CmsImport {
     public void addAccessControlEntry() {
 
         try {
-            if ((m_resource == null) || !m_importACEs) {
-                // skip ace import if not intended or the import of the resource failed
-                return;
-            }
             if (m_throwable != null) {
                 // user or group of ACE might not exist in target system, ignore ACE
                 if (LOG.isWarnEnabled()) {
                     LOG.warn(
                         Messages.get().getBundle().key(
                             Messages.LOG_IMPORTEXPORT_ERROR_IMPORTING_ACE_1,
-                            getCms().getRequestContext().removeSiteRoot(m_resource.getRootPath())),
+                            getRequestContext().removeSiteRoot(m_resource.getRootPath())),
                         m_throwable);
                 }
                 getReport().println(m_throwable);
@@ -519,7 +694,7 @@ public class CmsImportVersion10 implements I_CmsImport {
             }
             m_aces.add(
                 new CmsAccessControlEntry(
-                    m_resource.getResourceId(),
+                    null,
                     m_acePrincipalId,
                     m_acePermissionsAllowed,
                     m_acePermissionsDenied,
@@ -648,21 +823,14 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void addRelation() {
 
-        if (m_relations == null) {
-            m_relations = new HashMap<String, List<CmsRelation>>();
-        }
         try {
-            if (m_resource == null) {
-                // skip relation import if the import of the resource failed
-                return;
-            }
             if (m_throwable != null) {
                 // relation data is corrupt, ignore relation
                 if (LOG.isWarnEnabled()) {
                     LOG.warn(
                         Messages.get().getBundle().key(
                             Messages.LOG_IMPORTEXPORT_ERROR_IMPORTING_RELATION_1,
-                            getCms().getRequestContext().removeSiteRoot(m_resource.getRootPath())),
+                            m_destination),
                         m_throwable);
                 }
                 getReport().println(m_throwable);
@@ -670,18 +838,9 @@ public class CmsImportVersion10 implements I_CmsImport {
                 m_throwable = null;
                 return;
             }
-            List<CmsRelation> currentRelations = m_relations.get(m_resource.getRootPath());
-            if (currentRelations == null) {
-                currentRelations = new ArrayList<CmsRelation>();
-                m_relations.put(m_resource.getRootPath(), currentRelations);
-            }
-            currentRelations.add(
-                new CmsRelation(
-                    m_resource.getStructureId(),
-                    m_resource.getRootPath(),
-                    m_relationId,
-                    m_relationPath,
-                    m_relationType));
+            RelationData relData = new RelationData(m_relationPath, m_relationId, m_relationType);
+            m_relationsForResource.add(relData);
+            m_relationData.put(Integer.valueOf(m_fileCounter), relData);
         } finally {
             m_relationId = null;
             m_relationPath = null;
@@ -706,12 +865,45 @@ public class CmsImportVersion10 implements I_CmsImport {
             "setMembership");
 
         // then resources
+
+        // When encountering opening files tag, initialize some fields which keep track of multiple resources'  data
+        digester.addRule(CmsImportExportManager.N_EXPORT + "/" + N_FILES, new Rule() {
+
+            @SuppressWarnings("synthetic-access")
+            @Override
+            public void begin(String namespace, String name, Attributes attributes) throws Exception {
+
+                m_indexToStructureId = new HashMap<>();
+                m_relationData = ArrayListMultimap.create();
+
+            }
+        });
+
+        digester.addRule(CmsImportExportManager.N_EXPORT + "/" + N_FILES + "/" + N_FILE, new Rule() {
+
+            @Override
+            public void begin(String namespace, String name, Attributes attributes) throws Exception {
+
+                m_importACEs = true;
+                m_resourceBuilder = new CmsResourceBuilder();
+                m_resourceBuilder.setDateLastModified(DATE_LAST_MODIFICATION_UNSPECIFIED);
+                m_resourceBuilder.setDateReleased(CmsResource.DATE_RELEASED_DEFAULT);
+                m_resourceBuilder.setDateExpired(CmsResource.DATE_EXPIRED_DEFAULT);
+                m_resourceBuilder.setDateCreated(DATE_CREATED_UNSPECIFIED);
+                m_resourceBuilder.setUserCreated(CmsUUID.getNullUUID());
+                m_relationsForResource = new ArrayList<>();
+                m_hasStructureId = false;
+                m_hasDateLastModified = false;
+            }
+        });
+
         xpath = CmsImportExportManager.N_EXPORT + "/" + N_FILES + "/" + N_FILE + "/";
         addResourceAttributesRules(digester, xpath);
+        digester.addCallMethod(xpath, "importResourceAll");
         addResourcePropertyRules(digester, xpath);
         addResourceRelationRules(digester, xpath);
         addResourceAceRules(digester, xpath);
-        digester.addCallMethod(CmsImportExportManager.N_EXPORT + "/" + N_FILES + "/" + N_FILE, "increaseCounter");
+
         digester.addCallMethod(CmsImportExportManager.N_EXPORT + "/" + N_FILES, "importRelations");
         digester.addCallMethod(CmsImportExportManager.N_EXPORT + "/" + N_FILES, "rewriteParseables");
 
@@ -758,9 +950,9 @@ public class CmsImportVersion10 implements I_CmsImport {
             return;
         }
 
-        String site = getCms().getRequestContext().getSiteRoot();
+        String site = getRequestContext().getSiteRoot();
         try {
-            getCms().getRequestContext().setSiteRoot("");
+            getRequestContext().setSiteRoot("");
             List<String> orgUnits = new ArrayList<String>(m_orgUnitResources.keySet());
             Collections.sort(orgUnits);
             Iterator<String> it = orgUnits.iterator();
@@ -809,7 +1001,7 @@ public class CmsImportVersion10 implements I_CmsImport {
 
             }
         } finally {
-            getCms().getRequestContext().setSiteRoot(site);
+            getRequestContext().setSiteRoot(site);
         }
 
         m_orgUnitResources = null;
@@ -887,7 +1079,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public long getDateCreated() {
 
-        return m_dateCreated;
+        return m_resourceBuilder.getDateCreated();
     }
 
     /**
@@ -900,7 +1092,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public long getDateExpired() {
 
-        return m_dateExpired;
+        return m_resourceBuilder.getDateExpired();
     }
 
     /**
@@ -913,7 +1105,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public long getDateLastModified() {
 
-        return m_dateLastModified;
+        return m_resourceBuilder.getDateLastModified();
     }
 
     /**
@@ -926,7 +1118,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public long getDateReleased() {
 
-        return m_dateReleased;
+        return m_resourceBuilder.getDateReleased();
     }
 
     /**
@@ -952,7 +1144,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public int getFlags() {
 
-        return m_flags;
+        return m_resourceBuilder.getFlags();
     }
 
     /**
@@ -1141,6 +1333,16 @@ public class CmsImportVersion10 implements I_CmsImport {
     }
 
     /**
+     * Gets the request context of the currently used CmsObject.<p>
+     *
+     * @return the current request context
+     */
+    public CmsRequestContext getRequestContext() {
+
+        return getCms().getRequestContext();
+    }
+
+    /**
      * Returns the resourceId.<p>
      *
      * @return the resourceId
@@ -1150,7 +1352,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public CmsUUID getResourceId() {
 
-        return m_resourceId;
+        return m_resourceBuilder.getResourceId();
     }
 
     /**
@@ -1176,7 +1378,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public CmsUUID getStructureId() {
 
-        return m_structureId;
+        return m_resourceBuilder.getStructureId();
     }
 
     /**
@@ -1199,7 +1401,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public I_CmsResourceType getType() {
 
-        return m_type;
+        return null;
     }
 
     /**
@@ -1212,7 +1414,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public CmsUUID getUserCreated() {
 
-        return m_userCreated;
+        return m_resourceBuilder.getUserCreated();
     }
 
     /**
@@ -1265,7 +1467,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public CmsUUID getUserLastModified() {
 
-        return m_userLastModified;
+        return m_resourceBuilder.getUserLastModified();
     }
 
     /**
@@ -1519,9 +1721,9 @@ public class CmsImportVersion10 implements I_CmsImport {
             // get the resources that already exist for the organizational unit
             // if there are resources that does not exist jet, there will be a second try after importing resources
             List<CmsResource> resources = new ArrayList<CmsResource>();
-            String site = getCms().getRequestContext().getSiteRoot();
+            String site = getRequestContext().getSiteRoot();
             try {
-                getCms().getRequestContext().setSiteRoot("");
+                getRequestContext().setSiteRoot("");
 
                 boolean remove = true;
                 List<String> ouResources = CmsCollectionsGenericWrapper.list(m_orgUnitResources.get(m_orgUnitName));
@@ -1543,7 +1745,7 @@ public class CmsImportVersion10 implements I_CmsImport {
                     m_orgUnitResources.remove(m_orgUnitName);
                 }
             } finally {
-                getCms().getRequestContext().setSiteRoot(site);
+                getRequestContext().setSiteRoot(site);
             }
 
             // if no resource available
@@ -1634,11 +1836,11 @@ public class CmsImportVersion10 implements I_CmsImport {
                 CmsProject.PROJECT_TYPE_NORMAL);
             // set the resources
             if (m_projectResources != null) {
-                String site = getCms().getRequestContext().getSiteRoot();
-                CmsProject currentProject = getCms().getRequestContext().getCurrentProject();
+                String site = getRequestContext().getSiteRoot();
+                CmsProject currentProject = getRequestContext().getCurrentProject();
                 try {
-                    getCms().getRequestContext().setSiteRoot("");
-                    getCms().getRequestContext().setCurrentProject(project);
+                    getRequestContext().setSiteRoot("");
+                    getRequestContext().setCurrentProject(project);
 
                     Iterator<String> itResNames = m_projectResources.iterator();
                     while (itResNames.hasNext()) {
@@ -1650,8 +1852,8 @@ public class CmsImportVersion10 implements I_CmsImport {
                         }
                     }
                 } finally {
-                    getCms().getRequestContext().setSiteRoot(site);
-                    getCms().getRequestContext().setCurrentProject(currentProject);
+                    getRequestContext().setSiteRoot(site);
+                    getRequestContext().setCurrentProject(currentProject);
                 }
             }
             getReport().println(
@@ -1689,7 +1891,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void importRelations() {
 
-        if ((m_relations == null) || m_relations.isEmpty()) {
+        if ((m_relationData == null) || m_relationData.isEmpty()) {
             // no relations to add
             return;
         }
@@ -1699,64 +1901,83 @@ public class CmsImportVersion10 implements I_CmsImport {
             I_CmsReport.FORMAT_HEADLINE);
 
         int i = 0;
-        Iterator<Entry<String, List<CmsRelation>>> it = m_relations.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, List<CmsRelation>> entry = it.next();
-            String resourcePath = entry.getKey();
-            List<CmsRelation> relations = entry.getValue();
-
-            if (checkImmutable(resourcePath)) {
+        CmsResourceFilter filter = CmsResourceFilter.ALL;
+        for (Integer importIndex : m_relationData.keySet()) {
+            CmsUUID structureId = m_indexToStructureId.get(importIndex);
+            if (structureId == null) {
                 continue;
             }
-            getReport().print(org.opencms.report.Messages.get().container(
-                org.opencms.report.Messages.RPT_SUCCESSION_2,
-                String.valueOf(i + 1),
-                String.valueOf(m_relations.size())), I_CmsReport.FORMAT_NOTE);
+            Collection<RelationData> relationDataList = m_relationData.get(importIndex);
+            try {
+                CmsResource src = m_cms.readResource(structureId, filter);
+                if (checkImmutable(src.getRootPath())) {
+                    continue;
+                }
+                getReport().print(
+                    org.opencms.report.Messages.get().container(
+                        org.opencms.report.Messages.RPT_SUCCESSION_2,
+                        String.valueOf(i + 1),
+                        String.valueOf(m_relationData.keySet().size())),
+                    I_CmsReport.FORMAT_NOTE);
 
-            getReport().print(
-                Messages.get().container(
-                    Messages.RPT_IMPORTING_RELATIONS_FOR_2,
-                    resourcePath,
-                    new Integer(relations.size())),
-                I_CmsReport.FORMAT_NOTE);
-            getReport().print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
-
-            boolean withErrors = false;
-            Iterator<CmsRelation> itRelations = relations.iterator();
-            while (itRelations.hasNext()) {
-                CmsRelation relation = itRelations.next();
-                try {
-                    // Add the relation to the resource
-                    getCms().importRelation(
-                        getCms().getSitePath(relation.getSource(getCms(), CmsResourceFilter.ALL)),
-                        getCms().getSitePath(relation.getTarget(getCms(), CmsResourceFilter.ALL)),
-                        relation.getType().getName());
-                } catch (CmsException e) {
-                    getReport().addWarning(e);
-                    withErrors = true;
-                    if (LOG.isWarnEnabled()) {
-                        LOG.warn(e.getLocalizedMessage());
+                getReport().print(
+                    Messages.get().container(
+                        Messages.RPT_IMPORTING_RELATIONS_FOR_2,
+                        src.getRootPath(),
+                        new Integer(m_relationData.keySet().size())),
+                    I_CmsReport.FORMAT_NOTE);
+                getReport().print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
+                boolean withErrors = false;
+                for (RelationData relationData : relationDataList) {
+                    CmsResource target = null;
+                    try {
+                        target = m_cms.readResource(relationData.getTargetId(), filter);
+                    } catch (CmsVfsResourceNotFoundException e) {
+                        // ignore
                     }
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug(e.getLocalizedMessage(), e);
+                    if (target == null) {
+                        try {
+                            target = m_cms.readResource(relationData.getTarget(), filter);
+                        } catch (CmsVfsResourceNotFoundException e) {
+                            // ignore
+                        }
+                    }
+
+                    if (target != null) {
+                        try {
+                            getCms().importRelation(
+                                m_cms.getSitePath(src),
+                                m_cms.getSitePath(target),
+                                relationData.getType().toString());
+                        } catch (CmsException e) {
+                            getReport().addWarning(e);
+                            withErrors = true;
+                            if (LOG.isWarnEnabled()) {
+                                LOG.warn(e.getLocalizedMessage());
+                            }
+                            if (LOG.isDebugEnabled()) {
+                                LOG.debug(e.getLocalizedMessage(), e);
+                            }
+                        }
                     }
                 }
+                if (!withErrors) {
+                    getReport().println(
+                        org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_OK_0),
+                        I_CmsReport.FORMAT_OK);
+                } else {
+                    getReport().println(
+                        org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_FAILED_0),
+                        I_CmsReport.FORMAT_ERROR);
+                }
+                i += 1;
+
+            } catch (CmsException e) {
+                getReport().addError(e);
+                LOG.error(e.getLocalizedMessage(), e);
+                continue;
             }
-            if (!withErrors) {
-                getReport().println(
-                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_OK_0),
-                    I_CmsReport.FORMAT_OK);
-            } else {
-                getReport().println(
-                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_FAILED_0),
-                    I_CmsReport.FORMAT_ERROR);
-            }
-            i++;
         }
-
-        getReport().println(Messages.get().container(Messages.RPT_END_IMPORT_RELATIONS_0), I_CmsReport.FORMAT_HEADLINE);
-
-        m_relations = null;
     }
 
     /**
@@ -1767,7 +1988,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void importResource() {
 
-        boolean resourceIdWasNull = false;
+        m_resourceIdWasNull = false;
 
         try {
             if (m_throwable != null) {
@@ -1787,11 +2008,11 @@ public class CmsImportVersion10 implements I_CmsImport {
             }
 
             // apply name translation and import path
-            String translatedName = getCms().getRequestContext().addSiteRoot(
-                m_parameters.getDestinationPath() + m_destination);
+            String translatedName = getRequestContext().addSiteRoot(
+                CmsStringUtil.joinPaths(m_parameters.getDestinationPath(), m_destination));
 
             boolean resourceImmutable = checkImmutable(translatedName);
-            translatedName = getCms().getRequestContext().removeSiteRoot(translatedName);
+            translatedName = getRequestContext().removeSiteRoot(translatedName);
             // if the resource is not immutable and not on the exclude list, import it
             if (!resourceImmutable) {
                 // print out the information to the report
@@ -1806,6 +2027,7 @@ public class CmsImportVersion10 implements I_CmsImport {
 
                 byte[] content = null;
                 // get the file content
+
                 if (m_source != null) {
                     content = m_helper.getFileBytes(m_source);
                 }
@@ -1813,76 +2035,23 @@ public class CmsImportVersion10 implements I_CmsImport {
                 if (content != null) {
                     size = content.length;
                 }
-
-                // get UUID for the structure
-                if (m_structureId == null) {
-                    // if null generate a new structure id
-                    m_structureId = new CmsUUID();
-                }
-
-                // get UUIDs for the resource
-                if ((m_resourceId == null) || (m_type.isFolder())) {
-                    // folders get always a new resource UUID
-                    m_resourceId = new CmsUUID();
-                    resourceIdWasNull = true;
-                }
-
-                // read date last modified from the resource, default to currentTime for folders
-                if (m_dateLastModified == DATE_LAST_MODIFICATION_FILETIME) {
-                    if (null != m_source) {
-                        m_dateLastModified = m_helper.getFileModification(m_source);
-                    } else {
-                        m_dateLastModified = System.currentTimeMillis();
-                    }
-                }
-
-                if (m_dateLastModified == DATE_LAST_MODIFICATION_UNSPECIFIED) {
-                    m_dateLastModified = System.currentTimeMillis();
-                }
-
-                if (null == m_userLastModified) {
-                    m_userLastModified = m_cms.getRequestContext().getCurrentUser().getId();
-                }
-
-                if (m_dateCreated == DATE_CREATED_UNSPECIFIED) {
-                    m_dateCreated = System.currentTimeMillis();
-                }
-
-                if (m_userCreated.isNullUUID()) {
-                    m_userCreated = getCms().getRequestContext().getCurrentUser().getId();
-                }
-
+                setDefaultsForEmptyResourceFields();
                 // create a new CmsResource
-                CmsResource resource = new CmsResource(
-                    m_structureId,
-                    m_resourceId,
-                    translatedName,
-                    m_type,
-                    m_flags,
-                    getCms().getRequestContext().getCurrentProject().getUuid(),
-                    CmsResource.STATE_NEW,
-                    m_dateCreated,
-                    m_userCreated,
-                    m_dateLastModified,
-                    m_userLastModified,
-                    m_dateReleased,
-                    m_dateExpired,
-                    1,
-                    size,
-                    System.currentTimeMillis(),
-                    0);
+                CmsResource resource = createResourceObjectFromFields(translatedName, size);
 
-                if (m_properties == null) {
-                    m_properties = new HashMap<String, CmsProperty>();
-                }
-
-                if (m_type.isFolder() || resourceIdWasNull || hasContentInVfsOrImport(resource)) {
+                if (m_resourceBuilder.getType().isFolder()
+                    || m_resourceIdWasNull
+                    || hasContentInVfsOrImport(resource)) {
                     // import this resource in the VFS
                     m_resource = getCms().importResource(
                         translatedName,
                         resource,
                         content,
                         new ArrayList<CmsProperty>(m_properties.values()));
+                }
+
+                if (m_resource != null) {
+                    m_indexToStructureId.put(Integer.valueOf(m_fileCounter), m_resource.getStructureId());
                 }
 
                 // only set permissions if the resource did not exists or if the keep permissions flag is not set
@@ -1959,21 +2128,24 @@ public class CmsImportVersion10 implements I_CmsImport {
             }
 
             return;
+        }
+    }
+
+    /**
+     * Imports the resource and access control entries.<p>
+     */
+    public void importResourceAll() {
+
+        try {
+            importResource();
+            importAccessControlEntries();
+            increaseCounter();
         } finally {
-            m_structureId = null;
-            m_resourceId = null;
             m_destination = null;
             m_source = null;
-            m_type = null;
-            m_flags = 0;
-            m_dateCreated = DATE_CREATED_UNSPECIFIED;
-            m_dateLastModified = DATE_LAST_MODIFICATION_UNSPECIFIED;
-            m_dateReleased = CmsResource.DATE_RELEASED_DEFAULT;
-            m_dateExpired = CmsResource.DATE_EXPIRED_DEFAULT;
-            m_properties = null;
             m_throwable = null;
-            m_aces = null;
             m_properties = null;
+            m_aces = null;
         }
     }
 
@@ -2284,7 +2456,7 @@ public class CmsImportVersion10 implements I_CmsImport {
         CmsObject cms = getCms();
         cms.getRequestContext().setAttribute(CmsLogEntry.ATTR_LOG_ENTRY, Boolean.FALSE);
         report.println(Messages.get().container(Messages.RPT_START_PARSE_LINKS_0), I_CmsReport.FORMAT_HEADLINE);
-        parseLinks(cms, report);
+        parseLinks(cms, m_parseables, report);
         report.println(Messages.get().container(Messages.RPT_END_PARSE_LINKS_0), I_CmsReport.FORMAT_HEADLINE);
         m_parseables = null;
     }
@@ -2393,9 +2565,9 @@ public class CmsImportVersion10 implements I_CmsImport {
 
         try {
             if (dateCreated != null) {
-                m_dateCreated = convertTimestamp(dateCreated);
+                m_resourceBuilder.setDateCreated(convertTimestamp(dateCreated));
             } else {
-                m_dateCreated = System.currentTimeMillis();
+                m_resourceBuilder.setDateCreated(System.currentTimeMillis());
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2414,9 +2586,9 @@ public class CmsImportVersion10 implements I_CmsImport {
 
         try {
             if (dateExpired != null) {
-                m_dateExpired = convertTimestamp(dateExpired);
+                m_resourceBuilder.setDateExpired(convertTimestamp(dateExpired));
             } else {
-                m_dateExpired = CmsResource.DATE_EXPIRED_DEFAULT;
+                m_resourceBuilder.setDateExpired(CmsResource.DATE_EXPIRED_DEFAULT);
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2433,23 +2605,24 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void setDateLastModified(String dateLastModified) {
 
+        m_hasDateLastModified = true;
         try {
             if (dateLastModified != null) {
                 TimestampMode timeMode = TimestampMode.getEnum(CmsMacroResolver.stripMacro(dateLastModified));
                 switch (timeMode) {
                     case FILETIME:
-                        m_dateLastModified = -1; //Can't get the information right now, must set it afterward.
+                        m_resourceBuilder.setDateLastModified(-1); //Can't get the information right now, must set it afterward.
                         break;
                     case IMPORTTIME:
-                        m_dateLastModified = System.currentTimeMillis();
+                        m_resourceBuilder.setDateLastModified(System.currentTimeMillis());
                         break;
                     case VFSTIME:
                     default:
-                        m_dateLastModified = convertTimestamp(dateLastModified);
+                        m_resourceBuilder.setDateLastModified(convertTimestamp(dateLastModified));
                         break;
                 }
             } else {
-                m_dateLastModified = System.currentTimeMillis();
+                m_resourceBuilder.setDateLastModified(System.currentTimeMillis());
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2468,9 +2641,9 @@ public class CmsImportVersion10 implements I_CmsImport {
 
         try {
             if (dateReleased != null) {
-                m_dateReleased = convertTimestamp(dateReleased);
+                m_resourceBuilder.setDateReleased(convertTimestamp(dateReleased));
             } else {
-                m_dateReleased = CmsResource.DATE_RELEASED_DEFAULT;
+                m_resourceBuilder.setDateReleased(CmsResource.DATE_RELEASED_DEFAULT);
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2501,7 +2674,7 @@ public class CmsImportVersion10 implements I_CmsImport {
     public void setFlags(String flags) {
 
         try {
-            m_flags = Integer.parseInt(flags);
+            m_resourceBuilder.setFlags(Integer.parseInt(flags));
         } catch (Throwable e) {
             setThrowable(e);
         }
@@ -2775,10 +2948,10 @@ public class CmsImportVersion10 implements I_CmsImport {
     public void setResourceId(String resourceId) {
 
         try {
-            if (!m_type.isFolder()) {
-                m_resourceId = new CmsUUID(resourceId);
+            if (!m_resourceBuilder.isFolder()) {
+                m_resourceBuilder.setResourceId(new CmsUUID(resourceId));
             } else {
-                m_resourceId = new CmsUUID();
+                m_resourceBuilder.setResourceId(new CmsUUID());
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2809,10 +2982,13 @@ public class CmsImportVersion10 implements I_CmsImport {
     public void setStructureId(String structureId) {
 
         try {
-            m_structureId = new CmsUUID(structureId);
+            m_resourceBuilder.setStructureId(new CmsUUID(structureId));
+            m_hasStructureId = true;
+
         } catch (Throwable e) {
             setThrowable(e);
         }
+
     }
 
     /**
@@ -2837,17 +3013,19 @@ public class CmsImportVersion10 implements I_CmsImport {
 
         try {
             try {
-                m_type = OpenCms.getResourceManager().getResourceType(typeName);
+                m_resourceBuilder.setType(OpenCms.getResourceManager().getResourceType(typeName));
             } catch (@SuppressWarnings("unused") CmsLoaderException e) {
                 // TODO: what happens if the resource type is a specialized folder and is not configured??
                 try {
-                    m_type = OpenCms.getResourceManager().getResourceType(CmsResourceTypePlain.getStaticTypeName());
+                    m_resourceBuilder.setType(
+                        OpenCms.getResourceManager().getResourceType(CmsResourceTypePlain.getStaticTypeName()));
                 } catch (@SuppressWarnings("unused") CmsLoaderException e1) {
                     // this should really never happen
-                    m_type = OpenCms.getResourceManager().getResourceType(CmsResourceTypePlain.getStaticTypeName());
+                    m_resourceBuilder.setType(
+                        OpenCms.getResourceManager().getResourceType(CmsResourceTypePlain.getStaticTypeName()));
                 }
             }
-            if (m_type.isFolder()) {
+            if (m_resourceBuilder.getType().isFolder()) {
                 // ensure folders end with a "/"
                 if (!CmsResource.isFolder(m_destination)) {
                     m_destination += "/";
@@ -2865,7 +3043,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void setUserCreated(CmsUUID userCreated) {
 
-        m_userCreated = userCreated;
+        m_resourceBuilder.setUserCreated(userCreated);
     }
 
     /**
@@ -2881,9 +3059,9 @@ public class CmsImportVersion10 implements I_CmsImport {
         try {
             String userCreatedName = OpenCms.getImportExportManager().translateUser(userCreated);
             try {
-                m_userCreated = getCms().readUser(userCreatedName).getId();
+                m_resourceBuilder.setUserCreated(getCms().readUser(userCreatedName).getId());
             } catch (@SuppressWarnings("unused") CmsDbEntryNotFoundException e) {
-                m_userCreated = getCms().getRequestContext().getCurrentUser().getId();
+                m_resourceBuilder.setUserCreated(getRequestContext().getCurrentUser().getId());
             }
         } catch (Throwable e) {
             setThrowable(e);
@@ -2945,7 +3123,7 @@ public class CmsImportVersion10 implements I_CmsImport {
      */
     public void setUserLastModified(CmsUUID userLastModified) {
 
-        m_userLastModified = userLastModified;
+        m_resourceBuilder.setUserLastModified(userLastModified);
     }
 
     /**
@@ -2959,14 +3137,14 @@ public class CmsImportVersion10 implements I_CmsImport {
     public void setUserLastModified(String userLastModified) {
 
         if (null == userLastModified) { // The optional user last modified information is not provided
-            m_userLastModified = m_cms.getRequestContext().getCurrentUser().getId();
+            m_resourceBuilder.setUserLastModified(getRequestContext().getCurrentUser().getId());
         } else { // use the user last modified information from the manifest
             try {
                 String userLastModifiedName = OpenCms.getImportExportManager().translateUser(userLastModified);
                 try {
-                    m_userLastModified = getCms().readUser(userLastModifiedName).getId();
+                    m_resourceBuilder.setUserLastModified(getCms().readUser(userLastModifiedName).getId());
                 } catch (@SuppressWarnings("unused") CmsDbEntryNotFoundException e) {
-                    m_userLastModified = getCms().getRequestContext().getCurrentUser().getId();
+                    m_resourceBuilder.setUserLastModified(getRequestContext().getCurrentUser().getId());
                 }
             } catch (Throwable e) {
                 setThrowable(e);
@@ -3100,7 +3278,6 @@ public class CmsImportVersion10 implements I_CmsImport {
     protected void addResourceAceRules(Digester digester, String xpath) {
 
         String xp_ace = xpath + N_ACCESSCONTROL_ENTRIES + "/" + N_ACCESSCONTROL_ENTRY;
-        digester.addCallMethod(xpath + N_ACCESSCONTROL_ENTRIES, "importAccessControlEntries");
         digester.addCallMethod(xp_ace, "addAccessControlEntry");
         digester.addCallMethod(xp_ace + "/" + N_ACCESSCONTROL_PRINCIPAL, "setAcePrincipalId", 0);
         digester.addCallMethod(xp_ace + "/" + N_FLAGS, "setAceFlags", 0);
@@ -3148,7 +3325,7 @@ public class CmsImportVersion10 implements I_CmsImport {
 
         digester.addCallMethod(xp_props + "/" + N_NAME, "setPropertyName", 0);
         digester.addCallMethod(xp_props + "/" + N_VALUE, "setPropertyValue", 0);
-        digester.addCallMethod(xpath + N_PROPERTIES, "importResource");
+
     }
 
     /**
@@ -3182,9 +3359,9 @@ public class CmsImportVersion10 implements I_CmsImport {
                     Messages.get().getBundle().key(Messages.LOG_IMPORTEXPORT_RESOURCENAME_IMMUTABLE_1, resourceName));
             }
             // this resource must not be modified by an import if it already exists
-            String storedSiteRoot = getCms().getRequestContext().getSiteRoot();
+            String storedSiteRoot = getRequestContext().getSiteRoot();
             try {
-                getCms().getRequestContext().setSiteRoot("/");
+                getRequestContext().setSiteRoot("/");
                 getCms().readResource(resourceName);
                 resourceImmutable = true;
                 if (LOG.isDebugEnabled()) {
@@ -3201,7 +3378,7 @@ public class CmsImportVersion10 implements I_CmsImport {
                         e);
                 }
             } finally {
-                getCms().getRequestContext().setSiteRoot(storedSiteRoot);
+                getRequestContext().setSiteRoot(storedSiteRoot);
             }
         }
         return resourceImmutable;
@@ -3250,6 +3427,25 @@ public class CmsImportVersion10 implements I_CmsImport {
             }
         }
         return value;
+    }
+
+    /**
+     * Create a CmsResource object from the currently set field values.<p>
+     *
+     * @param translatedName the resource name
+     * @param size the size
+     * @return the new CmsResource object
+     */
+    protected CmsResource createResourceObjectFromFields(String translatedName, int size) {
+
+        m_resourceBuilder.setRootPath(translatedName);
+        m_resourceBuilder.setState(CmsResource.STATE_NEW);
+        m_resourceBuilder.setProjectLastModified(getRequestContext().getCurrentProject().getUuid());
+        m_resourceBuilder.setLength(size);
+        m_resourceBuilder.setSiblingCount(1);
+        m_resourceBuilder.setVersion(0);
+        m_resourceBuilder.setDateContent(System.currentTimeMillis());
+        return m_resourceBuilder.buildResource();
     }
 
     /**
@@ -3336,36 +3532,53 @@ public class CmsImportVersion10 implements I_CmsImport {
     }
 
     /**
-     * Sorts the parsealble resources before we actually parse the links.<p>
+     * Fills the unset fields for an imported resource with default values.<p>
      *
-     * This is needed because we may, for example, have resources A and B such that A has a link to B, and B requires
-     * the relation corresponding to that link to be present for some functionality (e.g. the page_title macro in gallery name
-     * mappings), so we need to parse the links for A first to create the relation before B is processed.
-     *
-     * @param parseables the list of parseable resources which should be sorted in place
-     *
+     * @throws CmsImportExportException if something goes wrong
      */
-    protected void sortParseableResources(List<CmsResource> parseables) {
+    protected void setDefaultsForEmptyResourceFields() throws CmsImportExportException {
 
-        Collections.sort(parseables, new Comparator<CmsResource>() {
+        // get UUID for the structure
+        if (m_resourceBuilder.getStructureId() == null) {
+            // if null generate a new structure id
+            m_resourceBuilder.setStructureId(new CmsUUID());
+        }
 
-            public int compare(CmsResource a, CmsResource b) {
+        // get UUIDs for the resource
+        if ((m_resourceBuilder.getResourceId() == null) || (m_resourceBuilder.getType().isFolder())) {
+            // folders get always a new resource UUID
+            m_resourceBuilder.setResourceId(new CmsUUID());
+            m_resourceIdWasNull = true;
+        }
 
-                return ComparisonChain.start().compare(getRank(a), getRank(b)).compare(
-                    a.getRootPath(),
-                    b.getRootPath()).result();
+        // read date last modified from the resource, default to currentTime for folders
+        if (m_resourceBuilder.getDateLastModified() == DATE_LAST_MODIFICATION_FILETIME) {
+            if (null != m_source) {
+                m_resourceBuilder.setDateLastModified(m_helper.getFileModification(m_source));
+            } else {
+                m_resourceBuilder.setDateLastModified(System.currentTimeMillis());
             }
+        }
 
-            int getRank(CmsResource res) {
+        if (m_resourceBuilder.getDateLastModified() == DATE_LAST_MODIFICATION_UNSPECIFIED) {
+            m_resourceBuilder.setDateLastModified(System.currentTimeMillis());
+        }
 
-                if (CmsResourceTypeXmlContainerPage.isContainerPage(res)) {
-                    return 0;
-                } else {
-                    return 1;
-                }
-            }
-        });
+        if (null == m_resourceBuilder.getUserLastModified()) {
+            m_resourceBuilder.setUserLastModified(m_cms.getRequestContext().getCurrentUser().getId());
+        }
 
+        if (m_resourceBuilder.getDateCreated() == DATE_CREATED_UNSPECIFIED) {
+            m_resourceBuilder.setDateCreated(System.currentTimeMillis());
+        }
+
+        if (m_resourceBuilder.getUserCreated().isNullUUID()) {
+            m_resourceBuilder.setUserCreated(getRequestContext().getCurrentUser().getId());
+        }
+
+        if (m_properties == null) {
+            m_properties = new HashMap<String, CmsProperty>();
+        }
     }
 
     /**
@@ -3390,65 +3603,5 @@ public class CmsImportVersion10 implements I_CmsImport {
         }
         return false;
 
-    }
-
-    /**
-     * Parses the links.<p>
-     *
-     * @param cms the CMS context to use
-     * @param report the report
-     */
-    private void parseLinks(CmsObject cms, I_CmsReport report) {
-
-        int i = 0;
-
-        sortParseableResources(m_parseables);
-        for (CmsResource parsableRes : m_parseables) {
-            String resName = cms.getSitePath(parsableRes);
-
-            report.print(
-                org.opencms.report.Messages.get().container(
-                    org.opencms.report.Messages.RPT_SUCCESSION_2,
-                    String.valueOf(i + 1),
-                    String.valueOf(m_parseables.size())),
-                I_CmsReport.FORMAT_NOTE);
-
-            LOG.info("Rewriting parsable resource: " + resName);
-            report.print(Messages.get().container(Messages.RPT_PARSE_LINKS_FOR_1, resName), I_CmsReport.FORMAT_NOTE);
-            report.print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
-
-            try {
-                CmsFile file = cms.readFile(resName);
-                // make sure the date last modified is kept...
-                file.setDateLastModified(file.getDateLastModified());
-                // make sure the file is locked
-                CmsLock lock = cms.getLock(file);
-                if (lock.isUnlocked()) {
-                    cms.lockResource(resName);
-                } else if (!lock.isDirectlyOwnedInProjectBy(cms)) {
-                    cms.changeLock(resName);
-                }
-                // rewrite the file
-                cms.writeFile(file);
-
-                report.println(
-                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_OK_0),
-                    I_CmsReport.FORMAT_OK);
-            } catch (Throwable e) {
-                report.addWarning(e);
-                report.println(
-                    org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_FAILED_0),
-                    I_CmsReport.FORMAT_ERROR);
-                if (LOG.isWarnEnabled()) {
-                    LOG.warn(Messages.get().getBundle().key(Messages.LOG_IMPORTEXPORT_REWRITING_1, resName));
-                    LOG.warn(e.getMessage(), e);
-                }
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug(e.getLocalizedMessage(), e);
-                }
-            }
-            i++;
-        }
-        cms.getRequestContext().removeAttribute(CmsLogEntry.ATTR_LOG_ENTRY);
     }
 }

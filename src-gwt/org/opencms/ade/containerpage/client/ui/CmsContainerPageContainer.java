@@ -44,6 +44,7 @@ import org.opencms.util.CmsStringUtil;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.dom.client.Node;
@@ -205,11 +206,11 @@ public class CmsContainerPageContainer extends ComplexPanel implements I_CmsDrop
     /** Name of a special property for the container id. */
     public static final String PROP_CONTAINER_MARKER = "opencmsContainerId";
 
-    /** The container level. */
-    private int m_containerLevel;
-
     /** The container data. */
     private CmsContainer m_containerData;
+
+    /** The container level. */
+    private int m_containerLevel;
 
     /** The list of nested sub containers that are also valid drop targets during the current drag and drop. */
     private List<I_CmsDropTarget> m_dnDChildren;
@@ -256,7 +257,9 @@ public class CmsContainerPageContainer extends ComplexPanel implements I_CmsDrop
         }
         m_containerData = containerData;
         element.setPropertyString(PROP_CONTAINER_MARKER, containerData.getName());
-        addStyleName(I_CmsLayoutBundle.INSTANCE.dragdropCss().dragTarget());
+        if (m_containerData.isEditable()) {
+            addStyleName(I_CmsLayoutBundle.INSTANCE.dragdropCss().dragTarget());
+        }
         onAttach();
     }
 
@@ -526,6 +529,16 @@ public class CmsContainerPageContainer extends ComplexPanel implements I_CmsDrop
     }
 
     /**
+     * Returns the settings presets.<p>
+     *
+     * @return the presets
+     */
+    public Map<String, String> getSettingPresets() {
+
+        return m_containerData.getSettingPresets();
+    }
+
+    /**
      * @see org.opencms.gwt.client.dnd.I_CmsNestedDropTarget#hasDnDChildren()
      */
     public boolean hasDnDChildren() {
@@ -541,7 +554,7 @@ public class CmsContainerPageContainer extends ComplexPanel implements I_CmsDrop
     public boolean hasModelGroupParent() {
 
         boolean result = false;
-        Element parent = getElement().getParentElement();
+        Element parent = getElement();
         while (parent != null) {
             if (parent.getPropertyBoolean(CmsContainerPageElementPanel.PROP_IS_MODEL_GROUP)) {
                 result = true;
@@ -639,13 +652,23 @@ public class CmsContainerPageContainer extends ComplexPanel implements I_CmsDrop
     }
 
     /**
-     * Returns true if this is a detail view container.<p>
+     * Returns true if this is a detail view container, being actually used for detail content.<p>
      *
      * @return true if this is a detail view container
      */
     public boolean isDetailView() {
 
         return m_containerData.isDetailView();
+    }
+
+    /**
+     * Checks if this is a detail view container.
+     *
+     * @return true if this is a detail view container
+     */
+    public boolean isDetailViewContainer() {
+
+        return m_containerData.isDetailViewContainer();
     }
 
     /**

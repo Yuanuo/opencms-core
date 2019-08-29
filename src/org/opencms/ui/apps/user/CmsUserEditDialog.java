@@ -31,6 +31,7 @@ import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsGroup;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
+import org.opencms.file.CmsResource;
 import org.opencms.file.CmsUser;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsIllegalArgumentException;
@@ -54,6 +55,7 @@ import org.opencms.ui.apps.I_CmsWorkplaceAppConfiguration;
 import org.opencms.ui.apps.Messages;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsUserDataFormLayout;
+import org.opencms.ui.components.CmsUserDataFormLayout.EditLevel;
 import org.opencms.ui.components.OpenCmsTheme;
 import org.opencms.ui.components.fileselect.CmsPathSelectField;
 import org.opencms.ui.dialogs.permissions.CmsPrincipalSelect;
@@ -360,6 +362,8 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
     /**User data form.<p>*/
     private CmsUserDataFormLayout m_userdata;
 
+    private CmsUserEditParameters m_editParams = new CmsUserEditParameters();
+
     /**
      * public constructor.<p>
      * @param callingOu
@@ -377,6 +381,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             m_cms = OpenCms.initCmsObject(cms);
             m_startfolder.disableSiteSwitch();
             m_user = m_cms.readUser(userId);
+            m_editParams = app.getUserEditParameters(m_user);
             if (m_user.isWebuser()) {
                 m_sendEmail.setVisible(false);
                 m_sendEmail.setValue(Boolean.FALSE);
@@ -400,7 +405,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             m_selfmanagement.setValue(new Boolean(!m_user.isManaged()));
             m_enabled.setValue(new Boolean(m_user.isEnabled()));
             CmsUserSettings settings = new CmsUserSettings(m_user);
-            init(window, app, settings);
+            init(window, app, settings, m_editParams.isEditEnabled());
             m_sendEmail.setEnabled(false);
             m_forceResetPassword.setValue(
                 CmsUserTable.USER_PASSWORD_STATUS.get(m_user.getId()) == null
@@ -410,6 +415,16 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             setupStartFolder(settings.getStartFolder());
 
             m_loginname.setEnabled(false);
+
+            if (!m_editParams.isEditEnabled()) {
+                m_description.setEnabled(false);
+            }
+            if (!m_editParams.isPasswordChangeEnabled()) {
+                m_pw.setVisible(false);
+                m_forceResetPassword.setVisible(false);
+                m_sendEmail.setVisible(false);
+                m_generateButton.setVisible(false);
+            }
 
         } catch (CmsException e) {
             LOG.error("Can't read user", e);
@@ -455,7 +470,12 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         setPasswordFields();
         m_ou.setValue(ou.isEmpty() ? "/" : ou);
         m_group.setWidgetType(WidgetType.groupwidget);
-        m_group.setValue(ou + OpenCms.getDefaultUsers().getGroupUsers());
+        try {
+            CmsGroup group = m_cms.readGroup(ou + OpenCms.getDefaultUsers().getGroupUsers());
+            m_group.setValue(group.getName());
+        } catch (CmsException e1) {
+            //There is no user group -> ok, keep field empty
+        }
         m_group.setRealPrincipalsOnly(true);
         m_group.setOU(m_ou.getValue());
         try {
@@ -466,7 +486,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
 
         m_enabled.setValue(Boolean.TRUE);
 
-        init(window, app, null);
+        init(window, app, null, true);
         setupStartFolder(null);
 
         m_tab.addSelectedTabChangeListener(new SelectedTabChangeListener() {
@@ -789,6 +809,19 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             m_startfolder.setValue(cmsCopy.getRequestContext().addSiteRoot(startFolder == null ? "/" : startFolder));
             m_startfolder.setCmsObject(cmsCopy);
             m_startfolder.setUseRootPaths(true);
+            if (!m_visSites) {
+                try {
+                    List<CmsResource> ouResources = OpenCms.getOrgUnitManager().getResourcesForOrganizationalUnit(
+                        cmsCopy,
+                        m_ou.getValue());
+                    if (!ouResources.isEmpty()) {
+                        m_startfolder.setValue(ouResources.get(0).getRootPath());
+                    }
+                } catch (CmsException e1) {
+                    LOG.error("unable to read resources for ou", e1);
+                }
+            }
+            m_startfolder.setEnabled(m_visSites);
         } catch (CmsException e) {
             LOG.error("Unable to ini CmsObject", e);
         }
@@ -909,7 +942,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
      */
     void iniSite(CmsUserSettings settings) {
 
-        List<CmsSite> sitesList = OpenCms.getSiteManager().getAvailableSites(m_cms, true, false, m_ou.getValue());
+        List<CmsSite> sitesList = OpenCms.getSiteManager().getAvailableSites(m_cms, false, false, m_ou.getValue());
 
         IndexedContainer container = new IndexedContainer();
         container.addContainerProperty("caption", String.class, "");
@@ -931,6 +964,11 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             }
         }
         if (container.size() == 0) {
+            if (!container.containsId(A_CmsUI.getCmsObject().getRequestContext().getSiteRoot())) {
+                Item defaultItem = container.addItem(A_CmsUI.getCmsObject().getRequestContext().getSiteRoot());
+                defaultItem.getItemProperty("caption").setValue(
+                    A_CmsUI.getCmsObject().getRequestContext().getSiteRoot());
+            }
             m_visSites = false;
         }
         m_site.setContainerDataSource(container);
@@ -944,13 +982,11 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                 LOG.error("The start site is unvalid configured");
             }
         } else {
+
             if (firstNoRootSite != null) {
                 m_site.select(firstNoRootSite.getSiteRoot());
             } else {
-                Iterator<?> it = m_site.getItemIds().iterator();
-                if (it.hasNext()) {
-                    m_site.select(it);
-                }
+                m_site.select(container.getItemIds().get(0));
             }
         }
     }
@@ -1015,7 +1051,9 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         if (!CmsStringUtil.isEmptyOrWhitespaceOnly(m_group.getValue())) {
             m_cms.addUserToGroup(user.getName(), m_group.getValue());
         }
-        OpenCms.getRoleManager().addUserToRole(m_cms, (CmsRole)m_role.getValue(), user.getName());
+        if (m_role.isVisible()) {
+            OpenCms.getRoleManager().addUserToRole(m_cms, (CmsRole)m_role.getValue(), user.getName());
+        }
         m_user = user;
 
     }
@@ -1074,7 +1112,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                 CmsGroup group = m_cms.readGroup(m_group.getValue());
                 CmsRole roleFromGroup = CmsRole.valueOf(group);
                 CmsRole roleFromField = (CmsRole)m_role.getValue();
-                if (!roleFromGroup.getChildren(true).contains(roleFromField)) {
+                if ((roleFromGroup == null) || !roleFromGroup.getChildren(true).contains(roleFromField)) {
                     roleFromGroup = roleFromField;
                 }
                 if (roleFromGroup == null) {
@@ -1136,12 +1174,17 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                 }
                 m_project.select(projString);
             } else {
+
                 Iterator<?> it = m_project.getItemIds().iterator();
-                String p = (String)it.next();
-                while (p.equals(CmsProject.ONLINE_PROJECT_NAME) & it.hasNext()) {
-                    p = (String)it.next();
+                if (m_project.containsId("Offline")) {
+                    m_project.select("Offline");
+                } else {
+                    String p = (String)it.next();
+                    while (p.equals(CmsProject.ONLINE_PROJECT_NAME) & it.hasNext()) {
+                        p = (String)it.next();
+                    }
+                    m_project.select(p);
                 }
-                m_project.select(p);
             }
         } catch (CmsException e) {
             LOG.error("Unable to read projects", e);
@@ -1155,9 +1198,9 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
      * @param app
      * @param settings user settings, null if new user
      */
-    private void init(final Window window, final CmsAccountsApp app, final CmsUserSettings settings) {
+    private void init(final Window window, final CmsAccountsApp app, final CmsUserSettings settings, boolean enabled) {
 
-        m_userdata.initFields(m_user, true);
+        m_userdata.initFields(m_user, enabled ? EditLevel.all : EditLevel.none);
         if (m_user != null) {
             if (CmsStringUtil.isEmptyOrWhitespaceOnly(m_user.getFirstname())
                 | CmsStringUtil.isEmptyOrWhitespaceOnly(m_user.getLastname())

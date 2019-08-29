@@ -393,14 +393,28 @@ public class CmsSolrFieldConfiguration extends CmsSearchFieldConfiguration {
 
                         for (CmsSearchField field : mappedFields) {
                             if (!systemFields.contains(field.getName())) {
-                                document = appendFieldMapping(
-                                    document,
-                                    field,
-                                    cms,
-                                    elemResource,
-                                    CmsSolrDocumentXmlContent.extractXmlContent(cms, elemResource, getIndex()),
-                                    cms.readPropertyObjects(resource, false),
-                                    cms.readPropertyObjects(resource, true));
+                                try {
+                                    I_CmsExtractionResult extractionResult = CmsSolrDocumentXmlContent.extractXmlContent(
+                                        cms,
+                                        elemResource,
+                                        getIndex());
+                                    document = appendFieldMapping(
+                                        document,
+                                        field,
+                                        cms,
+                                        elemResource,
+                                        extractionResult,
+                                        cms.readPropertyObjects(resource, false),
+                                        cms.readPropertyObjects(resource, true));
+                                } catch (Exception e) {
+                                    LOG.error(
+                                        Messages.get().getBundle().key(
+                                            Messages.LOG_SOLR_ERR_MAPPING_UNREADABLE_CONTENT_3,
+                                            elemResource.getRootPath(),
+                                            field.getName(),
+                                            resource.getRootPath()),
+                                        e);
+                                }
                             } else {
                                 LOG.error(
                                     Messages.get().getBundle().key(
@@ -414,7 +428,11 @@ public class CmsSolrFieldConfiguration extends CmsSearchFieldConfiguration {
                 }
             }
         } catch (CmsException e) {
-            LOG.error(e.getLocalizedMessage(), e);
+            // Should be thrown if element on the page does not exist anymore - this is possible, but not necessarily an error.
+            // Hence, just notice it in the debug log.
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(e.getLocalizedMessage(), e);
+            }
         }
         return document;
     }

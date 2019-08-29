@@ -29,6 +29,7 @@ package org.opencms.jlan;
 
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsResource;
+import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.wrapper.CmsObjectWrapper;
 import org.opencms.file.wrapper.CmsWrappedResource;
 import org.opencms.lock.CmsLock;
@@ -145,6 +146,11 @@ public class CmsJlanNetworkFile extends NetworkFile {
     public void flushFile() throws IOException {
 
         int writeCount = getWriteCount();
+        Boolean ignoreErrors = (Boolean)m_cms.getRequestContext().getAttribute(
+            CmsJlanRepository.JLAN_IGNORE_WRITE_ERRORS);
+        if (ignoreErrors == null) {
+            ignoreErrors = Boolean.FALSE;
+        }
         try {
             if (writeCount > m_lastFlush) {
                 CmsFile file = getFile();
@@ -154,15 +160,21 @@ public class CmsJlanNetworkFile extends NetworkFile {
                         CmsJlanDiskInterface.getCmsPath(getFullName()));
                     wr.setRootPath(rootPath);
                     file = wr.getFile();
-                    file.setContents(m_buffer.getContents());
+                    byte[] content = m_buffer.getContents();
+                    if (CmsResourceTypeXmlContent.isXmlContent(file)) {
+                        content = removeTrailingNulBytes(content);
+                    }
+                    file.setContents(content);
                     ensureLock();
                     m_cms.writeFile(file);
                 }
             }
             m_lastFlush = writeCount;
-        } catch (CmsException e) {
+        } catch (Exception e) {
             LOG.error(e.getLocalizedMessage(), e);
-            throw new IOException(e);
+            if (!ignoreErrors.booleanValue()) {
+                throw new IOException(e);
+            }
         }
 
     }
@@ -498,6 +510,31 @@ public class CmsJlanNetworkFile extends NetworkFile {
     private String normalizeName(String fullName) {
 
         return fullName.replaceAll("[/\\\\]+", "\\\\");
+    }
+
+    /**
+     * Removes trailing NUL bytes from a byte array.
+     *
+     * @param content the content
+     * @return the modified content
+     */
+    private byte[] removeTrailingNulBytes(byte[] content) {
+
+        if (content.length == 0) {
+            return content;
+        }
+        int pos = content.length - 1;
+        while ((pos >= 0) && (content[pos] == 0)) {
+            pos -= 1;
+        }
+        if (pos < 0) {
+            return new byte[] {};
+        }
+        int len = pos + 1;
+        byte[] result = new byte[len];
+        System.arraycopy(content, 0, result, 0, len);
+        return result;
+
     }
 
 }

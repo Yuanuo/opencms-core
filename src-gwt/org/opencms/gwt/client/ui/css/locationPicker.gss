@@ -71,7 +71,7 @@ div.locationField input[type="text"]{
     margin:0px;
 }
 div.locationField.hasPreview{
-	height: 112px;
+	height: 82px;
 	position: relative;
 }
 div.inputContainer{
@@ -101,12 +101,6 @@ div.locationInfo{
 	overflow: auto;
 }
 
-div.hasPreview .displayBox {
-	margin-left: 170px;
-}
-div.hasPreview .locationInfo{
-	left: 170px;
-}
 div.locationInfo p{
 	padding: 1px;
 	line-height: 12px;
@@ -137,5 +131,5 @@ div.mapPreview > div{
 }
 
 .hasPreview div.mapPreview {
-	display: block;	
+	display: block;
 }

@@ -85,6 +85,15 @@ public interface I_CmsAppUIContext extends Serializable {
     String getAppId();
 
     /**
+     * Gets an attribute.
+     *
+     * @param key the attribute key
+     *
+     * @return the attribute value
+     */
+    Object getAttribute(String key);
+
+    /**
      * Hides the the toolbar.<p>
      */
     void hideToolbar();
@@ -116,6 +125,14 @@ public interface I_CmsAppUIContext extends Serializable {
      * @param title the app title
      */
     void setAppTitle(String title);
+
+    /**
+     * Sets an attribute.
+     *
+     * @param key the attribute key
+     * @param value the attribute value
+     */
+    void setAttribute(String key, Object value);
 
     /**
      * Sets the dialog context for context menu entries.<p>

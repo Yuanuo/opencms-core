@@ -38,7 +38,10 @@ import org.opencms.acacia.client.css.I_CmsLayoutBundle;
 import org.opencms.acacia.client.widgets.CmsFormWidgetWrapper;
 import org.opencms.acacia.client.widgets.I_CmsEditWidget;
 import org.opencms.acacia.client.widgets.I_CmsFormEditWidget;
+import org.opencms.acacia.client.widgets.I_CmsHasDisplayDirection;
+import org.opencms.acacia.client.widgets.I_CmsHasDisplayDirection.Direction;
 import org.opencms.acacia.shared.CmsEntity;
+import org.opencms.gwt.client.CmsCoreProvider;
 import org.opencms.gwt.client.I_CmsDescendantResizeHandler;
 import org.opencms.gwt.client.I_CmsHasResizeOnShow;
 import org.opencms.gwt.client.dnd.I_CmsDragHandle;
@@ -49,6 +52,7 @@ import org.opencms.gwt.client.ui.I_CmsButton;
 import org.opencms.gwt.client.ui.I_CmsButton.ButtonStyle;
 import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.CmsStyleVariable;
+import org.opencms.util.CmsStringUtil;
 
 import java.util.List;
 
@@ -86,6 +90,7 @@ import com.google.gwt.uibinder.client.UiBinder;
 import com.google.gwt.uibinder.client.UiField;
 import com.google.gwt.uibinder.client.UiHandler;
 import com.google.gwt.user.client.Timer;
+import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.Composite;
 import com.google.gwt.user.client.ui.FlowPanel;
@@ -93,6 +98,7 @@ import com.google.gwt.user.client.ui.HTML;
 import com.google.gwt.user.client.ui.HTMLPanel;
 import com.google.gwt.user.client.ui.HasWidgets;
 import com.google.gwt.user.client.ui.Label;
+import com.google.gwt.user.client.ui.RootPanel;
 import com.google.gwt.user.client.ui.Widget;
 
 /**
@@ -226,6 +232,9 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
 
     /** The wide compact view mode. */
     public static final int COMPACT_MODE_WIDE = 0;
+
+    /** The toolbar height. */
+    private static final int TOOLBAR_HEIGHT = 52;
 
     /** The UI binder instance. */
     private static I_AttributeValueUiBinder uiBinder = GWT.create(I_AttributeValueUiBinder.class);
@@ -627,7 +636,7 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         } else {
             // only deactivate the widget and restore the default value
             m_widget.setActive(false);
-            m_widget.setValue("", false);
+            m_widget.setValue("");
             addActivationHandler();
         }
         addStyleName(formCss().emptyValue());
@@ -764,7 +773,7 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         if (active) {
             m_widget.setValue(value, false);
         } else {
-            m_widget.setValue("", false);
+            m_widget.setValue("");
         }
         m_widgetHolder.add(m_widget);
         m_widget.setName(getHandler().getAttributeName());
@@ -821,10 +830,14 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
 
         if (focusOn) {
             addStyleName(formCss().focused());
-            if (shouldDisplayTooltipAbove()) {
-                addStyleName(formCss().displayAbove());
+            if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_help) || m_hasError) {
+                if (shouldDisplayTooltipAbove()) {
+                    addStyleName(formCss().displayAbove());
+                } else {
+                    removeStyleName(formCss().displayAbove());
+                }
             } else {
-                removeStyleName(formCss().displayAbove());
+                m_helpBubble.getStyle().setDisplay(Display.NONE);
             }
         } else {
             removeStyleName(formCss().focused());
@@ -1036,7 +1049,8 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
      */
     void toggleLabelHover(boolean hovered) {
 
-        if (hovered) {
+        boolean hover = hovered && (m_hasError || CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_help));
+        if (hover) {
             addStyleName(formCss().labelHover());
             if (shouldDisplayTooltipAbove()) {
                 addStyleName(formCss().displayAbove());
@@ -1046,6 +1060,9 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         } else {
             removeStyleName(formCss().labelHover());
         }
+        CmsValueFocusHandler.getInstance().hideHelpBubbles(
+            RootPanel.get(),
+            hover || !CmsCoreProvider.get().isShowEditorHelp());
     }
 
     /**
@@ -1166,16 +1183,19 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
 
         m_removeButton.setImageClass(I_CmsButton.CUT_SMALL);
         m_removeButton.setButtonStyle(ButtonStyle.FONT_ICON, null);
+        m_removeButton.setHideFromTabNav(true);
 
         m_upButton.setImageClass(I_CmsButton.EDIT_UP_SMALL);
         m_upButton.setButtonStyle(ButtonStyle.FONT_ICON, null);
+        m_upButton.setHideFromTabNav(true);
 
         m_downButton.setImageClass(I_CmsButton.EDIT_DOWN_SMALL);
         m_downButton.setButtonStyle(ButtonStyle.FONT_ICON, null);
+        m_downButton.setHideFromTabNav(true);
 
         m_helpBubbleClose.setImageClass(I_CmsButton.DELETE_SMALL);
         m_helpBubbleClose.setButtonStyle(ButtonStyle.FONT_ICON, null);
-
+        m_helpBubbleClose.setHideFromTabNav(true);
         if (CmsEditorBase.hasDictionary()) {
             m_addButton.setTitle(CmsEditorBase.getMessageForKey(CmsEditorBase.GUI_VIEW_ADD_1, m_label));
             m_attributeChoice.setTitle(CmsEditorBase.getMessageForKey(CmsEditorBase.GUI_CHOICE_ADD_CHOICE_1, m_label));
@@ -1233,6 +1253,48 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
      */
     private boolean shouldDisplayTooltipAbove() {
 
-        return !isSimpleValue();
+        boolean displayAbove;
+        if (isSimpleValue()) {
+            Direction direction = Direction.none;
+            if (m_widget instanceof I_CmsHasDisplayDirection) {
+                direction = ((I_CmsHasDisplayDirection)m_widget).getDisplayingDirection();
+            }
+            switch (direction) {
+                case above:
+                    displayAbove = true;
+                    break;
+                case below:
+                case none:
+                default:
+                    displayAbove = true;
+                    break;
+            }
+        } else {
+            displayAbove = true;
+        }
+
+        m_helpBubble.getStyle().setDisplay(Display.BLOCK);
+        int bubbleHeight = m_helpBubble.getOffsetHeight();
+        m_helpBubble.getStyle().clearDisplay();
+
+        Element widgetElement = m_widget.asWidget().getElement();
+        // Calculate top position for the popup
+        int top = widgetElement.getAbsoluteTop();
+
+        int windowTop = Window.getScrollTop();
+        int windowBottom = Window.getScrollTop() + Window.getClientHeight();
+        int distanceFromWindowTop = top - windowTop - TOOLBAR_HEIGHT;
+
+        int distanceToWindowBottom = windowBottom - (top + widgetElement.getOffsetHeight());
+        if (displayAbove
+            && ((distanceFromWindowTop < bubbleHeight) && (distanceToWindowBottom > distanceFromWindowTop))) {
+            // in case there is too little space above, and there is more below, change direction
+            displayAbove = false;
+        } else if (!displayAbove
+            && ((distanceToWindowBottom < bubbleHeight) && (distanceFromWindowTop > distanceToWindowBottom))) {
+            // in case there is too little space below, and there is more above, change direction
+            displayAbove = true;
+        }
+        return displayAbove;
     }
 }

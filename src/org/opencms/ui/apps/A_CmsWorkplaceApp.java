@@ -48,8 +48,8 @@ import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
 import com.vaadin.ui.Component;
-import com.vaadin.v7.ui.HorizontalLayout;
-import com.vaadin.v7.ui.Label;
+import com.vaadin.ui.HorizontalLayout;
+import com.vaadin.ui.Label;
 import com.vaadin.ui.UI;
 
 /**
@@ -83,6 +83,7 @@ public abstract class A_CmsWorkplaceApp implements I_CmsWorkplaceApp {
          * @param targetState the target state
          */
         public NavEntry(String name, String description, Resource icon, String targetState) {
+
             m_name = name;
             m_description = description;
             m_icon = icon;
@@ -298,7 +299,7 @@ public abstract class A_CmsWorkplaceApp implements I_CmsWorkplaceApp {
             comp.setSizeFull();
             m_rootLayout.setMainContent(comp);
         } else {
-            m_rootLayout.setMainContent(new Label("Malformed path, tool not availabel for path: " + state));
+            m_rootLayout.setMainContent(new Label("Malformed path, tool not available for path: " + state));
         }
         updateSubNav(getSubNavEntries(state));
         updateBreadCrumb(getBreadCrumbForState(state));

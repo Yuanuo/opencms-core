@@ -27,6 +27,7 @@
 
 package org.opencms.ui.login;
 
+import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.db.CmsLoginMessage;
 import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsObject;
@@ -51,6 +52,7 @@ import org.opencms.ui.Messages;
 import org.opencms.ui.apps.CmsAppHierarchyConfiguration;
 import org.opencms.ui.apps.CmsAppWorkplaceUi;
 import org.opencms.ui.apps.CmsFileExplorerConfiguration;
+import org.opencms.ui.apps.CmsSitemapEditorConfiguration;
 import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.ui.dialogs.CmsUserDataDialog;
@@ -270,12 +272,9 @@ public class CmsLoginController {
             target = directEditPath;
         } else if ((requestedResource != null) && !CmsWorkplace.JSP_WORKPLACE_URI.equals(requestedResource)) {
             target = requestedResource;
-        } else if (settings.getUserSettings().startWithNewWorkplace()) {
+        } else {
             workplace2 = true;
             target = CmsVaadinUtils.getWorkplaceLink();
-            checkRole = true;
-        } else {
-            target = CmsWorkplace.JSP_WORKPLACE_URI;
             checkRole = true;
         }
 
@@ -314,7 +313,13 @@ public class CmsLoginController {
         }
 
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(fragment)) {
-            target += "#" + fragment;
+            if (CmsSitemapEditorConfiguration.APP_ID.equals(fragment)) {
+                target = OpenCms.getLinkManager().substituteLink(currentCms, CmsADEManager.PATH_SITEMAP_EDITOR_JSP)
+                    + "?path="
+                    + settings.getUserSettings().getStartFolder();
+            } else {
+                target += "#" + fragment;
+            }
         }
         return target;
     }

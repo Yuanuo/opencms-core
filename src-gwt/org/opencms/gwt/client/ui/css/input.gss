@@ -1,4 +1,5 @@
-@external html-face, gwt-ToggleButton, gwt-SuggestBoxPopup, item-selected, cmsState, cmsState-up-disabled, cmsState-down-disabled, cmsState-up, cmsState-up-hovering, cmsState-down-hovering, cmsState-down, cmsState-up-disabled, cmsState-down-disabled;
+@external html-face, gwt-ToggleButton, gwt-SuggestBoxPopup, item-selected, cmsState, cmsState-up-disabled, cmsState-down-disabled, cmsState-up, cmsState-up-hovering, cmsState-down-hovering, cmsState-down, cmsState-up-disabled, cmsState-down-disabled,
+	tox, tox-tinymce, tox-statusbar__branding, picker_wrapper, picker_selector, picker_done;
 
 /* inner text box of the text box widget */
 input.textBox {
@@ -131,6 +132,11 @@ div.textArea textarea{
 	border:none;
 	outline: none;
 	font-family: value("constants.css.fontFamilyMono");
+}
+
+div.textArea.textAreaProportional textarea{
+	font-family: value("constants.css.fontFamily");
+	font-size: value("constants.css.fontSize");
 }
 
 div.textArea.textAreaGhostMode textarea { 
@@ -546,13 +552,8 @@ div.formRow {
 	min-height: value("constants.css.inputHeight");
 }
 
-@def formLabelWidth eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getLabelWidth()");
-@def openerWidth eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getOpenerWidth()");
-@def widgetContainerWidth eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getWidgetContainerWidth()");
-@def widgetContainerMargin eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getWidgetContainerLeftMargin()");  
-
 div.formOpener {
-	width: openerWidth;
+	width: eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getOpenerWidth()");
 	float: left;
 	vertical-align: top; 
 }
@@ -565,7 +566,7 @@ div.formInfo {
 }
 
 div.formLabel { 
-	width: formLabelWidth;
+	width: eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getLabelWidth()");
 	overflow: hidden;
 	vertical-align: top;
 	margin-top: 3px;
@@ -575,8 +576,8 @@ div.formLabel {
 
 
 div.formWidgetContainer {
-	width: widgetContainerWidth;
-	margin-left: widgetContainerMargin;
+	width: eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getWidgetContainerWidth()");
+	margin-left: eval("org.opencms.gwt.client.ui.input.form.CmsFormRow.getWidgetContainerLeftMargin()");
 }
 
 div.separator {
@@ -614,38 +615,20 @@ div.formDescriptionLabel {
 	overflow:hidden;
 }
 
+/* Color picker style. */
+.picker_wrapper div.picker_selector{
+  color: inherit;
+}
 
-@external mce-branding-powered-by, mce-branding, mce-toolbar, mce-toolbar-grp, mce-btn, mce-tinymce, mce-statusbar, mce-wordcount, mce-path; 
-.mce-branding-powered-by, .mce-branding { 
+.picker_wrapper div.picker_done{
+  display: none;
+}
+
+/* TinyMCE styles, hiding the branding and using rounded corners. */
+.tox-statusbar__branding { 
 	display: none !important; 
 }
 
-.formWidgetContainer .mce-toolbar-grp {
-	background-color: white !important;
-	border-radius: 4px !important; 
+.tox.tox-tinymce {
+	border-radius: 4px; 
 }
-
-.mce-toolbar .mce-btn {
-	background-color: white !important; 
-}
-
-.formWidgetContainer > * > .mce-tinymce {
-	border-radius: 4px !important;
-}
-
-.mce-statusbar .mce-wordcount, .mce-statusbar .mce-path {
-    padding: 2px;
-    margin-right: 8px;
-}
-
-.mce-statusbar {
-	background-color: white !important;
-	box-shadow: none !important;
-	border-bottom-left-radius: 4px;
-	border-bottom-right-radius: 4px;
-}
-
-.mce-tinymce {
-	box-sizing: border-box !important; 
-}
-

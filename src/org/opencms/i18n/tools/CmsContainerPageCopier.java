@@ -41,6 +41,7 @@ import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.i18n.CmsLocaleGroupService;
 import org.opencms.i18n.CmsLocaleGroupService.Status;
 import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.i18n.CmsMessageContainer;
 import org.opencms.loader.I_CmsFileNameGenerator;
 import org.opencms.lock.CmsLockActionRecord;
 import org.opencms.lock.CmsLockActionRecord.LockChange;
@@ -121,6 +122,7 @@ public class CmsContainerPageCopier {
          * @param resource the resource for which no replacement was found
          */
         public NoCustomReplacementException(CmsResource resource) {
+
             super();
             m_resource = resource;
         }
@@ -142,14 +144,14 @@ public class CmsContainerPageCopier {
     /** The CMS context used by this object. */
     private CmsObject m_cms;
 
+    /** The CMS context used by this object, but with the site root set to "". */
+    private CmsObject m_rootCms;
+
     /** The copied resource. */
     private CmsResource m_copiedFolderOrPage;
 
     /** The copy mode. */
     private CopyMode m_copyMode = CopyMode.smartCopyAndChangeLocale;
-
-    /** List of created resources. */
-    private List<CmsResource> m_createdResources = Lists.newArrayList();
 
     /** Map of custom replacements. */
     private Map<CmsUUID, CmsUUID> m_customReplacements;
@@ -172,16 +174,19 @@ public class CmsContainerPageCopier {
      * @param cms the CMS context to use
      */
     public CmsContainerPageCopier(CmsObject cms) {
+
         m_cms = cms;
     }
 
     /**
      * Converts locales for the copied container element.<p>
      *
-     * @param elementResource the copied container element
+     * @param elementResource the copied container element resource
+     * @param originalResource the original container element resource
+     *
      * @throws CmsException if something goes wrong
      */
-    public void adjustLocalesForElement(CmsResource elementResource) throws CmsException {
+    public void adjustLocalesForElement(CmsResource elementResource, CmsResource originalResource) throws CmsException {
 
         if (m_copyMode != CopyMode.smartCopyAndChangeLocale) {
             return;
@@ -192,6 +197,15 @@ public class CmsContainerPageCopier {
         Locale newLocale = OpenCms.getLocaleManager().getDefaultLocale(m_cms, m_targetFolder);
         CmsXmlContent content = CmsXmlContentFactory.unmarshal(m_cms, file);
         try {
+            if (content.hasLocale(newLocale)) {
+                // check if the new locale was already present in the original resource, it may have been created automatically
+                CmsFile origFile = m_cms.readFile(originalResource);
+                CmsXmlContent origContent = CmsXmlContentFactory.unmarshal(m_cms, origFile);
+                if (!origContent.hasLocale(newLocale)) {
+                    // the target locale was not present in the original, remove it to ensure the source locale is moved
+                    content.removeLocale(newLocale);
+                }
+            }
             content.moveLocale(oldLocale, newLocale);
             LOG.info("Replacing locale " + oldLocale + " -> " + newLocale + " for " + elementResource.getRootPath());
             file.setContents(content.marshal());
@@ -207,6 +221,32 @@ public class CmsContainerPageCopier {
                     + ", contentLocales="
                     + content.getLocales());
         }
+
+    }
+
+    /**
+     * Copies the given container page to the provided root path.
+     * @param originalPage the page to copy
+     * @param targetPageRootPath the root path of the copy target.
+     * @throws CmsException thrown if something goes wrong.
+     * @throws NoCustomReplacementException if a custom replacement is not found for a type which requires it.
+     */
+    public void copyPageOnly(CmsResource originalPage, String targetPageRootPath)
+    throws CmsException, NoCustomReplacementException {
+
+        if ((null == originalPage)
+            || !OpenCms.getResourceManager().getResourceType(originalPage).getTypeName().equals(
+                CmsResourceTypeXmlContainerPage.getStaticTypeName())) {
+            throw new CmsException(new CmsMessageContainer(Messages.get(), Messages.ERR_PAGECOPY_INVALID_PAGE_0));
+        }
+        m_originalPage = originalPage;
+        CmsObject rootCms = getRootCms();
+        rootCms.copyResource(originalPage.getRootPath(), targetPageRootPath);
+        CmsResource copiedPage = rootCms.readResource(targetPageRootPath, CmsResourceFilter.IGNORE_EXPIRATION);
+        m_targetFolder = rootCms.readResource(CmsResource.getFolderPath(copiedPage.getRootPath()));
+        replaceElements(copiedPage);
+        attachLocaleGroups(copiedPage);
+        tryUnlock(copiedPage);
 
     }
 
@@ -279,7 +319,7 @@ public class CmsContainerPageCopier {
                 CmsResource resourceCopy = typeConfig.createNewElement(
                     targetCms,
                     originalResource,
-                    targetPage.getRootPath());
+                    CmsResource.getParentFolder(targetPage.getRootPath()));
                 CmsContainerElementBean copy = new CmsContainerElementBean(
                     resourceCopy.getStructureId(),
                     maybeReplaceFormatter(originalElement.getFormatterId()),
@@ -291,7 +331,7 @@ public class CmsContainerPageCopier {
                 CmsLockActionRecord record = null;
                 try {
                     record = CmsLockUtil.ensureLock(m_cms, resourceCopy);
-                    adjustLocalesForElement(resourceCopy);
+                    adjustLocalesForElement(resourceCopy, originalResource);
                 } finally {
                     if ((record != null) && (record.getChange() == LockChange.locked)) {
                         m_cms.unlockResource(resourceCopy);
@@ -333,8 +373,7 @@ public class CmsContainerPageCopier {
      */
     public void replaceElements(CmsResource containerPage) throws CmsException, NoCustomReplacementException {
 
-        CmsObject rootCms = OpenCms.initCmsObject(m_cms);
-        rootCms.getRequestContext().setSiteRoot("");
+        CmsObject rootCms = getRootCms();
         CmsObject targetCms = OpenCms.initCmsObject(m_cms);
         targetCms.getRequestContext().setSiteRoot("");
         CmsSite site = OpenCms.getSiteManager().getSiteForRootPath(m_targetFolder.getRootPath());
@@ -435,7 +474,7 @@ public class CmsContainerPageCopier {
      * @param target the target folder
      * @param targetName the name to give the new folder
      *
-     * @throws CmsException if soemthing goes wrong
+     * @throws CmsException if something goes wrong
      * @throws NoCustomReplacementException if a custom replacement element was not found
      */
     public void run(CmsResource source, CmsResource target, String targetName)
@@ -447,8 +486,7 @@ public class CmsContainerPageCopier {
                 + "', targetFolder='"
                 + target.getRootPath()
                 + "'");
-        CmsObject rootCms = OpenCms.initCmsObject(m_cms);
-        rootCms.getRequestContext().setSiteRoot("");
+        CmsObject rootCms = getRootCms();
         if (m_copyMode == CopyMode.automatic) {
             Locale sourceLocale = OpenCms.getLocaleManager().getDefaultLocale(rootCms, source);
             Locale targetLocale = OpenCms.getLocaleManager().getDefaultLocale(rootCms, target);
@@ -498,7 +536,7 @@ public class CmsContainerPageCopier {
                 copyPath = CmsStringUtil.joinPaths(target.getRootPath(), targetName);
                 if (rootCms.existsResource(copyPath)) {
                     CmsResource existingResource = rootCms.readResource(copyPath);
-                    // only overwrite the existing resource if it's a folder, otherwise find the next non-existing 'numbered' target path 
+                    // only overwrite the existing resource if it's a folder, otherwise find the next non-existing 'numbered' target path
                     if (!existingResource.isFolder()) {
                         copyPath = nameGen.getNewFileName(rootCms, copyPath + "%(number)", 4, true);
                     }
@@ -524,7 +562,6 @@ public class CmsContainerPageCopier {
                     null,
                     properties);
             }
-            m_createdResources.add(copiedFolder);
             if (hasNavpos) {
                 String newNavPosStr = "" + (maxNavpos + 10);
                 rootCms.writePropertyObject(
@@ -542,16 +579,8 @@ public class CmsContainerPageCopier {
 
             CmsResource copiedPage = rootCms.readResource(pageCopyPath, CmsResourceFilter.IGNORE_EXPIRATION);
 
-            m_createdResources.add(copiedPage);
             replaceElements(copiedPage);
-            CmsLocaleGroupService localeGroupService = rootCms.getLocaleGroupService();
-            if (Status.linkable == localeGroupService.checkLinkable(m_originalPage, copiedPage)) {
-                try {
-                    localeGroupService.attachLocaleGroupIndirect(m_originalPage, copiedPage);
-                } catch (CmsException e) {
-                    LOG.error(e.getLocalizedMessage(), e);
-                }
-            }
+            attachLocaleGroups(copiedPage);
             if ((lockRecord == null) || (lockRecord.getChange() == LockChange.locked)) {
                 tryUnlock(copiedFolder);
             }
@@ -582,19 +611,11 @@ public class CmsContainerPageCopier {
                     new CmsProperty(CmsPropertyDefinition.PROPERTY_NAVPOS, newNavPosStr, null));
             }
             CmsResource copiedPage = rootCms.readResource(copyPath);
-            m_createdResources.add(copiedPage);
             m_originalPage = page;
             m_targetFolder = target;
             m_copiedFolderOrPage = copiedPage;
             replaceElements(copiedPage);
-            CmsLocaleGroupService localeGroupService = rootCms.getLocaleGroupService();
-            if (Status.linkable == localeGroupService.checkLinkable(m_originalPage, copiedPage)) {
-                try {
-                    localeGroupService.attachLocaleGroupIndirect(m_originalPage, copiedPage);
-                } catch (CmsException e) {
-                    LOG.error(e.getLocalizedMessage(), e);
-                }
-            }
+            attachLocaleGroups(copiedPage);
             tryUnlock(copiedPage);
 
         }
@@ -647,6 +668,37 @@ public class CmsContainerPageCopier {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Attaches locale groups to the copied page.
+     * @param copiedPage the copied page.
+     * @throws CmsException thrown if the root cms cannot be retrieved.
+     */
+    private void attachLocaleGroups(CmsResource copiedPage) throws CmsException {
+
+        CmsLocaleGroupService localeGroupService = getRootCms().getLocaleGroupService();
+        if (Status.linkable == localeGroupService.checkLinkable(m_originalPage, copiedPage)) {
+            try {
+                localeGroupService.attachLocaleGroupIndirect(m_originalPage, copiedPage);
+            } catch (CmsException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
+    }
+
+    /**
+     * Return the cms object with the site root set to "/".
+     * @return the cms object with the site root set to "/".
+     * @throws CmsException thrown if initializing the root cms object fails.
+     */
+    private CmsObject getRootCms() throws CmsException {
+
+        if (null == m_rootCms) {
+            m_rootCms = OpenCms.initCmsObject(m_cms);
+            m_rootCms.getRequestContext().setSiteRoot("");
+        }
+        return m_rootCms;
     }
 
     /**

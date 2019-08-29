@@ -488,10 +488,10 @@ public class CmsADEConfigData {
             for (CmsDetailPageInfo detailpage : getAllDetailPages(true)) {
                 if (detailpage.getType().equals(type)) {
                     result.add(detailpage);
-                } else if ((defaultPage == null)
-                    && CmsADEManager.DEFAULT_DETAILPAGE_TYPE.equals(detailpage.getType())) {
-                    defaultPage = detailpage;
-                }
+                } else
+                    if ((defaultPage == null) && CmsADEManager.DEFAULT_DETAILPAGE_TYPE.equals(detailpage.getType())) {
+                        defaultPage = detailpage;
+                    }
             }
             if (defaultPage != null) {
                 // add default detail page last
@@ -518,6 +518,69 @@ public class CmsADEConfigData {
             }
         }
         return result;
+    }
+
+    /**
+     * Returns the restricted dynamic functions or <code>null</code> if there are no restrictions.<p>
+     *
+     * @return the dynamic functions
+     */
+    public Set<CmsUUID> getDynamicFunctions() {
+
+        CmsADEConfigData parentData = parent();
+
+        // null means no restrictions, while a set of structure ids means that the only allowed
+        // functions are those with the given ids.
+        Set<CmsUUID> restrictedFunctions = null;
+
+        // First, get the result of getDynamicFunctions for the parent. If there is no parent, there are no restrictions.
+        if (parentData != null) {
+            restrictedFunctions = parentData.getDynamicFunctions();
+        }
+
+        // Then, if 'remove all functions' is selected, set the restricted functions to the empty set.
+        if (m_data.isRemoveAllFunctions()) {
+            restrictedFunctions = new HashSet<>();
+        }
+
+        // If we are restricted, add ids of all functions configured here to restricted function set
+        // (since the restricted function set, if it's coming from the parent, is unmodifiable, we need to copy it.)
+        if (restrictedFunctions != null) {
+            restrictedFunctions = new HashSet<>(restrictedFunctions);
+            for (CmsUUID id : m_data.getDynamicFunctions()) {
+                restrictedFunctions.add(id);
+            }
+        }
+        // If we are restricted, wrap the result in an unmodifiable set
+        if (restrictedFunctions != null) {
+            return Collections.unmodifiableSet(restrictedFunctions);
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Gets the root path of the closest subsite going up the tree which has the 'exclude external detail contents' option enabled, or '/' if no such subsite exists.
+     *
+     * @return the root path of the closest subsite with 'external detail contents excluded'
+     */
+    public String getExternalDetailContentExclusionFolder() {
+
+        if (m_data.isExcludeExternalDetailContents()) {
+            String basePath = m_data.getBasePath();
+            if (basePath == null) {
+                return "/";
+            } else {
+                return basePath;
+            }
+        } else {
+            CmsADEConfigData parent = parent();
+            if (parent != null) {
+                return parent.getExternalDetailContentExclusionFolder();
+            } else {
+                return "/";
+            }
+        }
     }
 
     /**
@@ -851,7 +914,7 @@ public class CmsADEConfigData {
             CmsFormatterConfiguration formatters = getFormatters(cms, resType, schemaFormatters);
             for (CmsContainer cont : containers) {
                 if (cont.isEditable()
-                    && (formatters.getAllMatchingFormatters(cont.getType(), cont.getWidth(), true).size() > 0)) {
+                    && (formatters.getAllMatchingFormatters(cont.getType(), cont.getWidth()).size() > 0)) {
                     return true;
                 }
             }
@@ -909,6 +972,16 @@ public class CmsADEConfigData {
     public boolean isDiscardInheritedTypes() {
 
         return m_data.isDiscardInheritedTypes();
+    }
+
+    /**
+     * True if detail contents outside this sitemap should not be rendered in detail pages from this sitemap.
+     *
+     * @return true if detail contents outside this sitemap should not be rendered in detail pages from this sitemap.
+     */
+    public boolean isExcludeExternalDetailContents() {
+
+        return m_data.isExcludeExternalDetailContents();
     }
 
     /**

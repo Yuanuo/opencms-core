@@ -156,6 +156,9 @@ public class CmsPropertyDefinition implements Cloneable, Comparable<CmsPropertyD
     /** Property containing the maps API key. */
     public static final String PROPERTY_GOOGLE_API_KEY = "google.apikey";
 
+    /** Property containing the maps API key. */
+    public static final String PROPERTY_GOOGLE_API_KEY_WORKPLACE = "google.apikey.workplace";
+
     /** Name of the property in which the focal point is stored. */
     public static final String PROPERTY_IMAGE_FOCAL_POINT = CmsGwtConstants.PROPERTY_IMAGE_FOCALPOINT;
 
@@ -167,6 +170,9 @@ public class CmsPropertyDefinition implements Cloneable, Comparable<CmsPropertyD
 
     /** Property for the keywords. */
     public static final String PROPERTY_KEYWORDS = "Keywords";
+
+    /** Property to enable __forceAbsoluteLinks request parameter for a resource. */
+    public static final String PROPERTY_LINKS_FORCEABSOLUTE_ENABLED = "links.forceabsolute.enabled";
 
     /** Property for the current locale. */
     public static final String PROPERTY_LOCALE = "locale";

@@ -33,6 +33,7 @@ import org.opencms.file.CmsProject;
 import org.opencms.file.CmsResource;
 import org.opencms.main.OpenCms;
 import org.opencms.ui.A_CmsUI;
+import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.I_CmsDialogContext;
 import org.opencms.ui.apps.CmsQuickLaunchLocationCache;
 import org.opencms.ui.components.CmsBasicDialog;
@@ -65,6 +66,9 @@ public class CmsEmbeddedDialogContext extends AbstractExtension implements I_Cms
     /** The serial version id. */
     private static final long serialVersionUID = -7446784547935775629L;
 
+    /** The app id. */
+    private String m_appId;
+
     /** The context type. */
     private ContextType m_contextType;
 
@@ -77,9 +81,6 @@ public class CmsEmbeddedDialogContext extends AbstractExtension implements I_Cms
     /** The window used to display the dialog. */
     private Window m_window;
 
-    /** The app id. */
-    private String m_appId;
-
     /**
      * Constructor.<p>
      *
@@ -88,6 +89,7 @@ public class CmsEmbeddedDialogContext extends AbstractExtension implements I_Cms
      * @param resources the resources
      */
     public CmsEmbeddedDialogContext(String appId, ContextType contextType, List<CmsResource> resources) {
+
         extend(UI.getCurrent());
         m_appId = appId;
         m_contextType = contextType;
@@ -224,11 +226,21 @@ public class CmsEmbeddedDialogContext extends AbstractExtension implements I_Cms
     }
 
     /**
+     * Leaves page by navigating to given URI.
+     *
+     * @param uri the URI to navigate to
+     */
+    public void leavePage(String uri) {
+
+        getClientRPC().leavePage(uri);
+    }
+
+    /**
      * @see org.opencms.ui.I_CmsDialogContext#navigateTo(java.lang.String)
      */
     public void navigateTo(String appId) {
 
-        String targetUri = OpenCms.getSystemInfo().getWorkplaceContext() + "#!" + appId;
+        String targetUri = CmsVaadinUtils.getWorkplaceLink(appId);
         getClientRPC().leavePage(targetUri);
     }
 

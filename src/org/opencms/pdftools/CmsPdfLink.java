@@ -30,6 +30,7 @@ package org.opencms.pdftools;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.main.CmsException;
 import org.opencms.main.OpenCms;
@@ -70,6 +71,7 @@ public class CmsPdfLink {
         + ")"
         + "/"
         + NOSLASH_GROUP
+        + "(?:/[^/]+)?" // optional filename to make the download name more user-readable, not used by the handler
         + "\\.pdf/?";
 
     /** Compiled regular expression for parsing PDF links. */
@@ -93,9 +95,11 @@ public class CmsPdfLink {
      * @param cms the current CMS context
      * @param formatter the formatter resource
      * @param content the content resource
+     * @param filename the file name to use for the PDF download link
+     *
      * @throws CmsException if something goes wrong
      */
-    public CmsPdfLink(CmsObject cms, CmsResource formatter, CmsResource content)
+    public CmsPdfLink(CmsObject cms, CmsResource formatter, CmsResource content, String filename)
     throws CmsException {
 
         Locale locale = cms.getRequestContext().getLocale();
@@ -105,7 +109,16 @@ public class CmsPdfLink {
             content,
             cms.getRequestContext().getLocale(),
             OpenCms.getLocaleManager().getDefaultLocales());
-        String s = "/" + PDF_LINK_PREFIX + "/" + locale + "/" + formatter.getStructureId() + "/" + detailName + ".pdf";
+        String s = "/"
+            + PDF_LINK_PREFIX
+            + "/"
+            + locale
+            + "/"
+            + formatter.getStructureId()
+            + "/"
+            + detailName
+            + (filename != null ? "/" + filename : "")
+            + ".pdf";
         m_link = OpenCms.getLinkManager().substituteLink(cms, s);
     }
 
@@ -128,6 +141,12 @@ public class CmsPdfLink {
             String formatterId = matcher.group(2);
             String detailName = matcher.group(3);
             CmsUUID id = cms.readIdForUrlName(detailName);
+            if (id == null) {
+                throw new CmsVfsResourceNotFoundException(
+                    org.opencms.db.generic.Messages.get().container(
+                        org.opencms.db.generic.Messages.ERR_READ_RESOURCE_1,
+                        detailName));
+            }
             m_content = cms.readResource(id, CmsResourceFilter.ignoreExpirationOffline(cms));
             m_locale = CmsLocaleManager.getLocale(localeStr);
             m_formatter = cms.readResource(new CmsUUID(formatterId));

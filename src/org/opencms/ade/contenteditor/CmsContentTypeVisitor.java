@@ -30,6 +30,7 @@ package org.opencms.ade.contenteditor;
 import org.opencms.acacia.shared.CmsAttributeConfiguration;
 import org.opencms.acacia.shared.CmsTabInfo;
 import org.opencms.acacia.shared.CmsType;
+import org.opencms.ade.contenteditor.CmsWidgetUtil.WidgetInfo;
 import org.opencms.ade.contenteditor.shared.CmsComplexWidgetData;
 import org.opencms.ade.contenteditor.shared.CmsExternalWidgetConfiguration;
 import org.opencms.file.CmsFile;
@@ -40,8 +41,8 @@ import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
+import org.opencms.util.I_CmsMacroResolver;
 import org.opencms.widgets.A_CmsWidget;
-import org.opencms.widgets.CmsWidgetConfigurationException;
 import org.opencms.widgets.I_CmsADEWidget;
 import org.opencms.widgets.I_CmsComplexWidget;
 import org.opencms.widgets.I_CmsWidget;
@@ -228,6 +229,18 @@ public class CmsContentTypeVisitor {
     /** Logger instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsContentTypeVisitor.class);
 
+    /** The localization macro start sequence. */
+    private static final String MESSAGE_MACRO_START = ""
+        + I_CmsMacroResolver.MACRO_DELIMITER
+        + I_CmsMacroResolver.MACRO_START
+        + CmsMacroResolver.KEY_LOCALIZED_PREFIX;
+
+    /** The old style localization macro start sequence. */
+    private static final String MESSAGE_MACRO_START_OLD = ""
+        + I_CmsMacroResolver.MACRO_DELIMITER_OLD
+        + I_CmsMacroResolver.MACRO_START_OLD
+        + CmsMacroResolver.KEY_LOCALIZED_PREFIX;
+
     /** The attribute configurations. */
     private Map<String, CmsAttributeConfiguration> m_attributeConfigurations;
 
@@ -269,6 +282,9 @@ public class CmsContentTypeVisitor {
 
     /** The widgets encountered by this visitor. */
     private List<I_CmsWidget> m_widgets = new ArrayList<I_CmsWidget>();
+
+    /** The root content definition. */
+    private CmsXmlContentDefinition m_rootContentDefinition;
 
     /**
      * Constructor.<p>
@@ -384,6 +400,7 @@ public class CmsContentTypeVisitor {
      */
     public void visitTypes(CmsXmlContentDefinition xmlContentDefinition, Locale messageLocale) {
 
+        m_rootContentDefinition = xmlContentDefinition;
         m_contentHandler = xmlContentDefinition.getContentHandler();
         CmsMessages messages = null;
         m_messages = new CmsMultiMessages(messageLocale);
@@ -467,9 +484,16 @@ public class CmsContentTypeVisitor {
         resolver.setMessages(m_messages);
         if (definition.getContentHandler().getTabs() != null) {
             for (CmsXmlContentTab xmlTab : definition.getContentHandler().getTabs()) {
-                String tabName = m_messages.keyDefault(
-                    A_CmsWidget.LABEL_PREFIX + definition.getInnerName() + "." + xmlTab.getTabName(),
-                    xmlTab.getTabName());
+                String tabName;
+                // in case the tab name attribute contains a localization macro
+                if (xmlTab.getTabName().contains(MESSAGE_MACRO_START)
+                    || xmlTab.getTabName().contains(MESSAGE_MACRO_START_OLD)) {
+                    tabName = resolver.resolveMacros(xmlTab.getTabName());
+                } else {
+                    tabName = m_messages.keyDefault(
+                        A_CmsWidget.LABEL_PREFIX + definition.getInnerName() + "." + xmlTab.getTabName(),
+                        xmlTab.getTabName());
+                }
 
                 result.add(
                     new CmsTabInfo(
@@ -499,6 +523,7 @@ public class CmsContentTypeVisitor {
             String help = defaultHandler.getFieldHelp().get(value.getName());
             if (help != null) {
                 CmsMacroResolver resolver = new CmsMacroResolver();
+                resolver.setKeepEmptyMacros(true);
                 resolver.setMessages(m_messages);
                 return resolver.resolveMacros(help);
             }
@@ -524,6 +549,7 @@ public class CmsContentTypeVisitor {
             String label = defaultHandler.getFieldLabels().get(value.getName());
             if (label != null) {
                 CmsMacroResolver resolver = new CmsMacroResolver();
+                resolver.setKeepEmptyMacros(true);
                 resolver.setMessages(m_messages);
                 return resolver.resolveMacros(label);
             }
@@ -563,6 +589,8 @@ public class CmsContentTypeVisitor {
 
         boolean result = false;
         I_CmsXmlContentHandler contentHandler = schemaType.getContentDefinition().getContentHandler();
+        // We don't care about the old editor for the 'inheritable' widget configuration,
+        // so we're using the old getWidget method here
         I_CmsWidget widget = contentHandler.getWidget(schemaType);
         result = (widget == null) || (widget instanceof I_CmsADEWidget);
         return result;
@@ -612,9 +640,10 @@ public class CmsContentTypeVisitor {
         DisplayType defaultType = DisplayType.none;
         EvaluationRule rule = EvaluationRule.none;
         try {
-            I_CmsXmlContentHandler contentHandler = schemaType.getContentDefinition().getContentHandler();
-            I_CmsWidget widget = contentHandler.getWidget(schemaType);
-            configuredType = contentHandler.getDisplayType(schemaType);
+            WidgetInfo widgetInfo = CmsWidgetUtil.collectWidgetInfo(m_rootContentDefinition, path);
+            I_CmsWidget widget = widgetInfo.getWidget();
+            I_CmsComplexWidget complexWidget = widgetInfo.getComplexWidget();
+            configuredType = widgetInfo.getDisplayType();
             if (configuredType.equals(DisplayType.none) && schemaType.isSimpleType()) {
                 // check the type is on the root level of the document, those will be displayed 'wide'
                 // the path will always have a leading '/'
@@ -663,8 +692,8 @@ public class CmsContentTypeVisitor {
 
                 }
                 m_widgets.add(widget);
-            } else if (contentHandler.getComplexWidget(schemaType) != null) {
-                I_CmsComplexWidget complexWidget = contentHandler.getComplexWidget(schemaType);
+            }
+            if (complexWidget != null) {
                 CmsComplexWidgetData widgetData = complexWidget.getWidgetData(m_cms);
                 CmsExternalWidgetConfiguration externalConfig = widgetData.getExternalWidgetConfiguration();
                 if (externalConfig != null) {
@@ -672,11 +701,8 @@ public class CmsContentTypeVisitor {
                 }
                 m_complexWidgets.put(CmsContentService.getAttributeName(schemaType), widgetData);
             }
-        } catch (CmsWidgetConfigurationException e) {
-            LOG.error(e.getLocalizedMessage(), e);
         } catch (Exception e) {
-            // may happen if no widget was set for the value
-            CmsContentService.LOG.debug(e.getMessage(), e);
+            LOG.error(e.getLocalizedMessage(), e);
         }
 
         // remove the leading slash from element path to check visibility

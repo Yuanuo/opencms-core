@@ -45,6 +45,7 @@ import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.i18n.CmsEncoder;
 import org.opencms.jsp.CmsJspTagAddParams.ParamState;
 import org.opencms.jsp.util.CmsJspStandardContextBean;
+import org.opencms.jsp.util.CmsJspStandardContextBean.CmsContainerElementWrapper;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.loader.CmsTemplateContext;
 import org.opencms.loader.CmsTemplateContextManager;
@@ -88,6 +89,7 @@ import javax.servlet.jsp.tagext.BodyContent;
 import javax.servlet.jsp.tagext.BodyTagSupport;
 import javax.servlet.jsp.tagext.TryCatchFinally;
 
+import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.logging.Log;
 
 /**
@@ -132,6 +134,9 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
     /** Indicating that the container page editor is active for the current request. */
     private boolean m_editableRequest;
 
+    /** Indicates this container is nested within a model group, only set for editable requests. */
+    private boolean m_hasModelGroupAncestor;
+
     /** The maxElements attribute value. */
     private String m_maxElements;
 
@@ -156,6 +161,9 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
     /** The parent element to this container. */
     private CmsContainerElementBean m_parentElement;
 
+    /** The container setting presets. */
+    private HashMap<String, String> m_settingPresets;
+
     /** The tag attribute value. */
     private String m_tag;
 
@@ -177,7 +185,6 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
      * @param containerName the container name
      * @param containerType the container type
      * @param containerWidth the container width
-     * @param allowNested if nested containers are allowed
      *
      * @return the formatter configuration bean, may be <code>null</code> if no formatter available or a schema formatter is used
      */
@@ -187,8 +194,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
         CmsADEConfigData adeConfig,
         String containerName,
         String containerType,
-        int containerWidth,
-        boolean allowNested) {
+        int containerWidth) {
 
         I_CmsFormatterBean formatterBean = getFormatterConfigurationForElement(
             cms,
@@ -196,8 +202,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
             adeConfig,
             containerName,
             containerType,
-            containerWidth,
-            allowNested);
+            containerWidth);
         String settingsKey = CmsFormatterConfig.getSettingsKeyForContainer(containerName);
         if (formatterBean != null) {
             String formatterConfigId = formatterBean.getId();
@@ -220,7 +225,6 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
      * @param containerName the container name
      * @param containerType the container type
      * @param containerWidth the container width
-     * @param allowNested if nested containers are allowed
      *
      * @return the formatter configuration
      */
@@ -230,8 +234,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
         CmsADEConfigData adeConfig,
         String containerName,
         String containerType,
-        int containerWidth,
-        boolean allowNested) {
+        int containerWidth) {
 
         I_CmsFormatterBean formatterBean = null;
         String settingsKey = CmsFormatterConfig.getSettingsKeyForContainer(containerName);
@@ -241,7 +244,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 || element.getSettings().get(settingsKey).startsWith(CmsFormatterConfig.SCHEMA_FORMATTER_ID)) {
                 for (I_CmsFormatterBean formatter : adeConfig.getFormatters(
                     cms,
-                    element.getResource()).getAllMatchingFormatters(containerType, containerWidth, allowNested)) {
+                    element.getResource()).getAllMatchingFormatters(containerType, containerWidth)) {
                     if (element.getFormatterId().equals(formatter.getJspStructureId())) {
                         String formatterConfigId = formatter.getId();
                         if (formatterConfigId == null) {
@@ -272,8 +275,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
             if (formatterBean == null) {
                 formatterBean = adeConfig.getFormatters(cms, element.getResource()).getDefaultFormatter(
                     containerType,
-                    containerWidth,
-                    allowNested);
+                    containerWidth);
             }
         }
         return formatterBean;
@@ -466,10 +468,11 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 String requestUri = cms.getRequestContext().getUri();
                 Locale locale = cms.getRequestContext().getLocale();
                 CmsJspStandardContextBean standardContext = CmsJspStandardContextBean.getInstance(req);
-                standardContext.initPage(cms, (HttpServletRequest)req);
+                standardContext.initPage();
                 m_editableRequest = standardContext.getIsEditMode();
                 m_parentElement = standardContext.getElement();
                 m_parentContainer = standardContext.getContainer();
+                m_hasModelGroupAncestor = m_editableRequest ? hasModelGroupAncestor(standardContext) : false;
                 CmsContainerPageBean containerPage = standardContext.getPage();
                 CmsResource detailContent = standardContext.getDetailContent();
                 CmsResource detailFunctionPage = standardContext.getDetailFunctionPage();
@@ -507,16 +510,16 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 } else if ((m_parentElement != null)
                     && !m_detailOnly //ignore parent information for detail only containers to render content on different detail pages.
                     && !m_parentElement.getInstanceId().equals(container.getParentInstanceId())) {
-                    // the container parent instance id does not match the parent element instance id, skip rendering to avoid recursion
-                    LOG.error(
-                        new CmsIllegalStateException(
-                            Messages.get().container(
-                                Messages.ERR_INVALID_CONTAINER_PARENT_2,
-                                getName(),
-                                m_parentElement.getInstanceId())));
-                    resetState();
-                    return EVAL_PAGE;
-                }
+                        // the container parent instance id does not match the parent element instance id, skip rendering to avoid recursion
+                        LOG.error(
+                            new CmsIllegalStateException(
+                                Messages.get().container(
+                                    Messages.ERR_INVALID_CONTAINER_PARENT_2,
+                                    getName(),
+                                    m_parentElement.getInstanceId())));
+                        resetState();
+                        return EVAL_PAGE;
+                    }
                 // set the parameter
                 container.setParam(getParam());
                 // set the detail only flag
@@ -566,21 +569,40 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 }
                 // iterate over elements to render
                 int numRenderedElements = 0;
+                boolean first = true;
                 for (CmsContainerElementBean elementBean : allElements) {
+                    // in case of rendering a detail container on a detail page,
+                    // the first element may be used to provide settings for the detail content
+                    // this element will not be rendered, in case the detail page is not actually used to render detail content
+                    boolean skipDetailTemplateElement = false;
                     try {
-                        boolean rendered = renderContainerElement(
-                            (HttpServletRequest)req,
-                            cms,
-                            standardContext,
-                            elementBean,
-                            locale,
-                            numRenderedElements >= maxElements);
-                        if (rendered) {
-                            numRenderedElements += 1;
-                        }
+                        skipDetailTemplateElement = first
+                            && !m_editableRequest
+                            && m_detailView
+                            && (detailElement == null)
+                            && OpenCms.getADEManager().isDetailPage(cms, standardContext.getPageResource())
+                            && OpenCms.getADEManager().getDetailPages(cms, elementBean.getTypeName()).contains(
+                                CmsResource.getFolderPath(standardContext.getPageResource().getRootPath()));
                     } catch (Exception e) {
-                        if (LOG.isErrorEnabled()) {
-                            LOG.error(e.getLocalizedMessage(), e);
+                        LOG.error(e.getLocalizedMessage(), e);
+                    }
+                    first = false;
+                    if (!skipDetailTemplateElement) {
+                        try {
+                            boolean rendered = renderContainerElement(
+                                (HttpServletRequest)req,
+                                cms,
+                                standardContext,
+                                elementBean,
+                                locale,
+                                numRenderedElements >= maxElements);
+                            if (rendered) {
+                                numRenderedElements += 1;
+                            }
+                        } catch (Exception e) {
+                            if (LOG.isErrorEnabled()) {
+                                LOG.error(e.getLocalizedMessage(), e);
+                            }
                         }
                     }
                 }
@@ -815,6 +837,25 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
     }
 
     /**
+     * Sets the setting presets.<p>
+     *
+     * @param presets a map with string keys and values, or null
+     */
+    @SuppressWarnings("unchecked")
+    public void setSettings(Object presets) {
+
+        if (presets == null) {
+            m_settingPresets = null;
+        } else if (!(presets instanceof Map)) {
+            throw new IllegalArgumentException(
+                "cms:container -- value of 'settings' attribute  should be a map, but is "
+                    + ClassUtils.getCanonicalName(presets));
+        } else {
+            m_settingPresets = new HashMap<>((Map<String, String>)presets);
+        }
+    }
+
+    /**
      * Sets the tag attribute.<p>
      *
      * @param tag the createTag to set
@@ -881,12 +922,14 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
             m_bodyContent,
             width,
             maxElements,
+            m_detailView,
             isDetailView,
-            isEditable(cms),
+            !m_hasModelGroupAncestor && isEditable(cms),
             null,
             m_parentContainer != null ? m_parentContainer.getName() : null,
-            m_parentElement != null ? m_parentElement.getInstanceId() : null);
-        cont.setDeatilOnly(isDetailOnly);
+            m_parentElement != null ? m_parentElement.getInstanceId() : null,
+            m_settingPresets);
+        cont.setDetailOnly(isDetailOnly);
         String result = "";
         try {
             result = CmsContainerpageService.getSerializedContainerInfo(cont);
@@ -1231,6 +1274,26 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
     }
 
     /**
+     * Evaluates if this container is nested within a model group.<p>
+     *
+     * @param standardContext the standard context
+     *
+     * @return <code>true</code> if the container has model group ancestors
+     */
+    private boolean hasModelGroupAncestor(CmsJspStandardContextBean standardContext) {
+
+        boolean result = false;
+        if (!standardContext.isModelGroupPage()) {
+            CmsContainerElementWrapper parent = standardContext.getElement();
+            while ((parent != null) && !result) {
+                result = parent.isModelGroup();
+                parent = parent.getParent();
+            }
+        }
+        return result;
+    }
+
+    /**
      * Prints an element error tag to the response out.<p>
      *
      * @param elementSitePath the element site path
@@ -1345,9 +1408,8 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 adeConfig,
                 getName(),
                 containerType,
-                containerWidth,
-                true);
-            element.initSettings(cms, formatterConfig, locale, request);
+                containerWidth);
+            element.initSettings(cms, formatterConfig, locale, request, m_settingPresets);
         }
         // writing elements to the session cache to improve performance of the container-page editor in offline project
         if (m_editableRequest) {
@@ -1382,9 +1444,8 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                         adeConfig,
                         getName(),
                         containerType,
-                        containerWidth,
-                        false);
-                    subelement.initSettings(cms, subElementFormatterConfig, locale, request);
+                        containerWidth);
+                    subelement.initSettings(cms, subElementFormatterConfig, locale, request, m_settingPresets);
                     // writing elements to the session cache to improve performance of the container-page editor
                     if (m_editableRequest) {
                         getSessionCache(cms).setCacheContainerElement(subelement.editorHash(), subelement);
@@ -1485,8 +1546,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                     CmsFormatterConfiguration elementFormatters = adeConfig.getFormatters(cms, element.getResource());
                     I_CmsFormatterBean elementFormatterBean = elementFormatters.getDefaultFormatter(
                         containerType,
-                        containerWidth,
-                        true);
+                        containerWidth);
                     if (elementFormatterBean == null) {
                         if (LOG.isErrorEnabled()) {
                             LOG.error(
@@ -1565,6 +1625,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
         m_width = null;
         m_editableBy = null;
         m_bodyContent = null;
+        m_hasModelGroupAncestor = false;
         // reset the current element
         CmsJspStandardContextBean cmsContext = CmsJspStandardContextBean.getInstance(pageContext.getRequest());
         cmsContext.setElement(m_parentElement);

@@ -274,8 +274,12 @@ public class CmsEditResourceTypeDialog extends CmsBasicDialog {
         m_typeID.setValue(String.valueOf(m_type.getTypeId()));
         if (m_type instanceof CmsResourceTypeXmlContent) {
             CmsResourceTypeXmlContent typeXML = (CmsResourceTypeXmlContent)m_type;
-            m_schema.setValue(typeXML.getSchema());
-            m_schema.addValidator(new ResourceValidator());
+            if (CmsStringUtil.isEmptyOrWhitespaceOnly(typeXML.getSchema())) {
+                m_schema.setVisible(false);
+            } else {
+                m_schema.setValue(typeXML.getSchema());
+                m_schema.addValidator(new ResourceValidator());
+            }
         } else {
             m_schema.setVisible(false);
         }
@@ -336,7 +340,7 @@ public class CmsEditResourceTypeDialog extends CmsBasicDialog {
     protected void submit(Window window, CmsResourceTypeApp app) {
 
         if (isValid()) {
-            CmsModule module = (CmsModule)OpenCms.getModuleManager().getModule(m_type.getModuleName()).clone();
+            CmsModule module = OpenCms.getModuleManager().getModule(m_type.getModuleName()).clone();
             if (isKeepTypeCase()) {
                 saveResourceType(module);
             } else {
@@ -412,8 +416,6 @@ public class CmsEditResourceTypeDialog extends CmsBasicDialog {
             "false",
             null,
             null);
-        setting.setNewResourceUri("newresource_xmlcontent.jsp?newresourcetype=" + m_typeShortName.getValue());
-        setting.setNewResourcePage("structurecontent");
         setting.setAutoSetNavigation("false");
         setting.setAutoSetTitle("false");
         setting.setNewResourceOrder("10");

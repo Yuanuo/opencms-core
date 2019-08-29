@@ -87,6 +87,14 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     }
 
     /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAttributes()
+     */
+    public Map<String, String> getAttributes() {
+
+        return Collections.emptyMap();
+    }
+
+    /**
      * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getContainerTypes()
      */
     public Set<String> getContainerTypes() {
@@ -113,6 +121,14 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     public String getDescription(Locale locale) {
 
         return m_wrappedFormatter.getDescription(locale);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getDisplayType()
+     */
+    public String getDisplayType() {
+
+        return null;
     }
 
     /**
@@ -241,18 +257,19 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     }
 
     /**
-     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#hasNestedContainers()
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#hasNestedFormatterSettings()
      */
-    public boolean hasNestedContainers() {
+    public boolean hasNestedFormatterSettings() {
 
         return false;
     }
 
     /**
-     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#hasNestedFormatterSettings()
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#isAllowsSettingsInEditor()
      */
-    public boolean hasNestedFormatterSettings() {
+    public boolean isAllowsSettingsInEditor() {
 
+        // not supported by schema formatters
         return false;
     }
 
@@ -328,6 +345,15 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     public void setJspStructureId(CmsUUID jspStructureId) {
 
         m_wrappedFormatter.setJspStructureId(jspStructureId);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#useMetaMappingsForNormalElements()
+     */
+    @Override
+    public boolean useMetaMappingsForNormalElements() {
+
+        return false;
     }
 
 }

@@ -46,6 +46,12 @@ repositories {
     }
     jcenter()
     maven {
+    	url "http://maven.nuiton.org/release/"
+    }
+    maven {
+    	url "http://software.rescarta.org/nexus/content/repositories/thirdparty/"
+    }
+    maven {
         url "http://maven.vaadin.com/vaadin-addons"
     }
 }
@@ -100,6 +106,11 @@ configurations {
         description = 'used to compile the modules classes'
         transitive = false
         extendsFrom compile
+    }
+
+    moduleDeps {
+    	description = 'additional dependencies required by external modules'
+    	transitive = false
     }
 
     testCompile{
@@ -183,7 +194,12 @@ sourceSets{
 
 // import dependencies
 apply from: 'dependencies.gradle'
-
+if (project.hasProperty('external_directories')){
+    dependencies{
+	    moduleDeps fileTree(dir: external_directories).matching { include '**/lib/*.jar' }
+	    moduleDeps fileTree(dir: external_directories).matching { include '**/libext/*.jar' }
+    }
+}
 
 // The  Eclipse Buildship gradle integration for some reason assigns output folder test/bin to the .classpath entry for
 // the src folder, so we fix it here manually.
@@ -205,7 +221,7 @@ eclipse.classpath.file {
 eclipse.classpath.plusConfigurations = configurations.findAll { it.name.endsWith("Compile") }
 
 task wrapper(type: Wrapper){
-	gradleVersion = '4.4'
+	gradleVersion = '4.10'
 }
 
 task copyDeps(type: Copy) {
@@ -567,23 +583,44 @@ gwtModuleNames.split(',').each{ gwtModule ->
 	    }
 
 
-	    args =
-	            [
-	                gwtModule,
-	                // Your GWT module
-	                '-war',
-	                buildDir,
-	                '-logLevel',
-	                'ERROR',
-	                '-localWorkers',
-	                '2',
-	                '-style',
-	                'obfuscated',
-	                '-extra',
-	                extraDir,
-	                '-strict'
-	                // '-draftCompile' // Speeds up compile with 25%
-	            ]
+	    if (project.hasProperty('gwtDraft')) {
+			println "Using GWT draft mode for module $gwtModule"
+			args =
+                [
+                    gwtModule,
+                    // Your GWT module
+                    '-war',
+                    buildDir,
+                    '-logLevel',
+                    'ERROR',
+                    '-localWorkers',
+                    '2',
+                    '-style',
+                    'obfuscated',
+                    '-extra',
+                    extraDir,
+                    '-draftCompile', // Speeds up compile with 25%
+                    '-setProperty',
+                    'locale=en'
+                ]
+			}else{
+            	args =
+                    [
+                        gwtModule,
+                        // Your GWT module
+                        '-war',
+                        buildDir,
+                        '-logLevel',
+                        'ERROR',
+                        '-localWorkers',
+                        '2',
+                        '-style',
+                        'obfuscated',
+                        '-extra',
+                        extraDir,
+                        '-strict'
+                    ]
+            }
 	    jvmArgs = [ '-Dgwt.jjs.permutationWorkerFactory=com.google.gwt.dev.ThreadedPermutationWorkerFactory']
 
 
@@ -746,14 +783,11 @@ allModuleNames.split(',').each{ moduleName ->
          	version moduleVersion
         }
         destinationDir modulesDistsDir
-        // include the jar file if necessary
-        if (requiresJar.toBoolean()&&isExternal.toBoolean()){
-        	from( "${project.buildDir}/libs") {
-                include "${moduleName}.jar"
-                into "/system/modules/${moduleName}/lib/"
-            }
+
+        // excluding jars from modules, jars will be placed in the WEB-INF lib folder through the moduleDeps configuration
+        from("${moduleFolder}/resources"){
+        	exclude '**/lib*/*.jar'
         }
-        from "${moduleFolder}/resources"
 
         // TODO: set the module version to match the manifest.xml
         baseName moduleName
@@ -786,17 +820,8 @@ allModuleNames.split(',').each{ moduleName ->
 	        }
 
 	        sourceSets[moduleName].compileClasspath=sourceSets.modules.compileClasspath
-	        def libFolder=file("${moduleFolder}/resources/system/modules/${moduleName}/lib")
-	        if (libFolder.exists()){
-	        	println("Detecting lib folder for module $moduleName")
-	        	sourceSets[moduleName].compileClasspath+= fileTree(libFolder){ include '**/*.jar' }
 
-	        }
-	        def libExtFolder=file("${moduleFolder}/resources/system/modules/${moduleName}/libext")
-	        if (libExtFolder.exists()){
-	        	println("Detecting libext folder for module $moduleName")
-	        	sourceSets[moduleName].compileClasspath+= fileTree(libExtFolder){ include '**/*.jar' }
-	        }
+	        sourceSets[moduleName].compileClasspath+= configurations.moduleDeps
 		}
         task "jar_$moduleName" (type: Jar) {
         	ext.gwtModule = gwtModule
@@ -918,8 +943,28 @@ allModuleNames.split(',').each{ moduleName ->
                 ]
             }
 
-
-            args =
+			if (project.hasProperty('gwtDraft')) {
+				println "Using GWT draft mode for module $gwtModule"
+				args =
+                    [
+                        gwtModule,
+                        // Your GWT module
+                        '-war',
+                        buildDir,
+                        '-logLevel',
+                        'ERROR',
+                        '-localWorkers',
+                        '2',
+                        '-style',
+                        'obfuscated',
+                        '-extra',
+                        extraDir,
+                        '-draftCompile', // Speeds up compile with 25%
+                        '-setProperty',
+                        'locale=en'
+                    ]
+			}else{
+            	args =
                     [
                         gwtModule,
                         // Your GWT module
@@ -934,8 +979,8 @@ allModuleNames.split(',').each{ moduleName ->
                         '-extra',
                         extraDir,
                         '-strict'
-                        // '-draftCompile' // Speeds up compile with 25%
                     ]
+            }
             jvmArgs = [ '-Dgwt.jjs.permutationWorkerFactory=com.google.gwt.dev.ThreadedPermutationWorkerFactory']
 
 
@@ -984,8 +1029,8 @@ task war (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type: Zip
 
 	from ("${projectDir}/webapp"){
         // exclude the database drivers
-        exclude '**/setup/**/*.jar'
-        exclude '**/update/**'
+        exclude '**/setupdata/**/*.jar'
+        exclude '**/updatedata/**'
         exclude '**/workplaceThemes/**'
         exclude '**/classes/META-INF/**'
         exclude '**/solr/**'
@@ -1002,7 +1047,7 @@ task war (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type: Zip
     }
 
     from ("${projectDir}/webapp"){
-        exclude '**/update/**'
+        exclude '**/updatedata/**'
         exclude '**/workplaceThemes/**'
         exclude '**/solr/**'
         exclude '**/spellcheck/**'
@@ -1040,8 +1085,9 @@ task war (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type: Zip
     }
 
     into ('/WEB-INF/lib') { from configurations.distribution }
+    into ('/WEB-INF/lib') { from configurations.moduleDeps }
 
-    fileTree('webapp/setup/database'){ include '**/*.jar'}.each {File driverJar ->
+    fileTree('webapp/WEB-INF/setupdata/database'){ include '**/*.jar'}.each {File driverJar ->
         // copy the database drivers into the lib folder
         from (driverJar.path) { into '/WEB-INF/lib' }
     }
@@ -1065,7 +1111,7 @@ task updater (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type:
     Properties buildProps = new Properties()
     buildProps.load(new FileInputStream("${projectDir}/build-default.properties"))
     buildProps['updater.jars.remove'].split(',').each{ jar ->
-        from("${projectDir}/webapp/update/empty.jar"){
+        from("${projectDir}/webapp/WEB-INF/updatedata/empty.jar"){
             into '/WEB-INF/lib'
             rename('empty\\.jar', jar)
         }
@@ -1073,13 +1119,14 @@ task updater (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type:
 
     // only process the text files with the ReplaceTokens filter, copy everything else in a second from clause
     from ("${projectDir}/webapp"){
-        include 'update/**/*.ori'
-        include 'update/**/*.html'
-        include 'update/**/*.xml'
-        include 'update/**/*.txt'
-        include 'update/**/*.jsp'
-        exclude 'update/readme.txt'
-        exclude 'update/empty.jar'
+        include 'WEB-INF/updatedata/**/*.ori'
+        include 'WEB-INF/updatedata/**/*.html'
+        include 'WEB-INF/updatedata/**/*.xml'
+        include 'WEB-INF/updatedata/**/*.txt'
+        include 'WEB-INF/updatedata/**/*.jsp'
+        exclude 'WEB-INF/updatedata/config/opencms.xml'
+        exclude 'WEB-INF/updatedata/readme.txt'
+        exclude 'WEB-INF/updatedata/empty.jar'
         filter(ReplaceTokens, tokens: [
             OPENCMS_VERSION_NUMBER: version,
             OPENCMS_VERSION: product_name+' '+version,
@@ -1088,14 +1135,43 @@ task updater (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type:
     }
 
     from ("${projectDir}/webapp"){
-        include 'update/**'
-        exclude 'update/**/*.ori'
-        exclude 'update/**/*.html'
-        exclude 'update/**/*.xml'
-        exclude 'update/**/*.txt'
-        exclude 'update/**/*.jsp'
-        exclude 'update/readme.txt'
-        exclude 'update/empty.jar'
+        include 'WEB-INF/updatedata/**'
+        exclude 'WEB-INF/updatedata/**/*.ori'
+        exclude 'WEB-INF/updatedata/**/*.html'
+        exclude 'WEB-INF/updatedata/**/*.xml'
+        exclude 'WEB-INF/updatedata/**/*.txt'
+        exclude 'WEB-INF/updatedata/**/*.jsp'
+        exclude 'WEB-INF/updatedata/config/opencms.xml'
+        exclude 'WEB-INF/updatedata/readme.txt'
+        exclude 'WEB-INF/updatedata/empty.jar'
+    }
+
+    from ("${projectDir}/webapp/WEB-INF/classes/log4j2.xml") {
+		into '/WEB-INF/classes'
+	}
+
+	from ("${projectDir}/webapp/WEB-INF/updatedata/config/opencms.xml") {
+		into '/WEB-INF/config'
+	}
+
+	from("${projectDir}/webapp/WEB-INF/config/opencms-workplace.xml"){
+            into '/WEB-INF/config/defaults'
+    }
+
+    from("${projectDir}/webapp/WEB-INF/config/opencms-vfs.xml"){
+           into '/WEB-INF/config/defaults'
+    }
+
+    from("${projectDir}/webapp/WEB-INF/config/opencms-importexport.xml"){
+           into '/WEB-INF/config/defaults'
+    }
+
+    from("${projectDir}/webapp/WEB-INF/config/opencms-system.xml"){
+           into '/WEB-INF/config/defaults'
+    }
+
+    from("${projectDir}/webapp/WEB-INF/config/opencms-search.xml"){
+           into '/WEB-INF/config/defaults'
     }
 
     from ("${projectDir}/webapp/WEB-INF/solr"){
@@ -1104,7 +1180,7 @@ task updater (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type:
         include '**/*'
     }
 
-    from ("${projectDir}/webapp/update/readme.txt"){
+    from ("${projectDir}/webapp/WEB-INF/updatedata/readme.txt"){
         filter(ReplaceTokens, tokens: [
             OPENCMS_VERSION_NUMBER: version,
             OPENCMS_VERSION: product_name+' '+version
@@ -1151,23 +1227,23 @@ task updater (dependsOn: [setupJar, resourcesJar, modulesJar, allModules], type:
     }
 
     from (modulesDistsDir) {
-    	into '/update/modules'
+    	into '/WEB-INF/updatedata/modules'
     	localeModules.split(',').each{ localeModule ->
     		exclude "$localeModule-*.zip"
     	}
-    	updater_excluded_modules.split(',').each{ excludedModule ->
-    		exclude "$excludedModule-*.zip"
+    	allExternalModuleNames.split(',').each{ externalModule ->
+    		exclude externalModule+'*.zip'
     	}
     }
 
-    fileTree('webapp/setup/database'){ include '**/*.jar'}.each {File driverJar ->
+    fileTree('webapp/WEB-INF/setupdata/database'){ include '**/*.jar'}.each {File driverJar ->
         // copy the database drivers into the lib folder
         from (driverJar.path) { into '/WEB-INF/lib' }
     }
 
 }
 
-updater.dependsOn(tasks.matching{dist_task -> dist_task.name.startsWith('dist_') && !(updater_excluded_modules.split(',').contains(dist_task.moduleName))})
+updater.dependsOn(tasks.matching{dist_task -> dist_task.name.startsWith('dist_') && !(allExternalModuleNames.split(',').contains(dist_task.moduleName))})
 
 task bindist (dependsOn: war, type: Zip){
     baseName 'opencms'
@@ -1263,7 +1339,7 @@ task testGwt(type: Test, dependsOn: [compileTestGwtJava]) {
     exclude '**/*$*.class'
     scanForTestClasses false
     testClassesDirs = files(sourceSets.testGwt.java.outputDir)
-    systemProperties['gwt.args'] = "-logLevel WARN"
+    systemProperties['gwt.args'] = "-logLevel WARN -setProperty locale=en"
     systemProperties['java.awt.headless'] = "true"
     maxHeapSize = max_heap_size
     jvmArgs '-XX:MaxPermSize=256m'

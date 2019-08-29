@@ -28,15 +28,17 @@
 package org.opencms.jsp.util;
 
 import org.opencms.file.CmsObject;
+import org.opencms.jsp.CmsJspResourceWrapper;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.util.CmsCollectionsGenericWrapper;
-import org.opencms.util.CmsConstantMap;
 import org.opencms.util.CmsStringUtil;
 
+import java.util.AbstractCollection;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.Map;
 
 import org.apache.commons.collections.Transformer;
@@ -47,7 +49,27 @@ import org.apache.commons.logging.Log;
  *
  * Wrappers that extend this are usually used for the values in lazy initialized transformer maps.<p>
  */
-abstract class A_CmsJspValueWrapper {
+abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
+
+    /**
+     * Provides a Map with Booleans that
+     * indicate if a given String is contained in the wrapped objects String representation.<p>
+     */
+    public class CmsContainsTransformer implements Transformer {
+
+        /**
+         * @see org.apache.commons.collections.Transformer#transform(java.lang.Object)
+         */
+        @Override
+        public Object transform(Object input) {
+
+            Object o = getObjectValue();
+            if ((o instanceof A_CmsJspValueWrapper) && (input != null)) {
+                return Boolean.valueOf(((A_CmsJspValueWrapper)o).getToString().indexOf(input.toString()) > -1);
+            }
+            return Boolean.FALSE;
+        }
+    }
 
     /**
      * Provides a Map with Booleans that
@@ -96,6 +118,9 @@ abstract class A_CmsJspValueWrapper {
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(A_CmsJspValueWrapper.class);
 
+    /** Date information as instance date bean. */
+    private CmsJspInstanceDateBean m_instanceDate;
+
     /** The wrapped OpenCms user context. */
     protected CmsObject m_cms;
 
@@ -111,8 +136,14 @@ abstract class A_CmsJspValueWrapper {
     /** Image bean instance created from the wrapped value. */
     private CmsJspImageBean m_imageBean;
 
+    /** Resource created from the wrapped value. */
+    private CmsJspResourceWrapper m_resource;
+
     /** The lazy initialized Map that checks if a Object is equal. */
     private Map<Object, Boolean> m_isEqual;
+
+    /** The lazy initialized Map that checks if the String representation of this wrapper contains specific words. */
+    private Map<Object, Boolean> m_contains;
 
     /** Link created from the wrapped value. */
     private String m_link;
@@ -175,6 +206,23 @@ abstract class A_CmsJspValueWrapper {
     }
 
     /**
+     * Returns a lazy initialized Map that provides Booleans which
+     * indicate if if the wrapped values String representation contains a specific String.<p>
+     *
+     * The Object parameter is transformed to it's String representation to perform this check.
+     *
+     * @return  a lazy initialized Map that provides Booleans which
+     * indicate if if the wrapped values String representation contains a specific String
+     */
+    public Map<Object, Boolean> getContains() {
+
+        if (m_contains == null) {
+            m_contains = CmsCollectionsGenericWrapper.createLazyMap(new CmsContainsTransformer());
+        }
+        return m_contains;
+    }
+
+    /**
      * Returns <code>true</code> if the wrapped value has been somehow initialized.<p>
      *
      * @return <code>true</code> if the wrapped value has been somehow initialized
@@ -200,9 +248,6 @@ abstract class A_CmsJspValueWrapper {
      * Returns a lazy initialized Map that provides Booleans which
      * indicate if an Object is equal to the wrapped object.<p>
      *
-     * In case the current,
-     * the {@link CmsConstantMap#CONSTANT_BOOLEAN_FALSE_MAP} is returned.<p>
-     *
      * @return a lazy initialized Map that provides Booleans which
      *    indicate if an Object is equal to the wrapped object
      */
@@ -215,11 +260,26 @@ abstract class A_CmsJspValueWrapper {
     }
 
     /**
-     * Returns <code>true</code> in case the wrapped value exists and is not empty.<p>
+     * Returns <code>true</code> in case the wrapped value exists and is not empty or whitespace only.<p>
      *
-     * @return <code>true</code> in case the wrapped value exists and is not empty
+     * @return <code>true</code> in case the wrapped value exists and is not empty or whitespace only
      */
-    public abstract boolean getIsSet();
+    public boolean getIsSet() {
+
+        return !getIsEmptyOrWhitespaceOnly();
+    }
+
+    /**
+     * Returns <code>true</code> in case the wrapped value exists, is not empty or whitespace only
+     * and is also not equal to the String <code>'none'</code>.<p>
+     *
+     * @return <code>true</code> in case the wrapped value exists, is not empty or whitespace only
+     * and is also not equal to the String <code>'none'</code>
+     */
+    public boolean getIsSetNotNone() {
+
+        return getIsEmptyOrWhitespaceOnly() ? false : !"none".equals(getToString());
+    }
 
     /**
      * Calculates the next largest integer from the wrapped value.<p>
@@ -282,7 +342,7 @@ abstract class A_CmsJspValueWrapper {
     @Deprecated
     public String getStringValue() {
 
-        return toString();
+        return getToString();
     }
 
     /**
@@ -382,6 +442,18 @@ abstract class A_CmsJspValueWrapper {
     }
 
     /**
+     * Converts a date to an instance date bean.
+     * @return the instance date bean.
+     */
+    public CmsJspInstanceDateBean getToInstanceDate() {
+
+        if (m_instanceDate == null) {
+            m_instanceDate = new CmsJspInstanceDateBean(getToDate(), m_cms.getRequestContext().getLocale());
+        }
+        return m_instanceDate;
+    }
+
+    /**
      * Parses the wrapped value to a Long integer.<p>
      *
      * Note that the result is an Object of type {@link java.lang.Long},
@@ -441,6 +513,24 @@ abstract class A_CmsJspValueWrapper {
     }
 
     /**
+     * Converts a date to an instance date bean.
+     * @return the instance date bean.
+     */
+    public CmsJspResourceWrapper getToResource() {
+
+        if (m_resource == null) {
+            try {
+                m_resource = CmsJspElFunctions.convertResource(m_cms, getToString());
+            } catch (CmsException e) {
+                if (LOG.isInfoEnabled()) {
+                    LOG.info("Failed to convert wrapper \"" + getToString() + "\" to a resource.", e);
+                }
+            }
+        }
+        return m_resource;
+    }
+
+    /**
      * Returns the wrapped value as a String.<p>
      *
      * This will always be at least an empty String <code>""</code>, never <code>null</code>.
@@ -474,6 +564,71 @@ abstract class A_CmsJspValueWrapper {
      */
     @Override
     public abstract int hashCode();
+
+    /**
+     * Supports the use of the <code>empty</code> operator in the JSP EL by implementing the Collection interface.<p>
+     *
+     * @return the value from {@link #getIsEmptyOrWhitespaceOnly()} which is the inverse of {@link #getIsSet()}.<p>
+     *
+     * @see java.util.AbstractCollection#isEmpty()
+     * @see #getIsEmptyOrWhitespaceOnly()
+     * @see #getIsSet()
+     */
+    @Override
+    public boolean isEmpty() {
+
+        return getIsEmptyOrWhitespaceOnly();
+    }
+
+    /**
+     * Supports the use of the <code>empty</code> operator in the JSP EL by implementing the Collection interface.<p>
+     *
+     * @return an empty Iterator in case {@link #isEmpty()} is <code>true</code>,
+     * otherwise an Iterator that will return the String value of this wrapper exactly once.<p>
+     *
+     * @see java.util.AbstractCollection#size()
+     */
+    @Override
+    public Iterator<String> iterator() {
+
+        Iterator<String> it = new Iterator<String>() {
+
+            private boolean isFirst = true;
+
+            @Override
+            public boolean hasNext() {
+
+                return isFirst && !isEmpty();
+            }
+
+            @Override
+            public String next() {
+
+                isFirst = false;
+                return getToString();
+            }
+
+            @Override
+            public void remove() {
+
+                throw new UnsupportedOperationException();
+            }
+        };
+        return it;
+    }
+
+    /**
+     * Supports the use of the <code>empty</code> operator in the JSP EL by implementing the Collection interface.<p>
+     *
+     * @return always returns 0.<p>
+     *
+     * @see java.util.AbstractCollection#size()
+     */
+    @Override
+    public int size() {
+
+        return isEmpty() ? 0 : 1;
+    }
 
     /**
      * Parses the wrapped value to a Double precision float, returning the default in case the number can not be parsed.<p>
@@ -533,4 +688,12 @@ abstract class A_CmsJspValueWrapper {
         return m_long;
     }
 
+    /**
+     * Returns a value wrapper for the provided default in case this value is empty.<p>
+     *
+     * @param defaultValue the string to generate the default value from
+     *
+     * @return a value wrapper for the provided default in case this value is empty.
+     */
+    public abstract A_CmsJspValueWrapper useDefault(Object defaultValue);
 }

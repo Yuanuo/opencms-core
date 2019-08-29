@@ -30,6 +30,7 @@ package org.opencms.ade.containerpage.client;
 import org.opencms.ade.containerpage.client.ui.CmsContainerPageContainer;
 import org.opencms.ade.containerpage.client.ui.CmsContainerPageElementPanel;
 import org.opencms.ade.containerpage.client.ui.CmsOptionDialog;
+import org.opencms.ade.containerpage.client.ui.I_CmsDropContainer;
 import org.opencms.ade.containerpage.shared.CmsCntPageData;
 import org.opencms.ade.containerpage.shared.CmsDialogOptionsAndInfo;
 import org.opencms.ade.contenteditor.client.CmsContentEditor;
@@ -50,8 +51,15 @@ import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import com.google.gwt.dom.client.Element;
 import com.google.gwt.http.client.URL;
+import com.google.gwt.json.client.JSONBoolean;
+import com.google.gwt.json.client.JSONNumber;
+import com.google.gwt.json.client.JSONObject;
+import com.google.gwt.json.client.JSONString;
 import com.google.gwt.user.client.Command;
 import com.google.gwt.user.client.History;
 import com.google.gwt.user.client.Window;
@@ -153,8 +161,9 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
      *
      * @param element the container element widget
      * @param inline <code>true</code> to open the in-line editor for the given element if available
+     * @param wasNew <code>true</code> in case this is a newly created element not previously edited
      */
-    public void openDialog(final CmsContainerPageElementPanel element, final boolean inline) {
+    public void openDialog(final CmsContainerPageElementPanel element, final boolean inline, boolean wasNew) {
 
         if (!inline && element.hasEditHandler()) {
             m_handler.m_controller.getEditOptions(
@@ -174,11 +183,11 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
                                     m_replaceElement = element;
                                     contentId = arg.toString();
                                 }
-                                internalOpenDialog(element, contentId, inline);
+                                internalOpenDialog(element, contentId, inline, wasNew);
                             }
                         };
                         if (editOptions == null) {
-                            internalOpenDialog(element, element.getId(), inline);
+                            internalOpenDialog(element, element.getId(), inline, wasNew);
                         } else if (editOptions.getOptions().getOptions().size() == 1) {
                             m_handler.m_controller.prepareForEdit(
                                 element.getId(),
@@ -208,7 +217,7 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
                     }
                 });
         } else {
-            internalOpenDialog(element, element.getId(), inline);
+            internalOpenDialog(element, element.getId(), inline, wasNew);
         }
     }
 
@@ -398,9 +407,14 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
      *
      * @param element the element to edit
      * @param editContentId the edit content id
-     * @param inline <code>true>7code> to edit the content inline
+     * @param inline <code>true</code> to edit the content inline
+     * @param wasNew <code>true</code> in case this is a newly created element not previously edited
      */
-    void internalOpenDialog(final CmsContainerPageElementPanel element, String editContentId, final boolean inline) {
+    void internalOpenDialog(
+        final CmsContainerPageElementPanel element,
+        String editContentId,
+        final boolean inline,
+        boolean wasNew) {
 
         if (!m_editorOpened) {
             m_editorOpened = true;
@@ -458,25 +472,37 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
                     context.setHtmlContextInfo(getContextInfo(element));
                     // remove expired style before initializing the editor
                     element.setReleasedAndNotExpired(true);
-
+                    // in case of new elements, ignore load time
+                    CmsDebugLog.consoleLog("Opening inline editor for element. Was new: " + wasNew);
+                    long loadTime = wasNew ? Long.MAX_VALUE : m_handler.m_controller.getLoadTime();
                     CmsContentEditor.getInstance().openInlineEditor(
                         context,
                         new CmsUUID(serverId),
                         editorLocale,
                         element,
                         mainLocale,
-                        m_handler.m_controller.getLoadTime(),
+                        loadTime,
                         onClose);
                 } else {
                     addEditingHistoryItem(false);
-                    boolean allowSettings = !m_handler.m_controller.isEditingDisabled()
+                    Map<String, String> settingPresets = new HashMap<String, String>();
+                    CmsEditorContext context = getEditorContext();
+                    I_CmsDropContainer dropContainer = element.getParentTarget();
+                    if (dropContainer instanceof CmsContainerPageContainer) {
+                        CmsContainerPageContainer container = (CmsContainerPageContainer)dropContainer;
+                        settingPresets.putAll(container.getSettingPresets());
+                    }
+                    context.setSettingPresets(settingPresets);
+
+                    boolean allowSettings = m_handler.m_controller.getData().allowSettingsInEditor()
+                        && !m_handler.m_controller.isEditingDisabled()
                         && !serverId.equals(String.valueOf(m_handler.m_controller.getData().getDetailId()));
                     I_CmsSimpleCallback<Boolean> openEditor = new I_CmsSimpleCallback<Boolean>() {
 
                         public void execute(Boolean lockedPage) {
 
                             CmsContentEditor.getInstance().openFormEditor(
-                                getEditorContext(),
+                                context,
                                 editorLocale,
                                 serverId,
                                 lockedPage.booleanValue() ? getCurrentElementId() : null,
@@ -607,38 +633,40 @@ public class CmsContentEditorHandler implements I_CmsContentEditorHandler {
         } else {
             container = (CmsContainerPageContainer)element.getParentTarget();
         }
-        return "{"
-            + CmsCntPageData.JSONKEY_ELEMENT_ID
-            + ":'"
-            + element.getId()
-            + "', "
-            + (m_handler.m_controller.getData().getDetailId() != null
-            ? (CmsCntPageData.JSONKEY_DETAIL_ELEMENT_ID + ":'" + m_handler.m_controller.getData().getDetailId() + "', ")
-            : "")
-            + CmsCntPageData.JSONKEY_NAME
-            + ":'"
-            + container.getContainerId()
-            + "', "
-            + CmsCntPageData.JSONKEY_TYPE
-            + ": '"
-            + container.getContainerType()
-            + "', "
-            + CmsCntPageData.JSONKEY_WIDTH
-            + ": "
-            + container.getConfiguredWidth()
-            + ", "
-            + CmsCntPageData.JSONKEY_DETAILVIEW
-            + ": "
-            + container.isDetailView()
-            + ", "
-            + CmsCntPageData.JSONKEY_DETAILONLY
-            + ": "
-            + container.isDetailOnly()
-            + ", "
-            + CmsCntPageData.JSONKEY_MAXELEMENTS
-            + ": "
-            + 1
-            + "}";
+        JSONObject result = new JSONObject();
+        putString(result, CmsCntPageData.JSONKEY_ELEMENT_ID, element.getId());
+        CmsUUID detailId = m_handler.m_controller.getData().getDetailId();
+        if (detailId != null) {
+            putString(result, CmsCntPageData.JSONKEY_DETAIL_ELEMENT_ID, "" + detailId);
+        }
+        putString(result, CmsCntPageData.JSONKEY_NAME, "" + container.getContainerId());
+        putString(result, CmsCntPageData.JSONKEY_TYPE, "" + container.getContainerType());
+        result.put(CmsCntPageData.JSONKEY_WIDTH, new JSONNumber(container.getConfiguredWidth()));
+        result.put(CmsCntPageData.JSONKEY_DETAILVIEW, JSONBoolean.getInstance(container.isDetailView()));
+        result.put(
+            CmsCntPageData.JSONKEY_ISDETAILVIEWCONTAINER,
+            JSONBoolean.getInstance(container.isDetailViewContainer()));
+        result.put(CmsCntPageData.JSONKEY_DETAILONLY, JSONBoolean.getInstance(container.isDetailOnly()));
+        result.put(CmsCntPageData.JSONKEY_MAXELEMENTS, new JSONNumber(1));
+        JSONObject presets = new JSONObject();
+        Map<String, String> presetsMap = container.getSettingPresets();
+        for (Map.Entry<String, String> entry : presetsMap.entrySet()) {
+            presets.put(entry.getKey(), new JSONString(entry.getValue()));
+        }
+        result.put(CmsCntPageData.JSONKEY_PRESETS, presets);
+        return result.toString();
+    }
+
+    /**
+     * Adds a String value to the JSON object.<p>
+     *
+     * @param obj the object to manipulate
+     * @param key the key
+     * @param val the value
+     */
+    private void putString(JSONObject obj, String key, String val) {
+
+        obj.put(key, new JSONString(val));
     }
 
 }

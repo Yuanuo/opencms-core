@@ -35,6 +35,7 @@ import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
+import org.opencms.ui.apps.A_CmsWorkplaceApp;
 import org.opencms.ui.apps.CmsAppWorkplaceUi;
 import org.opencms.ui.apps.CmsFileExplorerConfiguration;
 import org.opencms.ui.apps.Messages;
@@ -43,10 +44,10 @@ import org.opencms.ui.components.CmsBasicDialog;
 import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.ui.components.OpenCmsTheme;
 import org.opencms.ui.contextmenu.CmsContextMenu;
+import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 import org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.workplace.explorer.CmsResourceUtil;
-import org.opencms.workplace.explorer.menu.CmsMenuItemVisibilityMode;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,19 +58,19 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 
+import com.vaadin.server.Resource;
+import com.vaadin.shared.MouseEventDetails.MouseButton;
+import com.vaadin.ui.Window;
+import com.vaadin.ui.themes.ValoTheme;
 import com.vaadin.v7.data.Item;
 import com.vaadin.v7.data.util.IndexedContainer;
 import com.vaadin.v7.data.util.filter.Or;
 import com.vaadin.v7.data.util.filter.SimpleStringFilter;
 import com.vaadin.v7.event.ItemClickEvent;
 import com.vaadin.v7.event.ItemClickEvent.ItemClickListener;
-import com.vaadin.server.Resource;
-import com.vaadin.shared.MouseEventDetails.MouseButton;
 import com.vaadin.v7.ui.Table;
 import com.vaadin.v7.ui.TextField;
 import com.vaadin.v7.ui.VerticalLayout;
-import com.vaadin.ui.Window;
-import com.vaadin.ui.themes.ValoTheme;
 
 /**
  * Table to show entries of image cache.<p>
@@ -188,11 +189,11 @@ public class CmsImageCacheTable extends Table {
 
     }
 
+    /**Image cache helper instance. */
+    protected static CmsImageCacheHolder HELPER;
+
     /** The logger for this class. */
     static Log LOG = CmsLog.getLog(CmsImageCacheTable.class.getName());
-
-    /**column for image dimension.*/
-    private static final String PROP_VARIATIONS = "variations";
 
     /**Column for icon.*/
     private static final String PROP_ICON = "icon";
@@ -200,11 +201,11 @@ public class CmsImageCacheTable extends Table {
     /**column for name of image.*/
     private static final String PROP_NAME = "name";
 
+    /**column for image dimension.*/
+    private static final String PROP_VARIATIONS = "variations";
+
     /**vaadin serial id.*/
     private static final long serialVersionUID = -5559186186646954045L;
-
-    /**Image cache helper instance. */
-    protected static CmsImageCacheHolder HELPER;
 
     /** The context menu. */
     CmsContextMenu m_menu;
@@ -212,17 +213,17 @@ public class CmsImageCacheTable extends Table {
     /**Indexed container.*/
     private IndexedContainer m_container;
 
-    /** The available menu entries. */
-    private List<I_CmsSimpleContextMenuEntry<Set<String>>> m_menuEntries;
-
-    /**CmsObject at root.*/
-    private CmsObject m_rootCms;
-
     /**intro result view.*/
     private VerticalLayout m_intro;
 
+    /** The available menu entries. */
+    private List<I_CmsSimpleContextMenuEntry<Set<String>>> m_menuEntries;
+
     /**null result view. */
     private VerticalLayout m_nullResult;
+
+    /**CmsObject at root.*/
+    private CmsObject m_rootCms;
 
     /**Filter text field for table. */
     private TextField m_siteTableFilter;
@@ -389,18 +390,16 @@ public class CmsImageCacheTable extends Table {
     void openExplorerForParent(String rootPath, String uuid) {
 
         String parentPath = CmsResource.getParentFolder(rootPath);
-
-        CmsAppWorkplaceUi.get().getNavigator().navigateTo(
-            CmsFileExplorerConfiguration.APP_ID
-                + "/"
-                + A_CmsUI.getCmsObject().getRequestContext().getCurrentProject().getUuid()
-                + "!!"
+        CmsAppWorkplaceUi.get().showApp(
+            CmsFileExplorerConfiguration.APP_ID,
+            A_CmsUI.getCmsObject().getRequestContext().getCurrentProject().getUuid()
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
                 + A_CmsUI.getCmsObject().getRequestContext().getSiteRoot()
-                + "!!"
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
                 + parentPath.substring(A_CmsUI.getCmsObject().getRequestContext().getSiteRoot().length())
-                + "!!"
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR
                 + uuid
-                + "!!");
+                + A_CmsWorkplaceApp.PARAM_SEPARATOR);
     }
 
     /**
@@ -410,7 +409,7 @@ public class CmsImageCacheTable extends Table {
      */
     void showVariationsWindow(String resource) {
 
-        final Window window = CmsBasicDialog.prepareWindow(DialogWidth.wide);
+        final Window window = CmsBasicDialog.prepareWindow(DialogWidth.max);
         CmsVariationsDialog variationsDialog = new CmsVariationsDialog(resource, new Runnable() {
 
             public void run() {

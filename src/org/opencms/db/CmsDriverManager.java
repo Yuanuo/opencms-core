@@ -320,6 +320,9 @@ public final class CmsDriverManager implements I_CmsEventListener {
     /** Key to indicate update of structure state. */
     public static final int UPDATE_STRUCTURE_STATE = 2;
 
+    /** Map of pools defined in opencms.properties. */
+    protected static ConcurrentMap<String, CmsDbPoolV11> m_pools = Maps.newConcurrentMap();
+
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsDriverManager.class);
 
@@ -331,9 +334,6 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
     /** Constant mode parameter to read all files and folders in the {@link #readChangedResourcesInsideProject(CmsDbContext, CmsUUID, CmsReadChangedProjectResourceMode)}} method. */
     private static final CmsReadChangedProjectResourceMode RCPRM_FOLDERS_ONLY_MODE = new CmsReadChangedProjectResourceMode();
-
-    /** Map of pools defined in opencms.properties. */
-    protected static ConcurrentMap<String, CmsDbPoolV11> m_pools = Maps.newConcurrentMap();
 
     /** The history driver. */
     private I_CmsHistoryDriver m_historyDriver;
@@ -764,9 +764,9 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     dbc.getRequestContext().getSitePath(resource)));
         } else if ((lockType == CmsLockType.EXCLUSIVE)
             && currentLock.isExclusiveOwnedInProjectBy(dbc.currentUser(), dbc.currentProject())) {
-            // the current lock requires no change
-            return;
-        }
+                // the current lock requires no change
+                return;
+            }
 
         // duplicate logic from CmsSecurityManager#hasPermissions() because lock state can't be ignored
         // if another user has locked the file, the current user can never get WRITE permissions with the default check
@@ -4992,8 +4992,19 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
         I_CmsUserDriver userDriver = getUserDriver(dbc);
         userDriver.removeAccessControlEntries(dbc, dbc.currentProject(), resource.getResourceId());
+        List<CmsAccessControlEntry> fixedAces = new ArrayList<>();
+        for (CmsAccessControlEntry entry : acEntries) {
+            if (entry.getResource() == null) {
+                entry = new CmsAccessControlEntry(
+                    resource.getResourceId(),
+                    entry.getPrincipal(),
+                    entry.getPermissions(),
+                    entry.getFlags());
+            }
+            fixedAces.add(entry);
+        }
 
-        Iterator<CmsAccessControlEntry> i = acEntries.iterator();
+        Iterator<CmsAccessControlEntry> i = fixedAces.iterator();
         while (i.hasNext()) {
             userDriver.writeAccessControlEntry(dbc, dbc.currentProject(), i.next());
         }
@@ -5174,7 +5185,8 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 0,
                 null,
                 null,
-                ""));
+                "",
+                false));
         dbc1.clear();
         getUserDriver().createRootOrganizationalUnit(dbc2);
         dbc2.clear();

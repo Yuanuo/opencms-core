@@ -45,7 +45,7 @@ import org.opencms.main.OpenCms;
 import org.opencms.relations.CmsRelation;
 import org.opencms.relations.CmsRelationFilter;
 import org.opencms.relations.CmsRelationType;
-import org.opencms.search.CmsSearchIndex;
+import org.opencms.search.A_CmsSearchIndex;
 import org.opencms.site.CmsSite;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -85,6 +85,7 @@ public final class CmsDetailOnlyContainerUtil {
      * Private constructor.<p>
      */
     private CmsDetailOnlyContainerUtil() {
+
         // do nothing
     }
 
@@ -221,24 +222,22 @@ public final class CmsDetailOnlyContainerUtil {
     }
 
     /**
-     * Returns the site path to the detail only container page.<p>
+     * Returns the site/root path to the detail only container page, for site/root path of the detail content.<p>
      *
      * @param cms the current cms context
      * @param pageResource the detail page resource
-     * @param detailRootPath the path to the detail content
+     * @param detailPath the site or root path to the detail content (accordingly site or root path's will be returned)
      * @param locale the locale for which we want the detail only page
      *
-     * @return the site path to the detail only container page
+     * @return the site or root path to the detail only container page (dependent on providing site or root path for the detailPath).
      */
     public static String getDetailOnlyPageName(
         CmsObject cms,
         CmsResource pageResource,
-        String detailRootPath,
+        String detailPath,
         String locale) {
 
-        return getDetailOnlyPageNameWithoutLocaleCheck(
-            detailRootPath,
-            getDetailContainerLocale(cms, locale, pageResource));
+        return getDetailOnlyPageNameWithoutLocaleCheck(detailPath, getDetailContainerLocale(cms, locale, pageResource));
     }
 
     /**
@@ -359,7 +358,7 @@ public final class CmsDetailOnlyContainerUtil {
                     folderName,
                     new CmsProperty(
                         CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE,
-                        CmsSearchIndex.PROPERTY_SEARCH_EXCLUDE_VALUE_ALL,
+                        A_CmsSearchIndex.PROPERTY_SEARCH_EXCLUDE_VALUE_ALL,
                         null));
                 CmsLockUtil.tryUnlock(rootCms, parentRes);
             }

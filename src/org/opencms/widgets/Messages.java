@@ -38,6 +38,15 @@ import org.opencms.i18n.I_CmsMessageBundle;
 public final class Messages extends A_CmsMessageBundle {
 
     /** Message constant for key in the resource bundle. */
+    public static final String LOG_API_KEY_FROM_CONFIG_0 = "LOG_API_KEY_FROM_CONFIG_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String LOG_API_KEY_FROM_PROPERTY_1 = "LOG_API_KEY_FROM_PROPERTY_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String LOG_API_KEY_FOR_PATH_1 = "LOG_API_KEY_FOR_PATH_1";
+
+    /** Message constant for key in the resource bundle. */
     public static final String ERR_EDITOR_MESSAGE_NOSELECTION_0 = "ERR_EDITOR_MESSAGE_NOSELECTION_0";
 
     /** Message constant for key in the resource bundle. */
@@ -87,6 +96,9 @@ public final class Messages extends A_CmsMessageBundle {
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_DIALOG_COLOR_TITLE_0 = "GUI_DIALOG_COLOR_TITLE_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_DISPLAYTYPE_SELECT_0 = "GUI_DISPLAYTYPE_SELECT_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_EDITOR_BUTTON_DOWNLOADLIST_0 = "GUI_EDITOR_BUTTON_DOWNLOADLIST_0";

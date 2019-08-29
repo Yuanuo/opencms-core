@@ -45,10 +45,10 @@ public class CmsXmlContentProperty implements Serializable {
 
     /** Type constants. */
     public enum PropType {
-        /** Type constant string. */
-        string,
-        /** Type constant VFS list. */
-        vfslist;
+    /** Type constant string. */
+    string,
+    /** Type constant VFS list. */
+    vfslist;
 
         /**
          * Checks if the given type is {@link #vfslist}.<p>
@@ -68,12 +68,21 @@ public class CmsXmlContentProperty implements Serializable {
 
     /** The property visibility options. */
     public enum Visibility {
-        /** Visible in both element and parent. */
-        both,
-        /** Visible in element. */
+
+        /** Visible only on the element. */
         element,
-        /** Visible in parent. */
-        parent
+
+        /** Visible in both element and list parent as an individual setting. */
+        elementAndParentIndividual,
+
+        /** Visible in both element and list parent as a shared setting. */
+        elementAndParentShared,
+
+        /** Visible only on list parent, as individual setting. */
+        parentIndividual,
+
+        /** Visible only on list parent, as shared setting. */
+        parentShared
     }
 
     /** XML node name constants. */
@@ -473,7 +482,7 @@ public class CmsXmlContentProperty implements Serializable {
     public CmsXmlContentProperty mergeDefaults(CmsXmlContentProperty defaults) {
 
         return new CmsXmlContentProperty(
-            m_name,
+            firstNotNull(m_name, defaults.m_name),
             firstNotNull(m_type, defaults.m_type),
             firstNotNull(m_visibility, defaults.m_visibility),
             firstNotNull(m_widget, defaults.m_widget),

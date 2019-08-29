@@ -5,6 +5,8 @@
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/formatter_settings.xsd" />
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/choice_type_width.xsd" />
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/meta_mapping.xsd" />
+    <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/parameters.xsd" />
+    
     <xsd:element name="NewFormatters" type="OpenCmsNewFormatters" />
     
     <xsd:complexType name="OpenCmsNewFormatters">
@@ -21,19 +23,21 @@
     	    <xsd:element name="Description" type="OpenCmsString" minOccurs="0" />
         	<xsd:element name="Rank" type="OpenCmsString"/>
         	<xsd:element name="Match" type="OpenCmsChoiceTypeWidth" minOccurs="0" />
-        	<xsd:element name="Preview" type="OpenCmsBoolean" />
-        	<xsd:element name="SearchContent" type="OpenCmsBoolean" />
-        	<xsd:element name="AutoEnabled" type="OpenCmsBoolean" />
-        	<xsd:element name="Detail" type="OpenCmsBoolean" />
-        	<xsd:element name="Display" type="OpenCmsBoolean" minOccurs="0"/>
-        	<xsd:element name="NestedContainers" type="OpenCmsBoolean" />
-        	<xsd:element name="StrictContainers" type="OpenCmsBoolean" minOccurs="0" />
-        	<xsd:element name="NestedFormatterSettings" type="OpenCmsBoolean" minOccurs="0" />
+            <xsd:element name="Display" type="OpenCmsString" minOccurs="0"/>
+            <xsd:element name="AutoEnabled" type="OpenCmsBoolean" />
+            <xsd:element name="SearchContent" type="OpenCmsBoolean" />
+            <xsd:element name="StrictContainers" type="OpenCmsBoolean" />
+            <xsd:element name="Detail" type="OpenCmsBoolean" minOccurs="0"/>
+            <xsd:element name="AlwaysApplyMetaMappings" type="OpenCmsBoolean" minOccurs="0" />
+            <xsd:element name="NestedFormatterSettings" type="OpenCmsBoolean" minOccurs="0" />
+            <xsd:element name="AllowsSettingsInEditor" type="OpenCmsBoolean" minOccurs="0" />
+            <xsd:element name="Preview" type="OpenCmsBoolean" minOccurs="0"/>                    	
         	<xsd:element name="HeadIncludeCss" type="OpenCmsHeadIncludeCss" minOccurs="0" maxOccurs="1"/>
         	<xsd:element name="HeadIncludeJs" type="OpenCmsHeadIncludeJavascript" minOccurs="0" maxOccurs="1" />
         	<xsd:element name="IncludeSettings" type="OpenCmsVfsFile" minOccurs="0" maxOccurs="unbounded" />
         	<xsd:element name="Setting" type="OpenCmsFormatterSetting" minOccurs="0" maxOccurs="unbounded" />
         	<xsd:element name="MetaMapping" type="OpenCmsMetaMapping" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:element name="Attribute" type="OpenCmsParameter" minOccurs="0" maxOccurs="unbounded" />
         </xsd:sequence>
         <xsd:attribute name="language" type="OpenCmsLocale" use="optional" />
     </xsd:complexType>
@@ -42,23 +46,28 @@
         <resourcebundle name="org.opencms.xml.containerpage.messages"/>
         <defaults>
 			<default element="Rank" value="1000" />
-			<default element="Detail" value="true" />
-			<default element="Display" value="true" />
-			<default element="NestedFormatterSettings" value="false" />
+			<default element="Display" value="display" />
 			<default element="SearchContent" value="true" />
 			<default element="Setting/Visibility" value="both" />
+            <default element="StrictContainers" value="true" />
 		</defaults>
 		<mappings>
-				<mapping element="NiceName" mapto="property:Title" />
+				<mapping element="NiceName" mapto="galleryName" />
 		</mappings>
         <layouts>
         	<layout element="Type" widget="org.opencms.widgets.CmsTypeComboWidget"  />
         	<layout element="Jsp" widget="VfsFileWidget" configuration="searchtypes=jsp" />
         </layouts>
+        <relations>
+            <relation element="IncludeSettings" invalidate="false" />
+            <relation element="HeadIncludeCss/CssLink" invalidate="false" />
+            <relation element="HeadIncludeJs/JavascriptLink" invalidate="false" />
+        </relations>
         <tabs>
 			<tab element="NiceName" name="TabBasic" collapse="false" />
 			<tab element="IncludeSettings" name="TabSettings" collapse="false" />
 			<tab element="MetaMapping" name="TabMetaMappings" collapse="false" />
+            <tab element="Attribute" name="TabAttributes" collapse="false" />
 		</tabs>
         </xsd:appinfo> 
     </xsd:annotation>    

@@ -63,6 +63,7 @@ import org.opencms.xml.types.CmsXmlVfsFileValue;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -120,6 +121,8 @@ public class CmsConfigurationReader {
 
     /** The error node name. */
     public static final String N_ERROR = "Error";
+
+    public static final String N_EXCLUDE_EXTERNAL_DETAIL_CONTENTS = "ExcludeExternalDetailContents";
 
     /** The folder node name. */
     public static final String N_FOLDER = "Folder";
@@ -189,6 +192,9 @@ public class CmsConfigurationReader {
 
     /** Node name for the "Remove all formatters"-option. */
     public static final String N_REMOVE_ALL_FORMATTERS = "RemoveAllFormatters";
+
+    /** Field name for the 'Remove all functions' setting. */
+    public static final String N_REMOVE_ALL_FUNCTIONS = "RemoveAllFunctions";
 
     /** Node name for removed formatters. */
     public static final String N_REMOVE_FORMATTER = "RemoveFormatter";
@@ -322,6 +328,12 @@ public class CmsConfigurationReader {
         Visibility visibility;
         String visibilityStr = getString(cms, field.getSubValue(N_VISIBILITY));
         try {
+            // to stay compatible with former visibility option values
+            if ("both".equals(visibilityStr)) {
+                visibilityStr = Visibility.elementAndParentIndividual.name();
+            } else if ("parent".equals(visibilityStr)) {
+                visibilityStr = Visibility.parentShared.name();
+            }
             visibility = Visibility.valueOf(visibilityStr);
         } catch (Exception e) {
             visibility = null;
@@ -375,7 +387,14 @@ public class CmsConfigurationReader {
 
         Set<String> addFormatters = new HashSet<String>();
         for (I_CmsXmlContentValueLocation addLoc : node.getSubValues(N_ADD_FORMATTERS + "/" + N_ADD_FORMATTER)) {
-            addFormatters.add(addLoc.asString(m_cms).trim());
+            CmsXmlVfsFileValue value = (CmsXmlVfsFileValue)addLoc.getValue();
+            CmsLink link = value.getLink(m_cms);
+            if (link != null) {
+                CmsUUID structureId = link.getStructureId();
+                if (structureId != null) {
+                    addFormatters.add(structureId.toString());
+                }
+            }
         }
         return addFormatters;
     }
@@ -438,21 +457,39 @@ public class CmsConfigurationReader {
 
         boolean createContentsLocally = getBoolean(root, N_CREATE_CONTENTS_LOCALLY);
         boolean preferDetailPagesForLocalContents = getBoolean(root, N_PREFER_DETAIL_PAGES_FOR_LOCAL_CONTENTS);
+        boolean exludeExternalDetailContents = getBoolean(root, N_EXCLUDE_EXTERNAL_DETAIL_CONTENTS);
 
         boolean isModuleConfig = OpenCms.getResourceManager().getResourceType(
             content.getFile().getTypeId()).getTypeName().equals(CmsADEManager.MODULE_CONFIG_TYPE);
 
-        String masterConfig = getString(root.getSubValue(N_MASTER_CONFIG));
-        CmsResource masterConfigResource = null;
-        if (masterConfig != null) {
-            masterConfigResource = m_cms.readResource(masterConfig, CmsResourceFilter.IGNORE_EXPIRATION);
+        List<CmsUUID> masterConfigIds = new ArrayList<>();
+        for (I_CmsXmlContentValueLocation masterConfigLoc : root.getSubValues(N_MASTER_CONFIG)) {
+            CmsUUID id = masterConfigLoc.asId(m_cms);
+            if (id != null) {
+                masterConfigIds.add(id);
+            }
+        }
+
+        boolean removeFunctions = false;
+        removeFunctions = getBoolean(root, N_REMOVE_ALL_FUNCTIONS);
+
+        Set<CmsUUID> functions = new LinkedHashSet<>();
+        for (I_CmsXmlContentValueLocation node : root.getSubValues(N_FUNCTION)) {
+            CmsXmlVfsFileValue value = (CmsXmlVfsFileValue)node.getValue();
+            CmsLink link = value.getLink(m_cms);
+            if (link != null) {
+                CmsUUID structureId = link.getStructureId();
+                if (structureId != null) {
+                    functions.add(link.getStructureId());
+                }
+            }
         }
 
         CmsADEConfigDataInternal result = new CmsADEConfigDataInternal(
             content.getFile(),
             isModuleConfig,
             basePath,
-            masterConfigResource,
+            masterConfigIds,
             m_resourceTypeConfigs,
             discardInheritedTypes,
             m_propertyConfigs,
@@ -463,7 +500,10 @@ public class CmsConfigurationReader {
             discardInheritedModelPages,
             createContentsLocally,
             preferDetailPagesForLocalContents,
-            formatterChangeSet);
+            exludeExternalDetailContents,
+            formatterChangeSet,
+            removeFunctions,
+            functions);
         return result;
     }
 
@@ -560,7 +600,14 @@ public class CmsConfigurationReader {
         Set<String> removeFormatters = new HashSet<String>();
         for (I_CmsXmlContentValueLocation removeLoc : node.getSubValues(
             N_REMOVE_FORMATTERS + "/" + N_REMOVE_FORMATTER)) {
-            removeFormatters.add(removeLoc.asString(m_cms).trim());
+            CmsXmlVfsFileValue value = (CmsXmlVfsFileValue)removeLoc.getValue();
+            CmsLink link = value.getLink(m_cms);
+            if (link != null) {
+                CmsUUID structureId = link.getStructureId();
+                if (structureId != null) {
+                    removeFormatters.add(structureId.toString());
+                }
+            }
         }
         return removeFormatters;
     }
@@ -580,9 +627,12 @@ public class CmsConfigurationReader {
         I_CmsXmlContentValueLocation disabledLoc = node.getSubValue(N_DISABLED);
         boolean disabled = false;
         boolean addDisabled = false;
+        boolean createDisabled = false;
         String disabledStr = disabledLoc == null ? null : disabledLoc.asString(m_cms);
         if ((disabledStr != null) && "add".equalsIgnoreCase(disabledStr.trim())) {
             addDisabled = true;
+        } else if ((disabledStr != null) && "create".equalsIgnoreCase(disabledStr.trim())) {
+            createDisabled = true;
         } else {
             disabled = Boolean.parseBoolean(disabledStr);
         }
@@ -616,7 +666,9 @@ public class CmsConfigurationReader {
             try {
                 CmsXmlVarLinkValue elementViewValue = (CmsXmlVarLinkValue)elementViewLoc.getValue();
                 String stringValue = elementViewValue.getStringValue(m_cms);
-                if (stringValue.startsWith(VIEW_SCHEME)) {
+                if ("".equals(stringValue)) {
+                    elementView = CmsUUID.getNullUUID();
+                } else if (stringValue.startsWith(VIEW_SCHEME)) {
                     elementView = new CmsUUID(stringValue.substring(VIEW_SCHEME.length()));
                 } else {
                     elementView = elementViewValue.getLink(m_cms).getStructureId();
@@ -683,6 +735,7 @@ public class CmsConfigurationReader {
             namePattern,
             detailPagesDisabled,
             addDisabled,
+            createDisabled,
             elementView,
             localization,
             showInDefaultView,

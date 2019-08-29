@@ -28,7 +28,6 @@
 package org.opencms.gwt;
 
 import org.opencms.ade.configuration.CmsADEManager;
-import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
@@ -38,15 +37,14 @@ import org.opencms.gwt.shared.CmsQuickLaunchParams;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.apps.CmsAppVisibilityStatus;
 import org.opencms.ui.apps.CmsFileExplorerConfiguration;
 import org.opencms.ui.apps.CmsLegacyAppConfiguration;
 import org.opencms.ui.apps.CmsPageEditorConfiguration;
 import org.opencms.ui.apps.CmsQuickLaunchLocationCache;
 import org.opencms.ui.apps.CmsSitemapEditorConfiguration;
-import org.opencms.ui.apps.CmsTraditionalWorkplaceConfiguration;
 import org.opencms.ui.apps.I_CmsWorkplaceAppConfiguration;
-import org.opencms.workplace.CmsWorkplace;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,18 +95,9 @@ public final class CmsQuickLaunchProvider {
 
         List<CmsQuickLaunchData> result = Lists.newArrayList();
         Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
-        CmsUserSettings userSettings = new CmsUserSettings(cms);
-        boolean usesNewWorkplace = userSettings.usesNewWorkplace();
         List<I_CmsWorkplaceAppConfiguration> appConfigs = new ArrayList<I_CmsWorkplaceAppConfiguration>(
             OpenCms.getWorkplaceAppManager().getQuickLaunchConfigurations(cms));
-        if (!usesNewWorkplace) {
-            // the workplace app is only available within ADE in case of the traditional workplace user setting
-            I_CmsWorkplaceAppConfiguration config = OpenCms.getWorkplaceAppManager().getAppConfiguration(
-                CmsTraditionalWorkplaceConfiguration.APP_ID);
-            if ((config != null) && config.getVisibility(cms).isActive()) {
-                appConfigs.add(config);
-            }
-        }
+
         CmsResource currentPage = null;
         if (params.getPageId() != null) {
             try {
@@ -126,9 +115,6 @@ public final class CmsQuickLaunchProvider {
                 String errorMessage = null;
                 boolean useLegacyButtonStyle = config instanceof CmsLegacyAppConfiguration;
                 if (CmsFileExplorerConfiguration.APP_ID.equals(config.getId())) {
-                    if (!usesNewWorkplace) {
-                        continue;
-                    }
                     String page = locationCache.getFileExplorerLocation(cms.getRequestContext().getSiteRoot());
                     if (page != null) {
                         link = CmsCoreService.getVaadinWorkplaceLink(cms, cms.getRequestContext().addSiteRoot(page));
@@ -176,17 +162,8 @@ public final class CmsQuickLaunchProvider {
                         String page = locationCache.getPageEditorLocation(cms.getRequestContext().getSiteRoot());
                         link = sitemapLink + "?path=" + page;
                     }
-                } else if (CmsTraditionalWorkplaceConfiguration.APP_ID.equals(config.getId())) {
-                    String resourceRootFolder = currentPage != null
-                    ? CmsResource.getFolderPath(currentPage.getRootPath())
-                    : cms.getRequestContext().getSiteRoot();
-                    link = CmsWorkplace.getWorkplaceExplorerLink(cms, resourceRootFolder);
-                    useLegacyButtonStyle = true;
                 } else {
-                    if (!usesNewWorkplace) {
-                        continue;
-                    }
-                    link = OpenCms.getSystemInfo().getWorkplaceContext() + "#!" + config.getId();
+                    link = CmsVaadinUtils.getWorkplaceLink(config.getId());
                 }
                 Resource icon = config.getIcon();
                 String imageLink = "";

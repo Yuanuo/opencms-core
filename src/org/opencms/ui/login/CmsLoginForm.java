@@ -33,6 +33,7 @@ import org.opencms.main.OpenCms;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.Messages;
+import org.opencms.ui.components.CmsFakeWindow;
 
 import java.util.List;
 import java.util.Locale;
@@ -76,6 +77,9 @@ public class CmsLoginForm extends VerticalLayout {
 
     /** Button for opening the "forgot password" dialog. */
     private Button m_forgotPasswordButton;
+
+    /**Fake window. */
+    private CmsFakeWindow m_fakeWindow;
 
     /** Label showing an optional configurable message.*/
     private Label m_additionalMessage;
@@ -283,8 +287,19 @@ public class CmsLoginForm extends VerticalLayout {
      */
     void displayError(String messageHTML) {
 
+        // m_fakeWindow.addStyleName("waggler");
         m_error.setValue(messageHTML);
         m_error.setVisible(true);
+        CmsVaadinUtils.waggleMeOnce(m_fakeWindow);
+        //
+        //Add JavaScript code, which adds the wiggle class and removes it after a short time.
+        //        JavaScript.getCurrent().execute(
+        //            "wiggleElement=document.querySelectorAll(\".waggler\")[0];\n"
+        //                + "wiggleElement.className=wiggleElement.className + \" waggle\";\n"
+        //                + "setTimeout(function () {\n"
+        //                + "element=document.querySelectorAll(\".waggle\")[0];\n"
+        //                + "element.className=element.className.replace(/\\bwaggle\\b/g, \"\");"
+        //                + "    }, 1500);");
     }
 
 }

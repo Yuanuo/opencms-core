@@ -49,6 +49,9 @@ import java.util.Locale;
  */
 public abstract class CmsPrincipal implements I_CmsPrincipal, Comparable<I_CmsPrincipal> {
 
+    /** The serial version id. */
+    private static final long serialVersionUID = -323281048875786320L;
+
     /** The description of this principal. */
     protected String m_description;
 
@@ -184,6 +187,24 @@ public abstract class CmsPrincipal implements I_CmsPrincipal, Comparable<I_CmsPr
         result.append('.');
         result.append(name);
         return result.toString();
+    }
+
+    /**
+     * Gets the type of a principal.<p>
+     *
+     * @param principal the principal
+     * @return the principal type
+     */
+    public static String getType(I_CmsPrincipal principal) {
+
+        if (principal == null) {
+            return null;
+        }
+        if (principal.isGroup()) {
+            return I_CmsPrincipal.PRINCIPAL_GROUP;
+        } else {
+            return I_CmsPrincipal.PRINCIPAL_USER;
+        }
     }
 
     /**

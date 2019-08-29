@@ -30,6 +30,7 @@ package org.opencms.acacia.client.widgets;
 import org.opencms.acacia.client.css.I_CmsWidgetsLayoutBundle;
 import org.opencms.gwt.client.I_CmsHasResizeOnShow;
 import org.opencms.gwt.client.ui.input.CmsTextArea;
+import org.opencms.gwt.client.util.CmsDebugLog;
 import org.opencms.util.CmsStringUtil;
 
 import com.google.gwt.dom.client.Element;
@@ -48,6 +49,12 @@ import com.google.gwt.user.client.ui.Composite;
  *
  * */
 public class CmsTextareaWidget extends Composite implements I_CmsEditWidget, HasResizeHandlers, I_CmsHasResizeOnShow {
+
+    /** The monospace style key. */
+    public static final String STYLE_MONSPACE = "monospace";
+
+    /** The proportional style key. */
+    public static final String STYLE_PROPORTIONAL = "proportional";
 
     /** Default number of rows to display. */
     private static final int DEFAULT_ROWS_NUMBER = 5;
@@ -68,17 +75,30 @@ public class CmsTextareaWidget extends Composite implements I_CmsEditWidget, Has
         // All composites must call initWidget() in their constructors.
         initWidget(m_textarea);
         int configheight = DEFAULT_ROWS_NUMBER;
+        boolean useProportional = false;
+        CmsDebugLog.consoleLog("Parsing config: " + config);
         if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(config)) {
-            try {
-                int rows = Integer.parseInt(config);
-                if (rows > 0) {
-                    configheight = rows;
+            for (String conf : config.split("\\|")) {
+                CmsDebugLog.consoleLog("Evaluating item: " + conf);
+                if (STYLE_PROPORTIONAL.equals(conf)) {
+                    useProportional = true;
+                    CmsDebugLog.consoleLog("Setting to use proportional style");
+                } else if (STYLE_MONSPACE.equals(conf)) {
+                    useProportional = false;
+                } else {
+                    try {
+                        int rows = Integer.parseInt(conf);
+                        if (rows > 0) {
+                            configheight = rows;
+                        }
+                    } catch (Exception e) {
+                        // nothing to do
+                    }
                 }
-            } catch (Exception e) {
-                // nothing to do
             }
         }
         m_textarea.setRows(configheight);
+        m_textarea.setProportionalStyle(useProportional);
         m_textarea.getTextArea().addStyleName(I_CmsWidgetsLayoutBundle.INSTANCE.widgetCss().textAreaBox());
         m_textarea.getTextAreaContainer().addStyleName(
             I_CmsWidgetsLayoutBundle.INSTANCE.widgetCss().textAreaBoxPanel());
@@ -205,9 +225,6 @@ public class CmsTextareaWidget extends Composite implements I_CmsEditWidget, Has
             getElement().focus();
         } else {
             getElement().addClassName(org.opencms.acacia.client.css.I_CmsLayoutBundle.INSTANCE.form().inActive());
-        }
-        if (!active) {
-            m_textarea.setFormValueAsString("");
         }
         if (active) {
             fireChangeEvent();
