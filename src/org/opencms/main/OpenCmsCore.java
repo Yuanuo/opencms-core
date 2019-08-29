@@ -2027,9 +2027,22 @@ public final class OpenCmsCore {
                     return;
                 }
             }
-
+            // store datas for fire event RESOURCE ACCESSED 
+            final Map<String, Object> eventData = new HashMap<>(5);
+            CmsResource resource = null;
+            try {
+                resource = initResource(cms, cms.getRequestContext().getUri(), req, res);
+            } catch (Throwable error) {
+                eventData.put("error", error);
+                throw error;
+            } finally {
+                eventData.put("cms", cms);
+                eventData.put("uri", cms.getRequestContext().getUri());
+                eventData.put("request", req);
+                eventData.put("resource", resource);
+                OpenCms.getEventManager().fireEvent(I_CmsEventListener.EVENT_RESOURCE_ACCESSED, eventData);
+            }
             // user is initialized, now deliver the requested resource
-            CmsResource resource = initResource(cms, cms.getRequestContext().getUri(), req, res);
             if (resource != null) {
                 boolean forceAbsoluteLinks = checkForceAbsoluteLinks(req, cms, resource);
                 cms.getRequestContext().setForceAbsoluteLinks(forceAbsoluteLinks);

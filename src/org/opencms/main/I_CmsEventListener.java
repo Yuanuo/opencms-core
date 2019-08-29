@@ -296,6 +296,11 @@ public interface I_CmsEventListener {
      * @see #EVENT_RESOURCE_DELETED
      */
     int EVENT_RESOURCE_MOVED = 22;
+    
+    /**
+     * Event "a single resource has been accessed".
+     */
+    int EVENT_RESOURCE_ACCESSED = 96;
 
     /**
      * Event "a list of resources and their properties have been modified".<p>
