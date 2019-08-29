@@ -2302,8 +2302,15 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
      */
     public CmsResource readResource(CmsDbContext dbc, CmsUUID projectId, CmsUUID structureId, boolean includeDeleted)
     throws CmsDataAccessException {
-
-        CmsResource resource = null;
+        
+        final boolean isOnline = projectId.equals(CmsProject.ONLINE_PROJECT_ID);
+        if(isOnline && dbc.getRequestContext() != null) {
+            CmsResource resource = (CmsResource)dbc.getRequestContext().getAttribute(String.valueOf(structureId));
+            if(null != resource) {
+                return resource;
+            }
+        }
+        CmsResource resource = null; 
         ResultSet res = null;
         PreparedStatement stmt = null;
         Connection conn = null;
@@ -2339,7 +2346,13 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                     Messages.ERR_READ_DELETED_RESOURCE_1,
                     dbc.removeSiteRoot(resource.getRootPath())));
         }
-
+        if(isOnline && resource != null && dbc.getRequestContext() != null) {
+            // Caching so that it can be reused during a page request
+            // cache by structureId
+            dbc.getRequestContext().setAttribute(String.valueOf(structureId), resource);
+            // cache by path
+            dbc.getRequestContext().setAttribute(resource.getRootPath(), resource);
+        }
         return resource;
     }
 
@@ -2349,6 +2362,13 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
     public CmsResource readResource(CmsDbContext dbc, CmsUUID projectId, String path, boolean includeDeleted)
     throws CmsDataAccessException {
 
+        final boolean isOnline = projectId.equals(CmsProject.ONLINE_PROJECT_ID);
+        if(isOnline && dbc.getRequestContext() != null) {
+            CmsResource resource = (CmsResource)dbc.getRequestContext().getAttribute(path);
+            if(null != resource) {
+                return resource;
+            }
+        }
         CmsResource resource = null;
         ResultSet res = null;
         PreparedStatement stmt = null;
@@ -2398,6 +2418,13 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                     dbc.removeSiteRoot(resource.getRootPath())));
         }
 
+        if(isOnline && resource != null && dbc.getRequestContext() != null) {
+            // Caching so that it can be reused during a page request
+            // cache by PATH
+            dbc.getRequestContext().setAttribute(path, resource);
+            // cache by structureId
+            dbc.getRequestContext().setAttribute(String.valueOf(resource.getStructureId()), resource);
+        }
         return resource;
     }
 
@@ -3525,6 +3552,11 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                 e);
         } finally {
             m_sqlManager.closeAll(dbc, conn, stmt, null);
+        }
+        // cache in context, for reuse in one request (this write operation always offline mode)
+        if(resource != null && dbc.getRequestContext() != null) {
+            dbc.getRequestContext().setAttribute(String.valueOf(resource.getStructureId()), resource);
+            dbc.getRequestContext().setAttribute(resource.getRootPath(), resource);
         }
     }
 
