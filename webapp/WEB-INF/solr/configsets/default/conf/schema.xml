@@ -249,6 +249,24 @@
     </analyzer>
   </fieldType>
 
+    <!-- text_cn字段类型: 指定使用HanLP分词器，同时开启索引模式。通过solr自带的停用词过滤器，使用"stopwords.txt"（默认空白）过滤。
+	 在搜索的时候，还支持solr自带的同义词词典。-->
+    <fieldType name="text_zh" class="solr.TextField" positionIncrementGap="100">
+      <analyzer type="index">
+        <tokenizer class="com.hankcs.lucene.HanLPTokenizerFactory" enableIndexMode="true" />
+        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_zh-CN.txt" />
+        <!-- 取消注释可以启用索引期间的同义词词典
+        <filter class="solr.SynonymFilterFactory" synonyms="index_synonyms.txt" ignoreCase="true" expand="false"/>
+        -->
+        <filter class="solr.LowerCaseFilterFactory"/>
+      </analyzer>
+      <analyzer type="query">
+        <tokenizer class="com.hankcs.lucene.HanLPTokenizerFactory" enableIndexMode="false" />
+        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_zh-CN.txt" />
+        <filter class="solr.SynonymFilterFactory" synonyms="synonyms.txt" ignoreCase="true" expand="true"/>
+        <filter class="solr.LowerCaseFilterFactory"/>
+      </analyzer>
+    </fieldType>
 
     <!-- Spell-checking / Suggestion field, using maxShingleSize=2 -->
     <fieldType name="spell" class="solr.TextField" positionIncrementGap="100">
@@ -329,6 +347,7 @@
     <field name="text_fr"             type="text_fr"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for French text fields -->
     <field name="text_hu"             type="text_hu"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Hungarian text fields -->
     <field name="text_it"             type="text_it"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Italian text fields -->
+    <field name="text_zh"             type="text_zh"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Chinese text fields -->
     <field name="serial-date"         type="date"         indexed="true"  stored="true" />
     <field name="serial-date-dates"   type="date"         indexed="true"  stored="true"  multiValued="true"/>
 
@@ -359,6 +378,7 @@
     <dynamicField name="*_fr"         type="text_fr"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_hu"         type="text_hu"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_it"         type="text_it"      indexed="true"  stored="true" multiValued="true"/>
+    <dynamicField name="*_zh"         type="text_zh"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_b"          type="boolean"      indexed="true"  stored="true"/>
     <dynamicField name="*_coordinate" type="pdouble"      indexed="true"  stored="false"/>
     <dynamicField name="*_loc"        type="location"     indexed="true"  stored="true"/>
@@ -378,6 +398,7 @@
     <copyField source="*_fr"      dest="text_fr"/>
     <copyField source="*_hu"      dest="text_hu"/>
     <copyField source="*_it"      dest="text_it"/>
+    <copyField source="*_zh"      dest="text_zh"/>
     <copyField source="text_*"    dest="text"/>
     <copyField source="*_prop"    dest="text" />
     <copyField source="content"   dest="text" />
