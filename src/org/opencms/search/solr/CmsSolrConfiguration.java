@@ -263,7 +263,12 @@ public class CmsSolrConfiguration {
         if (m_schema == null) {
             try (FileInputStream fis = new FileInputStream(getSolrSchemaFile())) {
                 InputSource solrSchema = new InputSource(fis);
-                m_schema = new IndexSchema(getSolrConfig(), SOLR_SCHEMA_NAME, solrSchema);
+                SolrConfig solrConfig = getSolrConfig();
+                m_schema = new IndexSchema(
+                    solrConfig.getName(),
+                    solrSchema,
+                    solrConfig.luceneMatchVersion,
+                    solrConfig.getResourceLoader());
             } catch (IOException e) {
                 CmsConfigurationException ex = new CmsConfigurationException(
                     Messages.get().container(
