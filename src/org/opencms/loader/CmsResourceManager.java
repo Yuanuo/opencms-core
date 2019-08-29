@@ -27,6 +27,8 @@
 
 package org.opencms.loader;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.CmsResourceTypeConfig;
 import org.opencms.cache.CmsVfsMemoryObjectCache;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.configuration.CmsVfsConfiguration;
@@ -946,6 +948,44 @@ public class CmsResourceManager {
         throw new CmsLoaderException(Messages.get().container(Messages.ERR_UNKNOWN_RESTYPE_NAME_REQ_1, typeName));
     }
 
+    /**
+     * Returns the resource type name for the given resource rootPath.<p>
+     * 
+     * @param cms CmsObject
+     * @param rootPath the path of the resource type to get
+     * 
+     * @return resource type name for the given path
+     */
+    public String getResourceTypeByFolder(CmsObject cms, String rootPath) {
+        if(CmsStringUtil.isEmptyOrWhitespaceOnly(rootPath))
+            return null;
+        return OpenCms.getADEManager().getParentFolderType(cms, rootPath);
+    }
+    
+    /**
+     * Returns the resource type name for given file name, determine by file name pattern.
+     * 
+     * For example, the article resource pattern "article_% (number) .xml" is defined,
+     * and the article type can be judged for the resource type "article_00001.xml"
+     * when obtaining the data type.
+     * 
+     * @param name the file name
+     * 
+     * @return the resource type name for given file name
+     */
+    public String getResourceTypeByNamePattern(String name) {
+
+        CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(null, null);
+        for (CmsResourceTypeConfig typeConfig : config.getResourceTypes()) {
+            String namePattern = typeConfig.getNamePattern(true);
+            namePattern = namePattern.replaceAll("\\.", "\\\\.");
+            namePattern = namePattern.replaceAll("%\\(number.*\\)", "\\.\\*");
+            if (name.matches(namePattern))
+                return typeConfig.getTypeName();
+        }
+        return null;
+    }
+    
     /**
      * Returns the (unmodifiable) list with all initialized resource types.<p>
      *
