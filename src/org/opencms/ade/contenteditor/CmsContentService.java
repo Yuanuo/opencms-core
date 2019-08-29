@@ -2687,6 +2687,8 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
                         }
                         List<String> checkedCategoryList = Arrays.asList(checkedCategories.split(","));
                         for (String category : checkedCategoryList) {
+                            if(category.trim().isEmpty())
+                                continue;
                             try {
                                 CmsCategoryService.getInstance().addResourceToCategory(
                                     cms,
