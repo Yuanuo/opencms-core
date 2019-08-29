@@ -443,6 +443,16 @@ public class CmsADEManager {
     }
 
     /**
+     * Helper method to retrieve the parent folder type or null if none available.
+     * @param cms CmsObject
+     * @param rootPath the path of a resource
+     * @return the parent folder content type
+     */
+    public String getParentFolderType(CmsObject cms, String rootPath) {
+        return getCacheState(isOnline(cms)).getParentFolderType(rootPath);
+    }
+
+    /**
      * Gets the detail page finder.<p>
      *
      * @return the detail page finder
