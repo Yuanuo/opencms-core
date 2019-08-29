@@ -210,6 +210,13 @@ dependencies {
     distribution group: 'org.jsoup', name: 'jsoup', version: '1.12.1'
     distribution group: 'org.jvnet.mimepull', name: 'mimepull', version: '1.9.7'
     distribution group: 'org.locationtech.spatial4j', name: 'spatial4j', version: '0.6'
+
+    // https://mvnrepository.com/artifact/com.hankcs/hanlp
+    //distribution group: 'com.hankcs', name: 'hanlp', version: 'portable-1.7.4'
+    // https://mvnrepository.com/artifact/com.hankcs.nlp/hanlp-lucene-plugin
+    distribution files( 'lib/hanlp-1.7.4.jar')
+    distribution group: 'com.hankcs.nlp', name: 'hanlp-lucene-plugin', version: '1.1.6'
+
     distribution group: 'org.noggit', name: 'noggit', version: '0.8'
     distribution group: 'org.ow2.asm', name: 'asm', version: '6.0'
     distribution group: 'org.owasp.antisamy', name: 'antisamy', version: '1.5.7'
