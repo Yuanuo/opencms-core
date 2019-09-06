@@ -265,7 +265,7 @@ public class CmsSolrConfiguration {
                 InputSource solrSchema = new InputSource(fis);
                 SolrConfig solrConfig = getSolrConfig();
                 m_schema = new IndexSchema(
-                    solrConfig.getName(),
+                    SOLR_SCHEMA_NAME,
                     solrSchema,
                     solrConfig.luceneMatchVersion,
                     solrConfig.getResourceLoader());
