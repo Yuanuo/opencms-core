@@ -735,8 +735,6 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
         }
         if (variation != null) {
             // This is a cachable result
-            // TODO CmsFlexCacheKey is reusable, and variation is not only one for it!!!
-            // key.setVariation(variation);
             if (LOG.isDebugEnabled()) {
                 LOG.debug(
                     Messages.get().getBundle().key(
@@ -793,26 +791,6 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug(Messages.get().getBundle().key(Messages.LOG_FLEXCACHE_ADD_KEY_1, key.getResource()));
                 }
-            }
-        }
-    }
-
-    /**
-     * Removes an entry from the cache.<p>
-     *
-     * @param key the key which describes the entry to remove from the cache
-     * @param variation the pre-calculated variation for the entry
-     */
-    void remove(CmsFlexCacheKey key, String variation) {
-
-        if (!isEnabled()) {
-            return;
-        }
-        CmsFlexCacheVariation o = m_keyCache.get(key.getResource());
-        if (o != null && variation != null) {
-            I_CmsLruCacheObject old = o.m_map.get(variation);
-            if (old != null) {
-                getEntryLruCache().remove(old);
             }
         }
     }
@@ -1113,7 +1091,7 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
      *
      * @param key the key under which the value is saved
      * @param theCacheEntry the entry to cache
-     * @param variation the pre-calculated variation for the entry
+     * @param variation the variation string 
      */
     private void put(CmsFlexCacheKey key, CmsFlexCacheEntry theCacheEntry, String variation) {
 
@@ -1139,6 +1117,17 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
             if (wasAdded) {
                 theCacheEntry.setVariationData(variation, m);
                 m.put(variation, theCacheEntry);
+            }
+        } else {
+            // No variation map for this resource yet, so create one
+            CmsFlexCacheVariation list = new CmsFlexCacheVariation(key);
+
+            boolean wasAdded = m_variationCache.add(theCacheEntry);
+
+            if (wasAdded) {
+                theCacheEntry.setVariationData(variation, list.m_map);
+                list.m_map.put(variation, theCacheEntry);
+                m_keyCache.put(key.getResource(), list);
             }
         }
 
