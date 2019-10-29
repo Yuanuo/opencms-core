@@ -932,6 +932,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                 } else {
                     resolver.setResourceName((String)newCms.getRequestContext().getAttribute("resourcename"));
                 }
+                result = resolver.resolveMacros(defaultValue);
             }
             return result;
         } else if (!CmsStringUtil.isEmptyOrWhitespaceOnly(path) && CmsXmlUtils.isDeepXpath(path)) {
