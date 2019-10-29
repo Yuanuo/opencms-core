@@ -283,7 +283,7 @@ public class CmsConfigurationManager implements I_CmsXmlConfiguration {
 
         for (int i = 0; i < m_configurations.size(); i++) {
             I_CmsXmlConfiguration configuration = m_configurations.get(i);
-            if (clazz.equals(configuration.getClass())) {
+            if (clazz.equals(configuration.getClass()) || clazz.isAssignableFrom(configuration.getClass())) {
                 return configuration;
             }
         }
