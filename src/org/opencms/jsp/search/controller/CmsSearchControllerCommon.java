@@ -28,6 +28,7 @@
 package org.opencms.jsp.search.controller;
 
 import org.opencms.file.CmsObject;
+import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationCommon;
 import org.opencms.jsp.search.state.CmsSearchStateCommon;
 import org.opencms.jsp.search.state.I_CmsSearchStateCommon;
@@ -51,6 +52,10 @@ public class CmsSearchControllerCommon implements I_CmsSearchControllerCommon {
     private static final String MACRO_VALUE = "value";
     /** Site root macro. */
     private static final String MACRO_SITE_ROOT = "site_root";
+    /** Cms locale macro. */
+    private static final String MACRO_LOCALE = "locale";
+    /** Query macro. */
+    private static final String MACRO_QUERY = "query";
     /** Configuration of common search options. */
     private final I_CmsSearchConfigurationCommon m_config;
     /** State of the common search options. */
@@ -115,10 +120,13 @@ public class CmsSearchControllerCommon implements I_CmsSearchControllerCommon {
             if ((null != currentSiteRoot) && !currentSiteRoot.endsWith("/")) {
                 currentSiteRoot = currentSiteRoot + "/";
             }
+            String currentLocale = (null == cms ? CmsLocaleManager.MASTER_LOCALE : cms.getRequestContext().getLocale()).toString();
             Map<String, String[]> extraParamsMap = CmsRequestUtil.createParameterMap(m_config.getExtraSolrParams());
             for (String key : extraParamsMap.keySet()) {
                 for (String value : Arrays.asList(extraParamsMap.get(key))) {
                     value = resolveMacro(value, MACRO_SITE_ROOT, currentSiteRoot);
+                    value = resolveMacro(value, MACRO_LOCALE, currentLocale);
+                    value = resolveMacro(value, MACRO_QUERY, queryString);
                     if (SET_VARIABLES.contains(key)) {
                         if (key.equals(CommonParams.FL)) {
                             query.setReturnFields(value);
