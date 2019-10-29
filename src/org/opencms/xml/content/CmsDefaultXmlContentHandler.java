@@ -291,6 +291,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** Constant for the "invalidate" appinfo attribute name. */
     public static final String APPINFO_ATTR_INVALIDATE = "invalidate";
 
+    /** Constant for the "joinby" appinfo attribute name. */
+    public static final String APPINFO_ATTR_JOINBY = "joinby";
+
     /** Constant for the "key" appinfo attribute name. */
     public static final String APPINFO_ATTR_KEY = "key";
 
@@ -924,6 +927,11 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             if (!m_nonMacroResolvableDefaults.contains(path)) {
                 CmsMacroResolver resolver = CmsMacroResolver.newInstance().setCmsObject(newCms).setMessages(
                     getMessages(locale));
+                if (resource != null) {
+                    resolver.setResourceName(resource.getName());
+                } else {
+                    resolver.setResourceName((String)newCms.getRequestContext().getAttribute("resourcename"));
+                }
                 result = resolver.resolveMacros(defaultValue);
             }
             return result;
@@ -3968,6 +3976,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         }
         if (fieldMapping != null) {
             fieldMapping.setDefaultValue(element.attributeValue(APPINFO_ATTR_DEFAULT));
+            fieldMapping.setJoinby(element.attributeValue(APPINFO_ATTR_JOINBY, "\n"));
         }
         return fieldMapping;
     }
