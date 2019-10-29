@@ -924,7 +924,11 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             if (!m_nonMacroResolvableDefaults.contains(path)) {
                 CmsMacroResolver resolver = CmsMacroResolver.newInstance().setCmsObject(newCms).setMessages(
                     getMessages(locale));
-                result = resolver.resolveMacros(defaultValue);
+                if (resource != null) {
+                    resolver.setResourceName(resource.getName());
+                } else {
+                    resolver.setResourceName((String)newCms.getRequestContext().getAttribute("resourcename"));
+                }
             }
             return result;
         } else if (!CmsStringUtil.isEmptyOrWhitespaceOnly(path) && CmsXmlUtils.isDeepXpath(path)) {

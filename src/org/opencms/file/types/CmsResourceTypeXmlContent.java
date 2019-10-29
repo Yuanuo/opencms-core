@@ -217,6 +217,7 @@ public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
             // in order to allow reading of properties for default values
             CmsObject newCms = OpenCms.initCmsObject(cms);
             newCms.getRequestContext().setUri(CmsResource.getParentFolder(resourcename));
+            newCms.getRequestContext().setAttribute("resourcename", resourcename);
             if (modelUri != null) {
                 // create the new content from the model file
                 newContent = CmsXmlContentFactory.createDocument(newCms, locale, modelUri);

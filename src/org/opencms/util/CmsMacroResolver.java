@@ -56,6 +56,7 @@ import org.opencms.xml.content.CmsXmlContentValueSequence;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -67,6 +68,7 @@ import java.util.Properties;
 import javax.servlet.jsp.PageContext;
 
 import org.apache.commons.collections.Factory;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.logging.Log;
 
 import com.google.common.base.Function;
@@ -96,6 +98,9 @@ public class CmsMacroResolver implements I_CmsMacroResolver {
     /** Key used to specify the full qualified name of the current organizational unit as macro value. */
     public static final String KEY_CURRENT_ORGUNIT_FQN = "currentou.fqn";
 
+    /** Key used to specify the date of today as macro value. */
+    public static final String KEY_CURRENT_DATE = "currentdate";
+    
     /** Key used to specify the current time as macro value. */
     public static final String KEY_CURRENT_TIME = "currenttime";
 
@@ -194,6 +199,7 @@ public class CmsMacroResolver implements I_CmsMacroResolver {
         "webbasepath", // 6
         "version", // 7
         "versionid" // 8
+        ,"filename.base" // 9
     };
 
     /** The "magic" commands wrapped in a List. */
@@ -921,7 +927,16 @@ public class CmsMacroResolver implements I_CmsMacroResolver {
                         break;
                     case 1:
                         // "filename"
-                        value = m_resourceName;
+                        String tmp1 = m_resourceName;
+                        if (null == tmp1) {
+                            // get filename from path
+                            tmp1 = m_cms.getRequestContext().getUri();
+                            if (null == tmp1)
+                                tmp1 = (String)m_cms.getRequestContext().getAttribute("resourcename");
+                            value = FilenameUtils.getName(tmp1);
+                        }
+                        if (value == null)
+                            value = tmp1;
                         break;
                     case 2:
                         // folder
@@ -950,6 +965,17 @@ public class CmsMacroResolver implements I_CmsMacroResolver {
                     case 8:
                         // versionid
                         value = OpenCms.getSystemInfo().getVersionId();
+                        break;
+                    case 9:
+                        // filename.base
+                        String tmp2 = m_resourceName;
+                        if (null == tmp2)
+                            tmp2 = m_cms.getRequestContext().getUri();
+                        if (null == tmp2)
+                            tmp2 = (String)m_cms.getRequestContext().getAttribute("resourcename");
+                        value = FilenameUtils.getBaseName(tmp2);
+                        if (value == null)
+                            value = tmp2;
                         break;
                     default:
                         // return the key "as is"
@@ -1086,6 +1112,13 @@ public class CmsMacroResolver implements I_CmsMacroResolver {
         if (CmsMacroResolver.KEY_CURRENT_TIME.equals(macro)) {
             // the key is the current system time
             return String.valueOf(System.currentTimeMillis());
+        } else if(CmsMacroResolver.KEY_CURRENT_DATE.equals(macro)) {
+            Calendar cal = Calendar.getInstance();
+            cal.set(Calendar.HOUR_OF_DAY, 0);
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+            return String.valueOf(cal.getTimeInMillis());
         } else if (macro.startsWith(CmsMacroResolver.KEY_CURRENT_TIME)) {
             // the key starts with the current system time
             macro = macro.substring(CmsMacroResolver.KEY_CURRENT_TIME.length()).trim();
