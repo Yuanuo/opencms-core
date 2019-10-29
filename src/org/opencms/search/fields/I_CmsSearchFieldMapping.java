@@ -119,4 +119,14 @@ public interface I_CmsSearchFieldMapping extends Serializable {
      * @param type the name of the type to set
      */
     void setType(String type);
+
+    /**
+     * @param joinby sep for multi mappings
+     */
+    void setJoinby(String joinby);
+    
+    /**
+     * @return sep for multi mappings
+     */
+    String getJoinby();
 }
