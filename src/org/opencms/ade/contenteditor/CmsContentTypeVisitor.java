@@ -49,6 +49,7 @@ import org.opencms.widgets.I_CmsComplexWidget;
 import org.opencms.widgets.I_CmsWidget;
 import org.opencms.xml.CmsXmlContentDefinition;
 import org.opencms.xml.CmsXmlException;
+import org.opencms.xml.CmsXmlUtils;
 import org.opencms.xml.content.CmsDefaultXmlContentHandler;
 import org.opencms.xml.content.CmsXmlContentTab;
 import org.opencms.xml.content.I_CmsXmlContentHandler;
@@ -794,6 +795,12 @@ public class CmsContentTypeVisitor {
         }
         ArrayList<DisplayTypeEvaluator> evaluators = new ArrayList<DisplayTypeEvaluator>();
         for (I_CmsXmlSchemaType subType : xmlContentDefinition.getTypeSequence()) {
+            if (subType instanceof CmsXmlNestedContentDefinition) {
+                CmsXmlNestedContentDefinition nested = (CmsXmlNestedContentDefinition)subType;
+                if (CmsXmlUtils.isMaxRecursionDepthExceeded(xmlContentDefinition, path, nested)) {
+                    continue;
+                }
+            }
             String subTypeName = null;
             String childPath = path + "/" + subType.getName();
             String subAttributeName = CmsContentService.getAttributeName(subType.getName(), typeName);
