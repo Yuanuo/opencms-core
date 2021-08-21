@@ -27,6 +27,7 @@
 
 package org.opencms.ade.detailpage;
 
+import org.apache.commons.lang3.StringUtils;
 import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.configuration.CmsParameterConfiguration;
@@ -238,6 +239,29 @@ public class CmsDefaultDetailPageHandler implements I_CmsDetailPageHandler {
         if (resType == null) {
             return null;
         }
+
+        // above detect type from parent folder is necessary, the data isn't in '.content', must skip it
+        String correctType = null;
+        // always correct real resource-type from detail resource in request context,
+        // to support data of any type place in another type's folder
+        CmsResource resource = cms.getRequestContext().getDetailResource();
+        if (null != resource && CmsStringUtil.isEqual(resource.getRootPath(), contentRootPath)) {
+            correctType = OpenCms.getResourceManager().getResourceType(resource).getTypeName();
+        }
+        // detect specified resource-type from customized target-detail-page
+        if (null != targetDetailPage && !targetDetailPage.startsWith("/")) {
+            // this rule support "type|detailPage" as parameter
+            String[] arr = targetDetailPage.split("\\|", 2);
+            String customType = arr[0].isEmpty() ? null : arr[0];
+            if (null == correctType && CmsStringUtil.isNotEmptyOrWhitespaceOnly(customType))
+                correctType = customType;
+            String customDetailPage = arr.length == 1 ? null : arr[1];
+            if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(customDetailPage))
+                targetDetailPage = customDetailPage; // customized and not empty, use it
+            else targetDetailPage = null; // customized but not matched, reset it
+        }
+        resType = null != correctType ? correctType : resType;
+
         if ((targetDetailPage != null) && manager.getDetailPages(cms, resType).contains(targetDetailPage)) {
             return targetDetailPage;
         }
