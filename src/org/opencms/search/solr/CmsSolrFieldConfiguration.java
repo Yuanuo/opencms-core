@@ -261,8 +261,8 @@ public class CmsSolrFieldConfiguration extends CmsSearchFieldConfiguration {
                             properties,
                             propertiesSearched);
                     }
-                    if (text.length() > 0) {
-                        text.append('\n');
+                    if (text.length() > 0 && mapResult != null && !mapResult.isEmpty()) {
+                        text.append(mapping.getJoinby() != null ? mapping.getJoinby() : "\n");
                     }
                     if (mapResult != null) {
                         text.append(mapResult);
