@@ -31,6 +31,9 @@
 
 package org.opencms.search.solr;
 
+import org.apache.solr.common.ConfigNode;
+import org.apache.solr.core.ConfigSetService;
+import org.apache.solr.util.DOMConfigNode;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -48,6 +51,8 @@ import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.schema.IndexSchema;
 
+import org.opencms.xml.CmsXmlException;
+import org.opencms.xml.CmsXmlUtils;
 import org.xml.sax.InputSource;
 
 /**
@@ -270,14 +275,13 @@ public class CmsSolrConfiguration {
 
         if (m_schema == null) {
             try (FileInputStream fis = new FileInputStream(getSolrSchemaFile())) {
-                InputSource solrSchema = new InputSource(fis);
                 m_schema = new IndexSchema(
-                    SOLR_SCHEMA_NAME,
-                    solrSchema,
-                    getSolrConfig().luceneMatchVersion,
-                    getSolrConfig().getResourceLoader(),
-                    getSolrConfig().getSubstituteProperties());
-            } catch (IOException e) {
+                        SOLR_SCHEMA_NAME,
+                        () -> new DOMConfigNode(CmsXmlUtils.unmarshalHelper(fis, false).getDocumentElement()),
+                        getSolrConfig().luceneMatchVersion,
+                        getSolrConfig().getResourceLoader(),
+                        getSolrConfig().getSubstituteProperties());
+            } catch (Exception e) {
                 CmsConfigurationException ex = new CmsConfigurationException(
                     Messages.get().container(
                         Messages.LOG_SOLR_ERR_SCHEMA_XML_NOT_FOUND_1,
