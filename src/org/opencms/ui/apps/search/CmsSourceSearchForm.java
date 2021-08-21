@@ -415,7 +415,12 @@ public class CmsSourceSearchForm extends VerticalLayout {
                 settings.setReplacepattern(m_oldName.getValue() + ";" + m_newName.getValue());
             } else {
 
-                settings.setReplacepattern(m_replacePattern.getValue());
+                String replacePatternValue = m_replacePattern.getValue();
+                if ("!force!empty!".equalsIgnoreCase(replacePatternValue)) {
+                    settings.setForceReplace(true);
+                    replacePatternValue = "";
+                }
+                settings.setReplacepattern(replacePatternValue);
             }
 
         }
