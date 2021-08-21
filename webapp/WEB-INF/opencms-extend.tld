@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<taglib xmlns="http://java.sun.com/xml/ns/javaee"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-jsptaglibrary_2_1.xsd"
+    version="2.1">
+
+    <description><![CDATA[
+    ]]></description>
+    <display-name>OpenCms JSP extension taglib</display-name>
+    <tlib-version>1.1</tlib-version>
+    <short-name>cmsExt</short-name>
+    <uri>http://www.opencms.org/taglib/cmsExt</uri>
+
+    <function>
+        <description><![CDATA[
+            segments a string as a list<string>.
+        ]]></description>
+        <name>segmentAsList</name>
+        <function-class>org.opencms.jsp.util.CmsJspElFunctionsExtend</function-class>
+        <function-signature>
+            java.util.List segmentAsList(java.lang.String)
+        </function-signature>
+    </function>
+    
+    <function>
+        <description><![CDATA[
+            segments 2nd string in 1st param, and wrapping with 3 and 4 param (prefix and suffix).
+        ]]></description>
+        <name>segmentAndWrapping</name>
+        <function-class>org.opencms.jsp.util.CmsJspElFunctionsExtend</function-class>
+        <function-signature>
+            java.lang.String segmentAndWrapping(java.lang.String, java.lang.String, java.lang.String, java.lang.String)
+        </function-signature>
+    </function>
+    
+</taglib>
