@@ -457,6 +457,9 @@ public class CmsCalendarWidget extends A_CmsWidget implements I_CmsADEWidget {
             if (CmsMacroResolver.isMacro(dateTimeValue, CmsMacroResolver.KEY_CURRENT_TIME)) {
                 // a macro is used, redisplay it
                 param.setStringValue(cms, dateTimeValue);
+            } else if (CmsMacroResolver.isMacro(dateTimeValue, CmsMacroResolver.KEY_CURRENT_DATE)) {
+                // a macro is used, redisplay it
+                param.setStringValue(cms, dateTimeValue);
             } else {
                 // a date value should be used
                 long dateTime;

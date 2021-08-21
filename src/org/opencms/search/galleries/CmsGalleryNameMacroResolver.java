@@ -27,6 +27,7 @@
 
 package org.opencms.search.galleries;
 
+import org.apache.commons.lang3.time.DateFormatUtils;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
@@ -45,6 +46,7 @@ import org.opencms.relations.CmsRelationFilter;
 import org.opencms.util.CmsCollectionsGenericWrapper;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.xml.A_CmsXmlDocument;
+import org.opencms.xml.types.CmsXmlDateTimeValue;
 import org.opencms.xml.types.I_CmsXmlContentValue;
 
 import java.util.Collection;
@@ -154,11 +156,16 @@ public class CmsGalleryNameMacroResolver extends CmsMacroResolver {
     public String getMacroValue(String macro) {
 
         if (macro.startsWith(PREFIX_VALUE)) {
-            String path = macro.substring(PREFIX_VALUE.length());
+            String[] arr = macro.substring(PREFIX_VALUE.length()).split(":", 2);
+            String path = arr[0];
             I_CmsXmlContentValue contentValue = m_content.getValue(path, m_contentLocale);
             String value = null;
             if (contentValue != null) {
-                value = contentValue.getStringValue(m_cms);
+                if (contentValue instanceof CmsXmlDateTimeValue && arr.length > 1 && !arr[1].isBlank()) {
+                    value = DateFormatUtils.format(((CmsXmlDateTimeValue)contentValue).getDateTimeValue(), arr[1]);
+                } else {
+                    value = contentValue.getStringValue(m_cms);
+                }
             }
             if (value == null) {
                 value = "";
