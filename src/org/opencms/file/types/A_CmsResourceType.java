@@ -48,6 +48,7 @@ import org.opencms.main.CmsRuntimeException;
 import org.opencms.main.OpenCms;
 import org.opencms.relations.CmsLink;
 import org.opencms.relations.I_CmsLinkParseable;
+import org.opencms.report.I_CmsReport;
 import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsMacroResolver;
@@ -608,11 +609,12 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
     }
 
     /**
-     * @see org.opencms.file.types.I_CmsResourceType#importResource(org.opencms.file.CmsObject, CmsSecurityManager, java.lang.String, org.opencms.file.CmsResource, byte[], List)
+     * @see org.opencms.file.types.I_CmsResourceType#importResource(org.opencms.file.CmsObject, org.opencms.db.CmsSecurityManager, org.opencms.report.I_CmsReport, java.lang.String, org.opencms.file.CmsResource, byte[], java.util.List)
      */
     public CmsResource importResource(
         CmsObject cms,
         CmsSecurityManager securityManager,
+        I_CmsReport report,
         String resourcename,
         CmsResource resource,
         byte[] content,
@@ -1291,11 +1293,11 @@ public abstract class A_CmsResourceType implements I_CmsResourceType {
                         links = linkParseable.parseLinks(cms, cms.readFile(undoneResource2));
                     } catch (CmsException e) {
                         if (LOG.isWarnEnabled()) {
-                            LOG.warn(e);
+                            LOG.warn(e.getLocalizedMessage(), e);
                         }
                     } catch (CmsRuntimeException e) {
                         if (LOG.isWarnEnabled()) {
-                            LOG.warn(e);
+                            LOG.warn(e.getLocalizedMessage(), e);
                         }
                     }
                 }

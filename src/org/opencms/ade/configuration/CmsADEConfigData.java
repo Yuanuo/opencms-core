@@ -31,9 +31,13 @@ import org.opencms.ade.configuration.CmsADEConfigDataInternal.AttributeValue;
 import org.opencms.ade.configuration.formatters.CmsFormatterBeanParser;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCacheState;
+import org.opencms.ade.configuration.formatters.CmsFormatterIndex;
+import org.opencms.ade.configuration.plugins.CmsSitePlugin;
 import org.opencms.ade.containerpage.shared.CmsContainer;
+import org.opencms.ade.containerpage.shared.CmsContainerElement;
 import org.opencms.ade.containerpage.shared.CmsFormatterConfig;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
+import org.opencms.ade.galleries.CmsAddContentRestriction;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
@@ -42,6 +46,7 @@ import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.CmsIconUtil;
+import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.jsp.util.CmsFunctionRenderer;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.main.CmsException;
@@ -59,6 +64,7 @@ import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.content.CmsXmlContentProperty;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -68,13 +74,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import org.apache.commons.logging.Log;
 
 import com.google.common.base.Optional;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -183,12 +194,21 @@ public class CmsADEConfigData {
         }
     }
 
+    /** Sitemap attribute for the upload folder. */
+    public static final String ATTR_BINARY_UPLOAD_TARGET = "binary.upload.target";
+
+    /** Prefix for logging special request log messages. */
     public static final String REQ_LOG_PREFIX = "[CmsADEConfigData] ";
 
+    /** Channel for logging special request log messages. */
     public static final String REQUEST_LOG_CHANNEL = "org.opencms.ade.configuration.CmsADEConfigData.request";
 
     /** The log instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsADEConfigData.class);
+
+    /** Prefixes for internal settings which might be passed as formatter keys to findFormatter(). */
+    private static final HashSet<String> systemSettingPrefixes = new HashSet<>(
+        Arrays.asList("element", "model", "source", "use", "cms", "is"));
 
     /** The wrapped configuration bean containing the actual data. */
     protected CmsADEConfigDataInternal m_data;
@@ -216,6 +236,26 @@ public class CmsADEConfigData {
 
     /** Lazily initialized cache for formatters by formatter key. */
     private Multimap<String, I_CmsFormatterBean> m_formattersByKey;
+
+    /** Loading cache for for formatters grouped by type. */
+    private LoadingCache<String, List<I_CmsFormatterBean>> m_formattersByTypeCache = CacheBuilder.newBuilder().build(
+        new CacheLoader<String, List<I_CmsFormatterBean>>() {
+
+            @Override
+            public List<I_CmsFormatterBean> load(String typeName) throws Exception {
+
+                List<I_CmsFormatterBean> result = new ArrayList<>();
+                for (I_CmsFormatterBean formatter : getActiveFormatters().values()) {
+                    if (formatter.getResourceTypeNames().contains(typeName)) {
+                        result.add(formatter);
+                    }
+                }
+                return result;
+            }
+        });
+
+    /** Cached shared setting overrides. */
+    private volatile ImmutableList<CmsUUID> m_sharedSettingOverrides;
 
     /** Set of names of active types.*/
     private Set<String> m_typesActive;
@@ -310,18 +350,38 @@ public class CmsADEConfigData {
     }
 
     /**
-     * Applies the formatter change sets of this and all parent configurations to a map of external (non-schema) formatters.<p>
+     * If the given formatter key has a sub-formatter suffix, returns the part before it,
+     * otherwise returns null.
      *
-     * @param formatters the external formatter map which will be modified
+     * @param key the formatter key
+     * @return the parent formatter key
+     */
+    public static final String getParentFormatterKey(String key) {
+
+        if (key == null) {
+            return null;
+        }
+        int separatorPos = key.lastIndexOf(CmsGwtConstants.FORMATTER_SUBKEY_SEPARATOR);
+        if (separatorPos == -1) {
+            return null;
+        }
+        return key.substring(0, separatorPos);
+
+    }
+
+    /**
+     * Applies the formatter change sets of this and all parent configurations to a formatter index
+     *
+     * @param formatterIndex the collection of formatters to apply the changes to
      *
      * @param formatterCacheState the formatter cache state from which new external formatters should be fetched
      */
     public void applyAllFormatterChanges(
-        Map<CmsUUID, I_CmsFormatterBean> formatters,
+        CmsFormatterIndex formatterIndex,
         CmsFormatterConfigurationCacheState formatterCacheState) {
 
         for (CmsFormatterChangeSet changeSet : getFormatterChangeSets()) {
-            changeSet.applyToFormatters(formatters, formatterCacheState);
+            changeSet.applyToFormatters(formatterIndex, formatterCacheState);
         }
     }
 
@@ -341,35 +401,33 @@ public class CmsADEConfigData {
         }
 
         CmsFormatterConfigurationCacheState formatterState = getCachedFormatters();
-        I_CmsFormatterBean result = formatterState.getFormatters().get(id);
+        I_CmsFormatterBean originalResult = formatterState.getFormatters().get(id);
+        I_CmsFormatterBean result = originalResult;
         if ((result != null) && (result.getKey() != null)) {
             String key = result.getKey();
-            Collection<I_CmsFormatterBean> activeFormattersForKey = getActiveFormattersByKey().get(key);
-            if (activeFormattersForKey.size() > 0) {
-                if (activeFormattersForKey.size() > 1) {
-                    String labels = ""
-                        + activeFormattersForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
-                    String message = "Ambiguous formatter for key '"
-                        + key
-                        + "' at '"
-                        + getBasePath()
-                        + "': found "
-                        + labels;
-                    LOG.warn(message);
-                    OpenCmsServlet.withRequestCache(
-                        reqCache -> reqCache.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
+            I_CmsFormatterBean resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), key);
+            if (resultForKey != null) {
+                result = resultForKey;
+            } else {
+                String parentKey = getParentFormatterKey(key);
+                if (parentKey != null) {
+                    resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), parentKey);
+                    if (resultForKey != null) {
+                        result = resultForKey;
+                    }
                 }
-                I_CmsFormatterBean original = result;
-                result = activeFormattersForKey.iterator().next();
-                String message = "Using substitute formatter "
-                    + getFormatterLabel(result)
-                    + " instead of "
-                    + getFormatterLabel(original)
-                    + " because of matching key.";
-                LOG.debug(message);
-                OpenCmsServlet.withRequestCache(
-                    reqCache -> reqCache.addLog(REQUEST_LOG_CHANNEL, "debug", REQ_LOG_PREFIX + message));
             }
+        }
+
+        if (result != originalResult) {
+            String message = "Using substitute formatter "
+                + getFormatterLabel(result)
+                + " instead of "
+                + getFormatterLabel(originalResult)
+                + " because of matching key.";
+            LOG.debug(message);
+            OpenCmsServlet.withRequestCache(
+                reqCache -> reqCache.addLog(REQUEST_LOG_CHANNEL, "debug", REQ_LOG_PREFIX + message));
         }
         return result;
     }
@@ -390,6 +448,13 @@ public class CmsADEConfigData {
             return null;
         }
 
+        if (systemSettingPrefixes.contains(name) || name.startsWith(CmsContainerElement.SYSTEM_SETTING_PREFIX)) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("System setting prefix used: " + name, new Exception());
+            }
+            return null;
+        }
+
         if (CmsUUID.isValidUUID(name)) {
             return findFormatter(new CmsUUID(name));
         }
@@ -398,45 +463,41 @@ public class CmsADEConfigData {
             return null;
         }
 
-        Collection<I_CmsFormatterBean> activeForKey = getActiveFormattersByKey().get(name);
-        if (activeForKey.size() > 0) {
-            if (activeForKey.size() > 1) {
-                String labels = "" + activeForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
-                String message = "Ambiguous formatter for key '"
-                    + name
-                    + "' at '"
-                    + getBasePath()
-                    + "': found "
-                    + labels;
-                LOG.warn(message);
-                OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
-            }
-            return activeForKey.iterator().next();
-        } else {
-            String message1 = "No local formatter found for key '"
-                + name
-                + "' at '"
-                + getBasePath()
-                + "', trying inactive formatters";
-            LOG.warn(message1);
-            OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message1));
-            Collection<I_CmsFormatterBean> allForKey = getFormattersByKey().get(name);
-            if (allForKey.size() > 0) {
-                if (allForKey.size() > 1) {
-                    String labels = "" + allForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
-                    String message = "Ambiguous formatter for key '"
-                        + name
-                        + "' at '"
-                        + getBasePath()
-                        + "': found "
-                        + labels;
-                    LOG.warn(message);
-                    OpenCmsServlet.withRequestCache(
-                        rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
-                }
-                return allForKey.iterator().next();
+        Multimap<String, I_CmsFormatterBean> active = getActiveFormattersByKey();
+        I_CmsFormatterBean result = getFormatterAndWarnIfAmbiguous(active, name);
+        if (result != null) {
+            return result;
+        }
+
+        String parentName = getParentFormatterKey(name);
+        if (parentName != null) {
+            result = getFormatterAndWarnIfAmbiguous(active, parentName);
+            if (result != null) {
+                return result;
             }
         }
+
+        String message1 = "No local formatter found for key '"
+            + name
+            + "' at '"
+            + getBasePath()
+            + "', trying inactive formatters";
+        LOG.warn(message1);
+        OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message1));
+
+        Multimap<String, I_CmsFormatterBean> all = getFormattersByKey();
+        result = getFormatterAndWarnIfAmbiguous(all, name);
+        if (result != null) {
+            return result;
+        }
+
+        if (parentName != null) {
+            result = getFormatterAndWarnIfAmbiguous(all, parentName);
+            if (result != null) {
+                return result;
+            }
+        }
+
         OpenCmsServlet.withRequestCache(
             rc -> rc.addLog(
                 REQUEST_LOG_CHANNEL,
@@ -453,9 +514,12 @@ public class CmsADEConfigData {
     public Map<CmsUUID, I_CmsFormatterBean> getActiveFormatters() {
 
         if (m_activeFormatters == null) {
-            Map<CmsUUID, I_CmsFormatterBean> result = Maps.newHashMap(getCachedFormatters().getAutoEnabledFormatters());
-            applyAllFormatterChanges(result, getCachedFormatters());
-            m_activeFormatters = result;
+            CmsFormatterIndex formatterIndex = new CmsFormatterIndex();
+            for (I_CmsFormatterBean formatter : getCachedFormatters().getAutoEnabledFormatters().values()) {
+                formatterIndex.addFormatter(formatter);
+            }
+            applyAllFormatterChanges(formatterIndex, getCachedFormatters());
+            m_activeFormatters = Collections.unmodifiableMap(formatterIndex.getFormattersWithAdditionalKeys());
         }
         return m_activeFormatters;
     }
@@ -478,6 +542,23 @@ public class CmsADEConfigData {
             result = Collections.unmodifiableSet(mutableResult);
             m_typesActive = result;
             return result;
+        }
+    }
+
+    /**
+     * Gets the 'add content' restriction for this configuration.
+     *
+     * @return the 'add content' restriction
+     */
+    public CmsAddContentRestriction getAddContentRestriction() {
+
+        getAncestorTypeNames();
+
+        CmsADEConfigData parentConfig = parent();
+        if (parentConfig == null) {
+            return m_data.getAddContentRestriction();
+        } else {
+            return parentConfig.getAddContentRestriction().merge(m_data.getAddContentRestriction());
         }
     }
 
@@ -807,6 +888,8 @@ public class CmsADEConfigData {
 
     /**
      * Gets the bean that represents the dynamic function availability.
+     *
+     * @param formatterConfig the formatter configuration state
      *
      * @return the dynamic function availability
      */
@@ -1168,6 +1251,82 @@ public class CmsADEConfigData {
     }
 
     /**
+     * Gets the list of structure ids of the shared setting overrides, ordered by increasing specificity.
+     *
+     * @return the list of structure ids of shared setting overrides
+     */
+    public ImmutableList<CmsUUID> getSharedSettingOverrides() {
+
+        if (m_sharedSettingOverrides != null) {
+            return m_sharedSettingOverrides;
+        }
+
+        CmsADEConfigData currentConfig = this;
+        List<CmsADEConfigData> relevantConfigurations = new ArrayList<>();
+        while (currentConfig != null) {
+            relevantConfigurations.add(currentConfig);
+            if (currentConfig.m_data.isRemoveSharedSettingOverrides()) {
+                // once we find a configuration where 'remove all shared setting overrides' is enabled,
+                // all parent configurations become irrelevant
+                break;
+            }
+            currentConfig = currentConfig.parent();
+        }
+
+        // order by ascending specificity
+        Collections.reverse(relevantConfigurations);
+
+        List<CmsUUID> ids = new ArrayList<>();
+        for (CmsADEConfigData config : relevantConfigurations) {
+            CmsUUID id = config.m_data.getSharedSettingOverride();
+            if (id != null) {
+                ids.add(id);
+            }
+        }
+        ImmutableList<CmsUUID> result = ImmutableList.copyOf(ids);
+        m_sharedSettingOverrides = result;
+        return result;
+    }
+
+    /**
+     * Gets the ids of site plugins which are active in this sitemap configuration.
+     *
+     * @return the ids of active site plugins
+     */
+    public Set<CmsUUID> getSitePluginIds() {
+
+        CmsADEConfigData parent = parent();
+        Set<CmsUUID> result;
+        if ((parent == null) || m_data.isRemoveAllPlugins()) {
+            result = new HashSet<>();
+        } else {
+            result = parent.getSitePluginIds();
+        }
+        result.removeAll(m_data.getRemovedPlugins());
+        result.addAll(m_data.getAddedPlugins());
+        return result;
+    }
+
+    /**
+     * Gets the list of site plugins active in this sitemap configuration.
+     *
+     * @return the list of active site plugins
+     */
+    public List<CmsSitePlugin> getSitePlugins() {
+
+        Set<CmsUUID> pluginIds = getSitePluginIds();
+        List<CmsSitePlugin> result = new ArrayList<>();
+        Map<CmsUUID, CmsSitePlugin> plugins = m_cache.getSitePlugins();
+        for (CmsUUID id : pluginIds) {
+            CmsSitePlugin sitePlugin = plugins.get(id);
+            if (sitePlugin != null) {
+                result.add(sitePlugin);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Gets the type ordering mode.
      *
      * @return the type ordering mode
@@ -1385,7 +1544,7 @@ public class CmsADEConfigData {
         if (parent != null) {
             return parent.isUseFormatterKeys();
         }
-        boolean defaultValue = false;
+        boolean defaultValue = true;
         LOG.debug("isUseFormatterKeys - using defaultValue " + defaultValue);
         return defaultValue;
     }
@@ -1408,6 +1567,20 @@ public class CmsADEConfigData {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Clears the internal formatter caches.
+     *
+     * <p>This should only be used for test cases.
+     */
+    protected void clearCaches() {
+
+        m_activeFormatters = null;
+        m_activeFormattersByKey = null;
+        m_formattersByKey = null;
+        m_formattersByJspId = null;
+        m_formattersByTypeCache.invalidateAll();
     }
 
     /**
@@ -1521,7 +1694,6 @@ public class CmsADEConfigData {
         CmsFormatterConfiguration schemaFormatters) {
 
         String typeName = resType.getTypeName();
-        CmsFormatterConfigurationCacheState formatterCacheState = getCachedFormatters();
         List<I_CmsFormatterBean> formatters = new ArrayList<I_CmsFormatterBean>();
         Set<String> types = new HashSet<String>();
         types.add(typeName);
@@ -1530,21 +1702,19 @@ public class CmsADEConfigData {
                 changeSet.applyToTypes(types);
             }
         }
+
         if ((schemaFormatters != null) && types.contains(typeName)) {
             for (I_CmsFormatterBean formatter : schemaFormatters.getAllFormatters()) {
                 formatters.add(formatter);
             }
+        }
 
-        }
-        Map<CmsUUID, I_CmsFormatterBean> externalFormattersById = Maps.newHashMap();
-        for (I_CmsFormatterBean formatter : formatterCacheState.getFormattersForType(typeName, true)) {
-            externalFormattersById.put(new CmsUUID(formatter.getId()), formatter);
-        }
-        applyAllFormatterChanges(externalFormattersById, formatterCacheState);
-        for (I_CmsFormatterBean formatter : externalFormattersById.values()) {
-            if (formatter.getResourceTypeNames().contains(typeName)) {
-                formatters.add(formatter);
-            }
+        try {
+            List<I_CmsFormatterBean> formattersForType = m_formattersByTypeCache.get(typeName);
+            formatters.addAll(formattersForType);
+        } catch (ExecutionException e) {
+            LOG.error(e.getLocalizedMessage(), e);
+
         }
         return CmsFormatterConfiguration.create(cms, formatters);
     }
@@ -1705,8 +1875,8 @@ public class CmsADEConfigData {
         if (m_activeFormattersByKey == null) {
             ArrayListMultimap<String, I_CmsFormatterBean> activeFormattersByKey = ArrayListMultimap.create();
             for (I_CmsFormatterBean formatter : getActiveFormatters().values()) {
-                if (formatter.getKey() != null) {
-                    activeFormattersByKey.put(formatter.getKey(), formatter);
+                for (String key : formatter.getAllKeys()) {
+                    activeFormattersByKey.put(key, formatter);
                 }
             }
             m_activeFormattersByKey = activeFormattersByKey;
@@ -1714,6 +1884,44 @@ public class CmsADEConfigData {
         return m_activeFormattersByKey;
     }
 
+    /**
+     * Gets a formatter with the given key from a multimap, and warns if there are multiple values
+     * for the key.
+     *
+     * @param formatterMap the formatter multimap
+     * @param name the formatter key
+     * @return the formatter for the key (null if none are found, the first one if multiple are found)
+     */
+    private I_CmsFormatterBean getFormatterAndWarnIfAmbiguous(
+        Multimap<String, I_CmsFormatterBean> formatterMap,
+        String name) {
+
+        I_CmsFormatterBean result;
+        result = null;
+        Collection<I_CmsFormatterBean> activeForKey = formatterMap.get(name);
+        if (activeForKey.size() > 0) {
+            if (activeForKey.size() > 1) {
+                String labels = "" + activeForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
+                String message = "Ambiguous formatter for key '"
+                    + name
+                    + "' at '"
+                    + getBasePath()
+                    + "': found "
+                    + labels;
+                LOG.warn(message);
+                OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
+            }
+            result = activeForKey.iterator().next();
+        }
+        return result;
+    }
+
+    /**
+     * Gets a user-friendly formatter label to use for logging.
+     *
+     * @param formatter a formatter bean
+     * @return the formatter label for the log
+     */
     private String getFormatterLabel(I_CmsFormatterBean formatter) {
 
         return formatter.getLocation() != null ? formatter.getLocation() : formatter.getId();
@@ -1746,8 +1954,8 @@ public class CmsADEConfigData {
         if (m_formattersByKey == null) {
             ArrayListMultimap<String, I_CmsFormatterBean> formattersByKey = ArrayListMultimap.create();
             for (I_CmsFormatterBean formatter : getCachedFormatters().getFormatters().values()) {
-                if (formatter.getKey() != null) {
-                    formattersByKey.put(formatter.getKey(), formatter);
+                for (String key : formatter.getAllKeys()) {
+                    formattersByKey.put(key, formatter);
                 }
             }
             m_formattersByKey = formattersByKey;

@@ -27,12 +27,15 @@
 
 package org.opencms.xml.containerpage;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.formatters.CmsSettingConfiguration;
 import org.opencms.main.OpenCms;
 import org.opencms.util.CmsUUID;
 import org.opencms.xml.content.CmsXmlContentProperty;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,7 +82,7 @@ public class CmsMacroFormatterBean extends CmsFormatterBean {
      * @param id the configuration id
      * @param defaultContentRootPath the root path to the default content
      * @param defaultContentStructureId the UUID of the default content resource
-     * @param settings the settings configuration
+     * @param settingConfig the settings configuration
      * @param isDetail <code>true</code> if detail formatter
      * @param isAutoEnabled <code>true</code> if auto enabled
      * @param displayType the display type
@@ -106,7 +109,7 @@ public class CmsMacroFormatterBean extends CmsFormatterBean {
         String id,
         String defaultContentRootPath,
         CmsUUID defaultContentStructureId,
-        Map<String, CmsXmlContentProperty> settings,
+        CmsSettingConfiguration settingConfig,
         boolean isAutoEnabled,
         boolean isDetail,
         String displayType,
@@ -123,6 +126,7 @@ public class CmsMacroFormatterBean extends CmsFormatterBean {
             jspRootPath,
             jspStructureId,
             null,
+            new HashSet<>(),
             minWidth,
             maxWidth,
             false,
@@ -132,12 +136,13 @@ public class CmsMacroFormatterBean extends CmsFormatterBean {
             "",
             Collections.<String> emptyList(),
             "",
+            Collections.emptyList(),
             niceName,
             description,
             resourceTypeNames,
             rank,
             id,
-            settings,
+            settingConfig,
             true,
             isAutoEnabled,
             isDetail,
@@ -207,18 +212,18 @@ public class CmsMacroFormatterBean extends CmsFormatterBean {
     }
 
     /**
-     * @see org.opencms.xml.containerpage.CmsFormatterBean#getSettings()
+     * @see org.opencms.xml.containerpage.CmsFormatterBean#getSettings(org.opencms.ade.configuration.CmsADEConfigData)
      */
     @Override
-    public Map<String, CmsXmlContentProperty> getSettings() {
+    public Map<String, CmsXmlContentProperty> getSettings(CmsADEConfigData config) {
 
         LinkedHashMap<String, CmsXmlContentProperty> settings = new LinkedHashMap<String, CmsXmlContentProperty>(
-            super.getSettings());
+            super.getSettings(config));
         for (CmsUUID formatterId : m_referencedFormatters.values()) {
             I_CmsFormatterBean formatter = OpenCms.getADEManager().getCachedFormatters(m_online).getFormatters().get(
                 formatterId);
             if (formatter != null) {
-                for (Entry<String, CmsXmlContentProperty> entry : formatter.getSettings().entrySet()) {
+                for (Entry<String, CmsXmlContentProperty> entry : formatter.getSettings(config).entrySet()) {
                     if (!settings.containsKey(entry.getKey())) {
                         settings.put(entry.getKey(), entry.getValue());
                     }

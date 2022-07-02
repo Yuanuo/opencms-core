@@ -27,12 +27,14 @@
 
 package org.opencms.ade.configuration.formatters;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.configuration.CmsTestConfigData;
 import org.opencms.ade.configuration.TestConfig;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsResource;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.main.CmsException;
 import org.opencms.main.OpenCms;
 import org.opencms.test.OpenCmsTestCase;
@@ -44,12 +46,14 @@ import org.opencms.xml.containerpage.I_CmsFormatterBean;
 import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentProperty;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -300,6 +304,133 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
     }
 
     /**
+     * Tests the shared setting / setting override feature.
+     *
+     * @throws Exception
+     */
+    public void testOverrideSettings() throws Exception {
+
+        CmsObject cms = OpenCms.initCmsObject(getCmsObject());
+        try {
+            createFolder(cms, "/system/override-test");
+            createFolder(cms, "/system/override-test/.content");
+            String folder = "/system/override-test/";
+            CmsResource jsp = createFile(cms, folder + "formatter.jsp", "jsp", "<div></div>");
+            String settingsConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "\n"
+                + "<SettingsConfigs xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/settings_config.xsd\">\n"
+                + "  <SettingsConfig language=\"en\">\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[include.foo]]></IncludeName>\n"
+                + "      <PropertyName><![CDATA[foo]]></PropertyName>\n"
+                + "      <DisplayName><![CDATA[value from shared setting]]></DisplayName>\n"
+                + "      <Description><![CDATA[value from shared setting]]></Description>\n"
+                + "      <Default><![CDATA[value from shared setting]]></Default>\n"
+                + "      <WidgetConfig><![CDATA[value from shared setting]]></WidgetConfig>\n"
+                + "      <Error><![CDATA[value from shared setting]]></Error>\n"
+                + "    </Setting>\n"
+                + "  </SettingsConfig>\n"
+                + "</SettingsConfigs>\n"
+                + "";
+            CmsResource sharedSettings = createFile(
+                cms,
+                folder + "shared-settings.xml",
+                "settings_config",
+                settingsConfigText);
+
+            String overrideConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "\n"
+                + "<SettingsConfigs xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/settings_config.xsd\">\n"
+                + "  <SettingsConfig language=\"en\">\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[include.foo]]></IncludeName>\n"
+                + "      <PropertyName><![CDATA[foo]]></PropertyName>\n"
+                + "      <Default><![CDATA[value from override]]></Default>\n"
+                + "    </Setting>\n"
+                + "  </SettingsConfig>\n"
+                + "</SettingsConfigs>\n"
+                + "";
+            CmsResource overrideFile = createFile(
+                cms,
+                folder + "override-settings.xml",
+                "settings_config",
+                overrideConfigText);
+
+            String formatterConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "\n"
+                + "<NewFormatters xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/new_formatter.xsd\">\n"
+                + "  <NewFormatter language=\"en\">\n"
+                + "    <NiceName><![CDATA[test formatter]]></NiceName>\n"
+                + "    <Type><![CDATA[binary]]></Type>\n"
+                + "    <Key><![CDATA[test-formatter]]></Key>\n"
+                + "    <Jsp>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA[/system/override-test/formatter.jsp]]></target>\n"
+                + "        <uuid>"
+                + jsp.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </Jsp>\n"
+                + "    <Rank><![CDATA[1000]]></Rank>\n"
+                + "    <Match>\n"
+                + "      <Types>\n"
+                + "        <ContainerType><![CDATA[element]]></ContainerType>\n"
+                + "      </Types>\n"
+                + "    </Match>\n"
+                + "    <AutoEnabled>true</AutoEnabled>\n"
+                + "    <SearchContent>true</SearchContent>\n"
+                + "    <StrictContainers>true</StrictContainers>\n"
+                + "    <IncludeSettings>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA[/system/override-test/shared-settings.xml]]></target>\n"
+                + "        <uuid>"
+                + sharedSettings.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </IncludeSettings>\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[include.foo]]></IncludeName>\n"
+                + "      <DisplayName><![CDATA[value from formatter]]></DisplayName>\n"
+                + "      <Widget><![CDATA[string]]></Widget>\n"
+                + "      <WidgetConfig><![CDATA[value from formatter]]></WidgetConfig>\n"
+                + "    </Setting>\n"
+                + "  </NewFormatter>\n"
+                + "</NewFormatters>\n"
+                + "";
+            createFile(cms, folder + "formatter.xml", "formatter_config", formatterConfigText);
+
+            String sitemapConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "\n"
+                + "<SitemapConfigurations xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/sitemap_config.xsd\">\n"
+                + "  <SitemapConfiguration language=\"en\">\n"
+                + "    <UseFormatterKeys>true</UseFormatterKeys>\n"
+                + "    <SharedSettingOverride>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA[/system/override-test/override-settings.xml]]></target>\n"
+                + "        <uuid>"
+                + overrideFile.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </SharedSettingOverride>\n"
+                + "  </SitemapConfiguration>\n"
+                + "</SitemapConfigurations>\n"
+                + "";
+            createFile(cms, folder + ".content/.config", "sitemap_config", sitemapConfigText);
+            OpenCms.getADEManager().waitForCacheUpdate(false);
+            OpenCms.getADEManager().waitForFormatterCache(false);
+            CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(cms, "/system/override-test");
+            I_CmsFormatterBean formatter = config.findFormatter("test-formatter");
+            CmsXmlContentProperty setting = formatter.getSettings(config).get("foo");
+            assertEquals("value from override", setting.getDefault());
+            assertEquals("value from formatter", setting.getWidgetConfiguration());
+            assertEquals("value from formatter", setting.getNiceName());
+            assertEquals("value from shared setting", setting.getError());
+        } finally {
+            delete("/system/override-test");
+        }
+    }
+
+    /**
      * Tests that the formatter cache is updated correctly.
      *
      * @throws Exception
@@ -503,6 +634,105 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
     }
 
     /**
+     * Tests that formatters added in lower sitemap configurations override those with overlapping key sets, and take over their keys.
+     *
+     * @throws CmsException if something goes wrong
+     */
+    public void testReplaceFormatterWithOverlappingKeys1() throws CmsException {
+
+        I_CmsFormatterBean f1 = createFormatterWithKey(TYPE_A, "f1", 1000, true, "alpha", "beta");
+        I_CmsFormatterBean f2 = createFormatterWithKey(TYPE_A, "f2", 1000, false, "beta", "gamma");
+        I_CmsFormatterBean f3 = createFormatterWithKey(TYPE_A, "f3", 1000, true, null);
+
+        CmsTestConfigData config = createConfig("/", f1, f2, f3);
+        CmsTestConfigData config2 = createConfig("/invalid-name", f1, f2, f3);
+        config2.setParent(config);
+        CmsFormatterChangeSet changeSet = new CmsFormatterChangeSet(
+            Collections.<String> emptyList(),
+            Arrays.asList("" + CmsUUID.getConstantUUID("f2")),
+            null,
+            false,
+            false,
+            null,
+            null);
+        config2.setFormatterChangeSet(changeSet);
+        assertEquals("only two formatters should be active", 2, config2.getActiveFormatters().size());
+        assertEquals("f2", config2.findFormatter("alpha").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("beta").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("gamma").getNiceName(Locale.ENGLISH));
+        assertEquals(
+            new HashSet<>(Arrays.asList("alpha", "beta", "gamma")),
+            config2.findFormatter("alpha").getAllKeys());
+
+    }
+
+    /**
+     * Tests that formatters added in lower sitemap configurations override those with overlapping key sets, and take over their keys.
+     *
+     * @throws CmsException if something goes wrong
+     */
+    public void testReplaceFormatterWithOverlappingKeys2() throws CmsException {
+
+        I_CmsFormatterBean f1 = createFormatterWithKey(TYPE_A, "f1", 1000, true, "alpha", "beta");
+        I_CmsFormatterBean f2 = createFormatterWithKey(TYPE_A, "f2", 1000, false, "gamma", "beta");
+        I_CmsFormatterBean f3 = createFormatterWithKey(TYPE_A, "f3", 1000, true, null);
+
+        CmsTestConfigData config = createConfig("/", f1, f2, f3);
+        CmsTestConfigData config2 = createConfig("/invalid-name", f1, f2, f3);
+        config2.setParent(config);
+        CmsFormatterChangeSet changeSet = new CmsFormatterChangeSet(
+            Collections.<String> emptyList(),
+            Arrays.asList("" + CmsUUID.getConstantUUID("f2")),
+            null,
+            false,
+            false,
+            null,
+            null);
+        config2.setFormatterChangeSet(changeSet);
+        assertEquals("only two formatters should be active", 2, config2.getActiveFormatters().size());
+        assertEquals("f2", config2.findFormatter("alpha").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("beta").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("gamma").getNiceName(Locale.ENGLISH));
+        assertEquals(
+            new HashSet<>(Arrays.asList("alpha", "beta", "gamma")),
+            config2.findFormatter("alpha").getAllKeys());
+
+    }
+
+    /**
+     * Tests that formatters added in lower sitemap configurations override those with overlapping key sets, and take over their keys.
+     *
+     * @throws CmsException if something goes wrong
+     */
+    public void testReplaceFormatterWithOverlappingKeys3() throws CmsException {
+
+        I_CmsFormatterBean f1 = createFormatterWithKey(TYPE_A, "f1", 1000, true, "alpha", "beta");
+        I_CmsFormatterBean f2 = createFormatterWithKey(TYPE_A, "f2", 1000, false, "alpha", "gamma");
+        I_CmsFormatterBean f3 = createFormatterWithKey(TYPE_A, "f3", 1000, true, null);
+
+        CmsTestConfigData config = createConfig("/", f1, f2, f3);
+        CmsTestConfigData config2 = createConfig("/invalid-name", f1, f2, f3);
+        config2.setParent(config);
+        CmsFormatterChangeSet changeSet = new CmsFormatterChangeSet(
+            Collections.<String> emptyList(),
+            Arrays.asList("" + CmsUUID.getConstantUUID("f2")),
+            null,
+            false,
+            false,
+            null,
+            null);
+        config2.setFormatterChangeSet(changeSet);
+        assertEquals("only two formatters should be active", 2, config2.getActiveFormatters().size());
+        assertEquals("f2", config2.findFormatter("alpha").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("beta").getNiceName(Locale.ENGLISH));
+        assertEquals("f2", config2.findFormatter("gamma").getNiceName(Locale.ENGLISH));
+        assertEquals(
+            new HashSet<>(Arrays.asList("alpha", "beta", "gamma")),
+            config2.findFormatter("alpha").getAllKeys());
+
+    }
+
+    /**
      * Tests that formatters with the same key override formatters inherited from parent sitemap configurations.
      *
      * @throws CmsException if something goes wrong
@@ -591,6 +821,36 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
     }
 
     /**
+     * Helper method to create a file with textual content.
+     *
+     * @param cms the CmsObject to use
+     * @param path the path
+     * @param typeName the type name
+     * @param content the content string (will be saved as UTF-8)
+     *
+     * @return the new resource
+     *
+     * @throws CmsException if something goes wrong
+     */
+    private CmsResource createFile(CmsObject cms, String path, String typeName, String content) throws CmsException {
+
+        I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(typeName);
+        return cms.createResource(path, type, content.getBytes(StandardCharsets.UTF_8), new ArrayList<>());
+    }
+
+    /**
+     * Helper method to create a folder.
+     *
+     * @param cms the CMS context
+     * @param path the path
+     * @throws CmsException if something goes wrong s
+     */
+    private void createFolder(CmsObject cms, String path) throws CmsException {
+
+        cms.createResource(path, 0, null, new ArrayList<>());
+    }
+
+    /**
      * Creates a formatter bean with the given resource type, name, rank, and auto-enabled status.
      *
      * @param resType
@@ -619,7 +879,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
         String resourceTypeName = resType;
         int rank = rank1;
         String id = "" + CmsUUID.getConstantUUID(name);
-        Map<String, CmsXmlContentProperty> settings = Maps.newHashMap();
+
         boolean isFromConfigFile = true;
         boolean isAutoEnabled = enabled;
         boolean isDetail = true;
@@ -628,6 +888,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             jspRootPath,
             jspStructureId,
             null,
+            new HashSet<>(),
             minWidth,
             maxWidth,
             preview,
@@ -638,12 +899,13 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             inlineCss,
             javascriptHeadIncludes,
             inlineJavascript,
+            Collections.emptyList(),
             niceName,
             null,
             Collections.singleton(resourceTypeName),
             rank,
             id,
-            settings,
+            new CmsSettingConfiguration(),
             isFromConfigFile,
             isAutoEnabled,
             isDetail,
@@ -721,7 +983,8 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
         String name,
         int rank1,
         boolean enabled,
-        String key) {
+        String key,
+        String... keyAliases) {
 
         Set<String> containerTypes = new HashSet<String>();
         containerTypes.add("foo");
@@ -741,7 +1004,6 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
         String resourceTypeName = resType;
         int rank = rank1;
         String id = "" + CmsUUID.getConstantUUID(name);
-        Map<String, CmsXmlContentProperty> settings = Maps.newHashMap();
         boolean isFromConfigFile = true;
         boolean isAutoEnabled = enabled;
         boolean isDetail = true;
@@ -750,6 +1012,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             jspRootPath,
             jspStructureId,
             key,
+            new HashSet<>(Arrays.asList(keyAliases)),
             minWidth,
             maxWidth,
             preview,
@@ -760,12 +1023,13 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             inlineCss,
             javascriptHeadIncludes,
             inlineJavascript,
+            Collections.emptyList(),
             niceName,
             null,
             Collections.singleton(resourceTypeName),
             rank,
             id,
-            settings,
+            new CmsSettingConfiguration(),
             isFromConfigFile,
             isAutoEnabled,
             isDetail,
@@ -812,7 +1076,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
         String resourceTypeName = TYPE_A;
         int rank = rank1;
         String id = "" + CmsUUID.getConstantUUID(name);
-        Map<String, CmsXmlContentProperty> settings = Maps.newHashMap();
+        CmsSettingConfiguration settings = new CmsSettingConfiguration();
         boolean isFromConfigFile = true;
         boolean isAutoEnabled = true;
         boolean isDetail = true;
@@ -821,6 +1085,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             jspRootPath,
             jspStructureId,
             null,
+            new HashSet<>(),
             minWidth,
             maxWidth,
             preview,
@@ -830,6 +1095,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             inlineCss,
             javascriptHeadIncludes,
             inlineJavascript,
+            Collections.emptyList(),
             niceName,
             null,
             Collections.singleton(resourceTypeName),
@@ -886,6 +1152,7 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             jspRootPath,
             jspStructureId,
             null,
+            new HashSet<>(),
             minWidth,
             maxWidth,
             preview,
@@ -895,12 +1162,13 @@ public class TestFormatterConfiguration extends OpenCmsTestCase {
             inlineCss,
             javascriptHeadIncludes,
             inlineJavascript,
+            Collections.emptyList(),
             niceName,
             null,
             Collections.singleton(resourceTypeName),
             rank,
             id,
-            settings,
+            new CmsSettingConfiguration(),
             isFromConfigFile,
             isAutoEnabled,
             isDetail,

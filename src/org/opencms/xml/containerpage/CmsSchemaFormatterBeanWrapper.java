@@ -27,6 +27,8 @@
 
 package org.opencms.xml.containerpage;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
@@ -42,6 +44,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.apache.commons.logging.Log;
@@ -85,6 +88,22 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
         m_contentHandler = contentHandler;
         m_wrappedFormatter = wrappedBean;
         m_cms = cms;
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAliasKeys()
+     */
+    public Set<String> getAliasKeys() {
+
+        return Collections.emptySet();
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAllKeys()
+     */
+    public Set<String> getAllKeys() {
+
+        return Collections.emptySet();
     }
 
     /**
@@ -185,6 +204,9 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
         return m_wrappedFormatter.getJspStructureId();
     }
 
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getKey()
+     */
     public String getKey() {
 
         return null;
@@ -254,12 +276,19 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     }
 
     /**
-     *
-     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getSettings()
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getSettings(org.opencms.ade.configuration.CmsADEConfigData)
      */
-    public Map<String, CmsXmlContentProperty> getSettings() {
+    public Map<String, CmsXmlContentProperty> getSettings(CmsADEConfigData config) {
 
         return m_contentHandler.getSettings(m_cms, m_elementResource);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getTemplatePlugins()
+     */
+    public List<CmsTemplatePlugin> getTemplatePlugins() {
+
+        return Collections.emptyList();
     }
 
     /**
@@ -360,6 +389,15 @@ public class CmsSchemaFormatterBeanWrapper implements I_CmsFormatterBean {
     public boolean useMetaMappingsForNormalElements() {
 
         return false;
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#withKeys(java.util.Collection)
+     */
+    public Optional<I_CmsFormatterBean> withKeys(Collection<String> keys) {
+
+        // no keys supported
+        return Optional.empty();
     }
 
 }

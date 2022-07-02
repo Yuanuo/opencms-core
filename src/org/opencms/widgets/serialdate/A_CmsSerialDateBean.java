@@ -87,6 +87,7 @@ public abstract class A_CmsSerialDateBean implements I_CmsSerialDateBean {
         Date serialEndDate,
         int occurrences,
         SortedSet<Date> exceptions) {
+
         m_startDate = new GregorianCalendar();
         m_endDate = new GregorianCalendar();
         m_startDate.setTime(startDate);

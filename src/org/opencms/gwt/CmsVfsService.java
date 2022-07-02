@@ -43,6 +43,7 @@ import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.history.CmsHistoryProject;
 import org.opencms.file.history.I_CmsHistoryResource;
 import org.opencms.file.types.CmsResourceTypeBinary;
+import org.opencms.file.types.CmsResourceTypeFolder;
 import org.opencms.file.types.CmsResourceTypeImage;
 import org.opencms.file.types.CmsResourceTypePlain;
 import org.opencms.file.types.CmsResourceTypePointer;
@@ -928,6 +929,27 @@ public class CmsVfsService extends CmsGwtService implements I_CmsVfsService {
     }
 
     /**
+     * @see org.opencms.gwt.shared.rpc.I_CmsVfsService#getUploadFolderInfo(java.lang.String)
+     */
+    public CmsListInfoBean getUploadFolderInfo(String path) throws CmsRpcException {
+
+        CmsObject cms = getCmsObject();
+        try {
+            CmsResource res = cms.readResource(path, CmsResourceFilter.IGNORE_EXPIRATION);
+            return getPageInfo(res);
+        } catch (CmsVfsResourceNotFoundException e) {
+            String title = CmsResource.getName(path);
+            CmsListInfoBean info = new CmsListInfoBean(title, path, new ArrayList<>());
+            info.setResourceType(CmsResourceTypeFolder.getStaticTypeName());
+            info.setBigIconClasses(CmsIconUtil.getIconClasses(CmsResourceTypeFolder.getStaticTypeName(), "", false));
+            return info;
+        } catch (Throwable e) {
+            error(e);
+            return null; // will never be reached
+        }
+    }
+
+    /**
      * @see org.opencms.gwt.shared.rpc.I_CmsVfsService#loadLinkInfo(org.opencms.util.CmsUUID)
      */
     public CmsExternalLinkInfoBean loadLinkInfo(CmsUUID structureId) throws CmsRpcException {
@@ -1124,14 +1146,15 @@ public class CmsVfsService extends CmsGwtService implements I_CmsVfsService {
     }
 
     /**
-     * @see org.opencms.gwt.shared.rpc.I_CmsVfsService#saveProperties(org.opencms.gwt.shared.property.CmsPropertyChangeSet)
+     * @see org.opencms.gwt.shared.rpc.I_CmsVfsService#saveProperties(org.opencms.gwt.shared.property.CmsPropertyChangeSet, boolean)
      */
-    public void saveProperties(CmsPropertyChangeSet changes) throws CmsRpcException {
+    public void saveProperties(CmsPropertyChangeSet changes, boolean updateIndex) throws CmsRpcException {
 
         String origSiteRoot = getCmsObject().getRequestContext().getSiteRoot();
         try {
             getCmsObject().getRequestContext().setSiteRoot("");
             CmsPropertyEditorHelper helper = new CmsPropertyEditorHelper(getCmsObject());
+            helper.setUpdateIndex(updateIndex);
             helper.saveProperties(changes);
         } catch (Throwable t) {
             error(t);
@@ -1248,8 +1271,9 @@ public class CmsVfsService extends CmsGwtService implements I_CmsVfsService {
         String title = titleProp.getValue(defaultTitle);
         String path = cms.getSitePath(resource);
         String subtitle = path;
+        String icon = CmsIconUtil.getIconClasses(CmsIconUtil.getDisplayType(cms, resource), resource.getName(), false);
 
-        CmsBrokenLinkBean result = new CmsBrokenLinkBean(resource.getStructureId(), title, subtitle, typeName);
+        CmsBrokenLinkBean result = new CmsBrokenLinkBean(resource.getStructureId(), title, subtitle, typeName, icon);
 
         return result;
     }

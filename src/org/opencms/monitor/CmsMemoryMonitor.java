@@ -33,6 +33,8 @@ import org.opencms.cache.CmsVfsMemoryObjectCache;
 import org.opencms.configuration.CmsSystemConfiguration;
 import org.opencms.db.CmsCacheSettings;
 import org.opencms.db.CmsDriverManager;
+import org.opencms.db.CmsDriverManager.ResourceOUCacheKey;
+import org.opencms.db.CmsDriverManager.ResourceOUMap;
 import org.opencms.db.CmsPublishedResource;
 import org.opencms.db.CmsSecurityManager;
 import org.opencms.file.CmsFile;
@@ -80,6 +82,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import javax.mail.internet.InternetAddress;
 
@@ -89,6 +92,8 @@ import org.apache.commons.collections.map.LRUMap;
 import org.apache.commons.logging.Log;
 
 import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 
 /**
  * Monitors OpenCms memory consumption.<p>
@@ -154,7 +159,7 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     }
 
     /** The concurrency level for the guava caches. */
-    private static final int CONCURRENCY_LEVEL = 8;
+    static final int CONCURRENCY_LEVEL = 8;
 
     /** Set interval for clearing the caches to 10 minutes. */
     private static final int INTERVAL_CLEAR = 1000 * 60 * 10;
@@ -223,7 +228,7 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     private Map<String, CmsUser> m_cacheUser;
 
     /** Cache for user groups. */
-    private Map<String, List<CmsGroup>> m_cacheUserGroups;
+    private CmsGroupListCache m_cacheUserGroups;
 
     /** Cache for user lists. */
     private Map<String, List<CmsUser>> m_cacheUserList;
@@ -273,6 +278,9 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     /** Memory percentage to reach to go to warning level. */
     private int m_maxUsagePercent;
 
+    /** Cache for resource OU data. */
+    private LoadingCache<ResourceOUCacheKey, ResourceOUMap> m_resourceOuCache;
+
     /** The average memory status. */
     private CmsMemoryStatus m_memoryAverage;
 
@@ -300,6 +308,19 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     public CmsMemoryMonitor() {
 
         m_monitoredObjects = new HashMap<String, Object>();
+        LoadingCache<ResourceOUCacheKey, ResourceOUMap> resourceOUCache = CacheBuilder.newBuilder().expireAfterWrite(
+            60,
+            TimeUnit.SECONDS).build(new CacheLoader<ResourceOUCacheKey, ResourceOUMap>() {
+
+                @Override
+                public ResourceOUMap load(ResourceOUCacheKey key) throws Exception {
+
+                    ResourceOUMap result = new CmsDriverManager.ResourceOUMap();
+                    result.init(key.getDriverManager(), key.getDbContext());
+                    return result;
+                }
+            });
+        m_resourceOuCache = resourceOUCache;
     }
 
     /**
@@ -832,20 +853,6 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     }
 
     /**
-     * Caches the given list of user groups under the given cache key.<p>
-     *
-     * @param key the cache key
-     * @param userGroups the list of user groups to cache
-     */
-    public void cacheUserGroups(String key, List<CmsGroup> userGroups) {
-
-        if (m_disabled.get(CacheType.USERGROUPS) != null) {
-            return;
-        }
-        m_cacheUserGroups.put(key, userGroups);
-    }
-
-    /**
      * Caches the given list of users under the given cache key.<p>
      *
      * @param key the cache key
@@ -925,6 +932,29 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
         flushCache(CacheType.PROPERTY_LIST);
         flushCache(CacheType.PROJECT_RESOURCES);
         flushCache(CacheType.PUBLISHED_RESOURCES);
+    }
+
+    /**
+     * Clears the caches for publishing.
+     */
+    public void clearCacheForPublishing() {
+
+        flushCache(CacheType.USER);
+        flushCache(CacheType.GROUP);
+        flushCache(CacheType.ORG_UNIT);
+        flushCache(CacheType.ACL);
+        flushCache(CacheType.PERMISSION);
+        flushCache(CacheType.HAS_ROLE);
+        flushCache(CacheType.ROLE_LIST);
+        flushCache(CacheType.USER_LIST);
+        flushCache(CacheType.PROJECT);
+        flushCache(CacheType.RESOURCE);
+        flushCache(CacheType.RESOURCE_LIST);
+        flushCache(CacheType.PROPERTY);
+        flushCache(CacheType.PROPERTY_LIST);
+        flushCache(CacheType.PROJECT_RESOURCES);
+        flushCache(CacheType.PUBLISHED_RESOURCES);
+
     }
 
     /**
@@ -1076,6 +1106,7 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
                     break;
                 case ROLE_LIST:
                     m_cacheRoleLists.clear();
+                    m_resourceOuCache.invalidateAll();
                     break;
                 case USER:
                     m_cacheUser.clear();
@@ -1321,6 +1352,16 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
 
         flushCache(CacheType.USERGROUPS);
         flushCache(CacheType.USER_LIST);
+    }
+
+    /**
+     * Flushes the user group cache for the user with the given id.
+     *
+     * @param id the user id
+     **/
+    public void flushUserGroups(CmsUUID id) {
+
+        m_cacheUserGroups.clearUser(id);
     }
 
     /**
@@ -1671,13 +1712,14 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     /**
      * Returns the user groups list cached with the given cache key or <code>null</code> if not found.<p>
      *
+     * @param userId the user id
      * @param key the cache key to look for
      *
      * @return the user groups list cached with the given cache key
      */
-    public List<CmsGroup> getCachedUserGroups(String key) {
+    public List<CmsGroup> getCachedUserGroups(CmsUUID userId, String key) {
 
-        return m_cacheUserGroups.get(key);
+        return m_cacheUserGroups.getGroups(userId, key);
     }
 
     /**
@@ -1755,6 +1797,16 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
     }
 
     /**
+     * Gets the group list cache.
+     *
+     * @return the group list cache
+     */
+    public CmsGroupListCache getGroupListCache() {
+
+        return m_cacheUserGroups;
+    }
+
+    /**
      * Returns the log count.<p>
      *
      * @return the log count
@@ -1773,6 +1825,16 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
 
         m_memoryCurrent.update();
         return m_memoryCurrent;
+    }
+
+    /**
+     * Gets the cache for OU / resource associations.
+     *
+     * @return the cache
+     */
+    public LoadingCache<ResourceOUCacheKey, ResourceOUMap> getResourceOuCache() {
+
+        return m_resourceOuCache;
     }
 
     /**
@@ -1881,7 +1943,7 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
         register(CmsDriverManager.class.getName() + ".orgUnitCache", m_cacheOrgUnit);
 
         // user groups list cache
-        m_cacheUserGroups = createLRUCacheMap(cacheSettings.getUserGroupsCacheSize());
+        m_cacheUserGroups = new CmsGroupListCache(cacheSettings.getUserGroupsCacheSize());
         register(CmsDriverManager.class.getName() + ".userGroupsCache", m_cacheUserGroups);
 
         // project cache
@@ -2356,6 +2418,9 @@ public class CmsMemoryMonitor implements I_CmsScheduledJob {
         }
         if (obj instanceof Map) {
             return Integer.toString(((Map<?, ?>)obj).size());
+        }
+        if (obj instanceof CmsGroupListCache) {
+            return "" + ((CmsGroupListCache)obj).size();
         }
         return "-";
     }

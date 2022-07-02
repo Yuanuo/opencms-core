@@ -62,8 +62,6 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.logging.Log;
 
-import com.google.common.collect.Maps;
-
 /**
  * Wrapper subclass of CmsResource with some convenience methods.<p>
  */
@@ -396,7 +394,7 @@ public class CmsJspResourceWrapper extends CmsResource {
         try {
             CmsLocaleGroup localeGroup = m_cms.getLocaleGroupService().readLocaleGroup(this);
             Map<Locale, CmsResource> resourcesByLocale = localeGroup.getResourcesByLocale();
-            Map<String, CmsJspResourceWrapper> result = Maps.newHashMap();
+            Map<String, CmsJspResourceWrapper> result = new HashMap<>();
             for (Map.Entry<Locale, CmsResource> entry : resourcesByLocale.entrySet()) {
                 result.put(entry.getKey().toString(), CmsJspResourceWrapper.wrap(m_cms, entry.getValue()));
             }
@@ -840,6 +838,23 @@ public class CmsJspResourceWrapper extends CmsResource {
             m_imageBean = new CmsJspImageBean(getCmsObject(), this, null);
         }
         return m_imageBean;
+    }
+
+    /**
+     * Returns this resource wrapper.<p>
+     *
+     * This is included because in case {@link org.opencms.jsp.util.CmsJspStandardContextBean#getWrap()} is used, the result may be
+     * either a {@link org.opencms.jsp.util.CmsJspObjectValueWrapper} or a {@link CmsJspResourceWrapper}.
+     * Using {@link #getToResource()} on the result will always return a resource wrapper this way.<p>
+     *
+     * @return this resource wrapper
+     *
+     * @see org.opencms.jsp.util.CmsJspStandardContextBean#getWrap()
+     * @see org.opencms.jsp.util.CmsJspObjectValueWrapper#getToResource()
+     */
+    public CmsJspResourceWrapper getToResource() {
+
+        return this;
     }
 
     /**

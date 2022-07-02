@@ -31,7 +31,6 @@ import org.opencms.ade.containerpage.client.CmsContainerpageEvent.EventType;
 import org.opencms.ade.containerpage.client.ui.CmsConfirmRemoveDialog;
 import org.opencms.ade.containerpage.client.ui.CmsContainerPageContainer;
 import org.opencms.ade.containerpage.client.ui.CmsContainerPageElementPanel;
-import org.opencms.ade.containerpage.client.ui.CmsElementOptionBar;
 import org.opencms.ade.containerpage.client.ui.CmsGroupContainerElementPanel;
 import org.opencms.ade.containerpage.client.ui.CmsRemovedElementDeletionDialog;
 import org.opencms.ade.containerpage.client.ui.CmsSmallElementsHandler;
@@ -59,6 +58,7 @@ import org.opencms.ade.containerpage.shared.rpc.I_CmsContainerpageService;
 import org.opencms.ade.containerpage.shared.rpc.I_CmsContainerpageServiceAsync;
 import org.opencms.ade.contenteditor.client.CmsContentEditor;
 import org.opencms.gwt.client.CmsCoreProvider;
+import org.opencms.gwt.client.I_CmsElementToolbarContext;
 import org.opencms.gwt.client.dnd.CmsCompositeDNDController;
 import org.opencms.gwt.client.dnd.CmsDNDHandler;
 import org.opencms.gwt.client.dnd.I_CmsDNDController;
@@ -83,6 +83,7 @@ import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -496,6 +497,9 @@ public final class CmsContainerpageController {
      */
     private class ReloadElementAction extends CmsRpcAction<Map<String, CmsContainerElementData>> {
 
+        /** The callback to execute after the reload. */
+        private Runnable m_callback;
+
         /** The requested client id's. */
         private Set<String> m_clientIds;
 
@@ -503,11 +507,13 @@ public final class CmsContainerpageController {
          * Constructor.<p>
          *
          * @param clientIds the client id's to reload
+         * @param callback the callback to execute after the reload
          */
-        public ReloadElementAction(Set<String> clientIds) {
+        public ReloadElementAction(Set<String> clientIds, Runnable callback) {
 
             super();
             m_clientIds = clientIds;
+            m_callback = callback;
         }
 
         /**
@@ -572,6 +578,9 @@ public final class CmsContainerpageController {
             m_handler.updateClipboard(result);
             resetEditButtons();
             CmsContainerpageController.get().fireEvent(new CmsContainerpageEvent(EventType.elementEdited));
+            if (m_callback != null) {
+                m_callback.run();
+            }
         }
     }
 
@@ -740,6 +749,9 @@ public final class CmsContainerpageController {
 
     /** Flag if the container-page has changed. */
     private boolean m_pageChanged;
+
+    /** The publish lock checker. */
+    private CmsPublishLockChecker m_publishLockChecker = new CmsPublishLockChecker(this);
 
     /** Timer to handle window resize. */
     private Timer m_resizeTimer;
@@ -1119,7 +1131,7 @@ public final class CmsContainerpageController {
         elementId = getServerId(elementId);
         removeContainerElements(elementId);
         addToRecentList(elementId, null);
-        reloadElements(new String[] {relatedElementId});
+        reloadElements(new String[] {relatedElementId}, () -> {/*do nothing*/});
     }
 
     /**
@@ -2132,7 +2144,7 @@ public final class CmsContainerpageController {
         });
         updateDetailPreviewStyles();
         updateButtonsForCurrentView();
-
+        startPublishLockCheck();
     }
 
     /**
@@ -2526,20 +2538,39 @@ public final class CmsContainerpageController {
     }
 
     /**
+     * Reloads the content for the given elements and related elements.
+     *
+     * @param ids the element ids
+     * @param callback the callback to execute after the reload
+     */
+    public void reloadElements(Collection<String> ids, Runnable callback) {
+
+        Set<String> related = new HashSet<String>();
+        for (String id : ids) {
+            related.addAll(getRelatedElementIds(id));
+        }
+        if (!related.isEmpty()) {
+            ReloadElementAction action = new ReloadElementAction(related, callback);
+            action.execute();
+        }
+    }
+
+    /**
      * Reloads the content for the given element and all related elements.<p>
      *
      * Call this if the element content has changed.<p>
      *
-     * @param ids the element id's
+     * @param ids the element ids
+     * @param callback the callback to execute after the reload
      */
-    public void reloadElements(String[] ids) {
+    public void reloadElements(String[] ids, Runnable callback) {
 
         Set<String> related = new HashSet<String>();
         for (int i = 0; i < ids.length; i++) {
             related.addAll(getRelatedElementIds(ids[i]));
         }
         if (!related.isEmpty()) {
-            ReloadElementAction action = new ReloadElementAction(related);
+            ReloadElementAction action = new ReloadElementAction(related, callback);
             action.execute();
         }
     }
@@ -2635,8 +2666,19 @@ public final class CmsContainerpageController {
             public void run() {
 
                 Window.Location.assign(m_originalUrl);
+                Timer timer2 = new Timer() {
+
+                    @Override
+                    public void run() {
+
+                        Window.Location.reload();
+                    }
+
+                };
+                timer2.schedule(100);
             }
         };
+
         timer.schedule(150);
 
     }
@@ -2761,8 +2803,12 @@ public final class CmsContainerpageController {
      *
      * @param elementWidget the element to replace
      * @param elementId the id of the replacing content
+     * @param callback  the callback to execute after the element is replaced
      */
-    public void replaceElement(final CmsContainerPageElementPanel elementWidget, final String elementId) {
+    public void replaceElement(
+        final CmsContainerPageElementPanel elementWidget,
+        final String elementId,
+        Runnable callback) {
 
         final CmsRpcAction<CmsContainerElementData> action = new CmsRpcAction<CmsContainerElementData>() {
 
@@ -2797,8 +2843,9 @@ public final class CmsContainerpageController {
 
                             public void run() {
 
-                                // nothing to do
-
+                                if (callback != null) {
+                                    callback.run();
+                                }
                             }
                         });
                     } catch (Exception e) {
@@ -3360,6 +3407,38 @@ public final class CmsContainerpageController {
     }
 
     /**
+     * Starts the publish lock check.
+     */
+    public void startPublishLockCheck() {
+
+        Set<CmsUUID> elementIds = new HashSet<>();
+        processPageContent(new I_PageContentVisitor() {
+
+            public boolean beginContainer(String name, CmsContainer container) {
+
+                return true;
+            }
+
+            public void endContainer() {
+
+                // do nothing
+            }
+
+            public void handleElement(CmsContainerPageElementPanel element) {
+
+                if (element.hasWritePermission() && element.getLockInfo().isPublishLock()) {
+                    CmsUUID structureId = element.getStructureId();
+                    if (structureId != null) {
+                        elementIds.add(structureId);
+                    }
+                }
+            }
+        });
+
+        m_publishLockChecker.addIdsToCheck(elementIds);
+    }
+
+    /**
      * Tells the controller that group-container editing has stopped.<p>
      */
     public void stopEditingGroupcontainer() {
@@ -3379,6 +3458,9 @@ public final class CmsContainerpageController {
         return CmsCoreProvider.get().unlock(structureId);
     }
 
+    /**
+     * Updates he
+     */
     public void updateButtonsForCurrentView() {
 
         String nonDefaultViewClass = I_CmsLayoutBundle.INSTANCE.containerpageCss().nonDefaultView();
@@ -3981,7 +4063,8 @@ public final class CmsContainerpageController {
                 message = Messages.get().key(Messages.GUI_SWITCH_EDIT_LEVEL_1, Integer.valueOf(m_currentEditLevel));
             }
             reinitializeButtons();
-            hasEditables = !CmsDomUtil.getElementsByClass(CmsElementOptionBar.CSS_CLASS).isEmpty();
+            hasEditables = !CmsDomUtil.getElementsByClass(
+                I_CmsElementToolbarContext.ELEMENT_OPTION_BAR_CSS_CLASS).isEmpty();
         }
         if (previousLevel != m_currentEditLevel) {
             CmsNotification.get().send(Type.NORMAL, message);
@@ -4108,7 +4191,7 @@ public final class CmsContainerpageController {
      * @param data the data to send
      */
     private native void sendBeacon(String url, String data) /*-{
-		$wnd.navigator.sendBeacon(url, data);
+        $wnd.navigator.sendBeacon(url, data);
     }-*/;
 
     /**
@@ -4178,16 +4261,15 @@ public final class CmsContainerpageController {
         for (Element elem : CmsDomUtil.getElementsByClass(CmsGwtConstants.CLASS_DETAIL_PREVIEW)) {
             elem.removeClassName(CmsGwtConstants.CLASS_DETAIL_PREVIEW);
         }
+        boolean defaultDetailPage = detailTypes.contains(CmsGwtConstants.DEFAULT_DETAILPAGE_TYPE);
 
         processPageContent(new I_PageContentVisitor() {
 
-            boolean m_first = true;
             boolean m_isdetail = false;
 
             public boolean beginContainer(String name, CmsContainer container) {
 
                 m_isdetail = container.isDetailViewContainer();
-                m_first = true;
                 return true;
             }
 
@@ -4198,10 +4280,9 @@ public final class CmsContainerpageController {
 
             public void handleElement(CmsContainerPageElementPanel element) {
 
-                if (m_first && m_isdetail && detailTypes.contains(element.getResourceType())) {
+                if (m_isdetail && (defaultDetailPage || detailTypes.contains(element.getResourceType()))) {
                     element.addStyleName(CmsGwtConstants.CLASS_DETAIL_PREVIEW);
                 }
-                m_first = false;
             }
         });
 

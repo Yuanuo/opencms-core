@@ -61,7 +61,6 @@ import org.opencms.gwt.client.ui.input.form.CmsInfoBoxFormFieldPanel;
 import org.opencms.gwt.client.ui.input.form.CmsWidgetFactoryRegistry;
 import org.opencms.gwt.client.ui.input.form.I_CmsFormSubmitHandler;
 import org.opencms.gwt.client.ui.input.form.I_CmsFormWidgetMultiFactory;
-import org.opencms.gwt.client.util.CmsDebugLog;
 import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsAdditionalInfoBean;
@@ -246,7 +245,10 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
         Map<String, String> settingPresets)
     throws NoFormatterException {
 
-        super(Messages.get().key(Messages.GUI_PROPERTY_DIALOG_TITLE_0), new CmsForm(false), 700);
+        super(Messages.get().key(Messages.GUI_PROPERTY_DIALOG_TITLE_0), new CmsForm(false), null);
+        setAnimationEnabled(false);
+        setUseAnimation(false);
+        addStyleName(I_CmsLayoutBundle.INSTANCE.elementSettingsDialogCss().elementSettingsDialog());
         m_presets = settingPresets != null ? settingPresets : new HashMap<String, String>();
         CmsContainerElementData elementBean = settingsConfig.getElementData();
         m_elementWidget = elementWidget;
@@ -304,12 +306,10 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
                 CmsFormatterConfigCollection formattersForContainer = m_elementBean.getFormatters().get(m_containerId);
                 for (CmsFormatterConfig formatter : formattersForContainer) {
                     formatters.put(formatter.getKeyOrId(), formatter.getLabel());
-                    CmsDebugLog.consoleLog("Item: " + formatter.getId() + " => " + formatter.getLabel());
                     m_formatterSelect.setTitle(formatter.getKeyOrId(), formatter.getJspRootPath());
                 }
                 m_formatterSelect.setItems(formatters);
                 String currentFormatterValue = m_elementBean.getFormatterConfig(m_containerId).getKeyOrId();
-                CmsDebugLog.consoleLog("Initial value: " + currentFormatterValue);
                 m_formatter = currentFormatterValue;
                 m_formatterSelect.selectValue(currentFormatterValue);
                 m_formatterSelect.addValueChangeHandler(new ValueChangeHandler<String>() {
@@ -344,7 +344,7 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
                 CmsFormRow.installTooltipEventHandlers(help, tooltipProvider);
                 formatterFieldset.add(formatterWidget);
             }
-            if (isDeveloper || m_controller.getData().isModelPage() || isEditableModelGroup) {
+            if (m_controller.getData().isModelPage() || isEditableModelGroup) {
                 CmsFieldSet modelGroupFieldSet = new CmsFieldSet();
                 modelGroupFieldSet.setLegend(Messages.get().key(Messages.GUI_CREATE_NEW_LEGEND_0
 
@@ -454,6 +454,15 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
     }
 
     /**
+     * @see org.opencms.gwt.client.ui.input.form.CmsFormDialog#center()
+     */
+    @Override
+    public void center() {
+
+        show();
+    }
+
+    /**
      * @see org.opencms.gwt.client.ui.input.form.I_CmsFormWidgetMultiFactory#createFormWidget(java.lang.String, java.util.Map, com.google.common.base.Optional)
      */
     public I_CmsFormWidget createFormWidget(
@@ -465,9 +474,22 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
             if ((defaultValue != null) && defaultValue.isPresent() && widgetParams.containsKey(defaultValue.get())) {
                 key = key + CmsSelectBox.NOTNULL_SUFFIX;
             }
+            Map<String, String> newParams = new HashMap<>();
+            newParams.putAll(widgetParams);
+            newParams.put(CmsSelectBox.OPTION_RESIZABLE, "false");
+            widgetParams = newParams;
         }
 
         return CmsWidgetFactoryRegistry.instance().createFormWidget(key, widgetParams, defaultValue);
+    }
+
+    /**
+     * @see com.google.gwt.user.client.ui.PopupPanel#setPopupPosition(int, int)
+     */
+    @Override
+    public void setPopupPosition(int left, int top) {
+
+        // positioning handled via CSS
     }
 
     /**
@@ -477,17 +499,11 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
     public void show() {
 
         super.show();
-        truncateForm();
-    }
+        // positioning handled by CSS
+        getElement().getStyle().clearPosition();
+        getElement().getStyle().clearLeft();
+        getElement().getStyle().clearTop();
 
-    /**
-     * Truncates the form panel.<p>
-     */
-    public void truncateForm() {
-
-        if (getWidth() > 0) {
-            getForm().getWidget().truncate("settings_truncation", getWidth() - 20);
-        }
     }
 
     /**
@@ -584,7 +600,6 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
             }
         }
         getForm().render();
-        truncateForm();
     }
 
     /**

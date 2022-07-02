@@ -31,6 +31,7 @@ import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCache;
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
+import org.opencms.ade.galleries.CmsAddContentRestriction;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
@@ -120,11 +121,20 @@ public class CmsConfigurationReader {
     /** The default locale for configuration objects. */
     public static final Locale DEFAULT_LOCALE = CmsLocaleManager.getLocale("en");
 
+    /** The AddContentReplacements node name. */
+    public static final String N_ADD_CONTENT_RESTRICTION = "AddContentRestriction";
+
     /** Node name for added formatters. */
     public static final String N_ADD_FORMATTER = "AddFormatter";
 
     /** Node name for the nested content with the added formatters. */
     public static final String N_ADD_FORMATTERS = "AddFormatters";
+
+    /** The AddPlugin node name. */
+    public static final String N_ADD_PLUGIN = "AddPlugin";
+
+    /** The AddPlugins node name. */
+    public static final String N_ADD_PLUGINS = "AddPlugins";
 
     /** The Attribute node name. */
     public static final String N_ATTRIBUTE = "Attribute";
@@ -143,6 +153,12 @@ public class CmsConfigurationReader {
 
     /** The detail pages disabled node name. */
     public static final String N_DETAIL_PAGES_DISABLED = "DetailPagesDisabled";
+
+    /** The SharedSettingOverride node name. */
+    public static final String N_SHARED_SETTING_OVERRIDE = "SharedSettingOverride";
+
+    /** The RemoveAllSharedSettingOverrides node name. */
+    public static final String N_REMOVE_ALL_SHARED_SETTING_OVERRIDES = "RemoveAllSharedSettingOverrides";
 
     /** The disabled node name. */
     public static final String N_DISABLED = "Disabled";
@@ -228,6 +244,9 @@ public class CmsConfigurationReader {
     /** The folder path node name. */
     public static final String N_PATH = "Path";
 
+    /** The Plugin node name. */
+    public static final String N_PLUGIN = "Plugin";
+
     /** The  PreferDetailPagesForLocalContents node name. */
     public static final String N_PREFER_DETAIL_PAGES_FOR_LOCAL_CONTENTS = "PreferDetailPagesForLocalContents";
 
@@ -246,6 +265,9 @@ public class CmsConfigurationReader {
     /** Field name for the 'Remove all functions' setting. */
     public static final String N_REMOVE_ALL_FUNCTIONS = "RemoveAllFunctions";
 
+    /** The RemoveAllPlugins node name. */
+    public static final String N_REMOVE_ALL_PLUGINS = "RemoveAllPlugins";
+
     /** Node name for removed formatters. */
     public static final String N_REMOVE_FORMATTER = "RemoveFormatter";
 
@@ -254,6 +276,12 @@ public class CmsConfigurationReader {
 
     /** The remove function node name. */
     public static final String N_REMOVE_FUNCTIONS = "RemoveFunctions";
+
+    /** The RemovePlugin node name. */
+    public static final String N_REMOVE_PLUGIN = "RemovePlugin";
+
+    /** The RemovePlugins node name. */
+    public static final String N_REMOVE_PLUGINS = "RemovePlugins";
 
     /** The resource type node name. */
     public static final String N_RESOURCE_TYPE = "ResourceType";
@@ -492,14 +520,14 @@ public class CmsConfigurationReader {
         for (I_CmsXmlContentValueLocation node : root.getSubValues(N_MODEL_PAGE)) {
             try {
                 parseModelPage(node);
-            } catch (CmsException e) {
+            } catch (Exception e) {
                 LOG.warn(e.getLocalizedMessage(), e);
             }
         }
         for (I_CmsXmlContentLocation node : root.getSubValues(N_DETAIL_PAGE)) {
             try {
                 parseDetailPage(node);
-            } catch (CmsException e) {
+            } catch (Exception e) {
                 LOG.warn(e.getLocalizedMessage(), e);
             }
         }
@@ -507,6 +535,13 @@ public class CmsConfigurationReader {
         for (I_CmsXmlContentLocation node : root.getSubValues(N_FUNCTION_REF)) {
             parseFunctionReference(node);
         }
+
+        CmsUUID sharedSettingOverride = null;
+        for (I_CmsXmlContentValueLocation node : root.getSubValues(N_SHARED_SETTING_OVERRIDE)) {
+            sharedSettingOverride = ((CmsXmlVfsFileValue)node.getValue()).getLink(m_cms).getStructureId();
+        }
+
+        boolean removeSharedSettingOverrides = getBoolean(root, N_REMOVE_ALL_SHARED_SETTING_OVERRIDES);
 
         boolean removeFunctions = false;
         removeFunctions = getBoolean(root, N_REMOVE_ALL_FUNCTIONS);
@@ -536,6 +571,10 @@ public class CmsConfigurationReader {
                 }
             }
         }
+
+        boolean removeAllPlugins = getBoolean(root, N_REMOVE_ALL_PLUGINS);
+        Set<CmsUUID> pluginsToRemove = readInternalLinkListTargetIds(root, N_REMOVE_PLUGINS, N_PLUGIN);
+        Set<CmsUUID> pluginsToAdd = readInternalLinkListTargetIds(root, N_ADD_PLUGINS, N_PLUGIN);
 
         boolean removeAllFormatters = getBoolean(root, N_REMOVE_ALL_FORMATTERS);
         CmsFormatterChangeSet formatterChangeSet = parseFormatterChangeSet(
@@ -599,6 +638,11 @@ public class CmsConfigurationReader {
             attributes.put(key, value);
         }
 
+        CmsAddContentRestriction addContentRestriction = CmsAddContentRestriction.read(
+            m_cms,
+            root,
+            N_ADD_CONTENT_RESTRICTION);
+
         CmsADEConfigDataInternal result = new CmsADEConfigDataInternal(
             m_cms,
             content.getFile(),
@@ -621,8 +665,14 @@ public class CmsConfigurationReader {
             removeFunctions,
             functions,
             functionsToRemove,
+            removeAllPlugins,
+            pluginsToAdd,
+            pluginsToRemove,
             useFormatterKeys,
             typeOrderingMode,
+            addContentRestriction,
+            sharedSettingOverride,
+            removeSharedSettingOverrides,
             attributes);
         return result;
     }
@@ -695,9 +745,8 @@ public class CmsConfigurationReader {
      * Parses model page data from the XML content.<p>
      *
      * @param node the XML content node
-     * @throws CmsException if something goes wrong
      */
-    public void parseModelPage(I_CmsXmlContentLocation node) throws CmsException {
+    public void parseModelPage(I_CmsXmlContentLocation node) {
 
         CmsXmlVfsFileValue pageValue = (CmsXmlVfsFileValue)node.getSubValue(N_PAGE).getValue();
         CmsLink link = pageValue.getUncheckedLink();
@@ -958,10 +1007,8 @@ public class CmsConfigurationReader {
      * Parses the detail pages from an XML content node.<p>
      *
      * @param node the XML content node
-     *
-     * @throws CmsException if something goes wrong
      */
-    protected void parseDetailPage(I_CmsXmlContentLocation node) throws CmsException {
+    protected void parseDetailPage(I_CmsXmlContentLocation node) {
 
         I_CmsXmlContentValueLocation pageLoc = node.getSubValue(N_PAGE);
         String typeName = getString(node.getSubValue(N_TYPE));
@@ -1068,6 +1115,36 @@ public class CmsConfigurationReader {
             propConfig = propConfig.cloneWithTop(true);
         }
         m_propertyConfigs.add(propConfig);
+    }
+
+    /**
+     * Helper method for reading the target ids from a list of internal links two levels nested.
+     *
+     * @param root the parent location
+     * @param childName the node name for the children
+     * @param grandchildName the node name for the grandchildren
+     *
+     * @return the set of target ids collected from the grandchildren
+     */
+    private Set<CmsUUID> readInternalLinkListTargetIds(
+        I_CmsXmlContentLocation root,
+        String childName,
+        String grandchildName) {
+
+        Set<CmsUUID> result = new LinkedHashSet<>();
+        for (I_CmsXmlContentValueLocation parent : root.getSubValues(childName)) {
+            for (I_CmsXmlContentValueLocation node : parent.getSubValues(grandchildName)) {
+                CmsXmlVfsFileValue value = (CmsXmlVfsFileValue)node.getValue();
+                CmsLink link = value.getLink(m_cms);
+                if (link != null) {
+                    CmsUUID structureId = link.getStructureId();
+                    if (structureId != null) {
+                        result.add(link.getStructureId());
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     /**

@@ -87,16 +87,14 @@ import com.vaadin.ui.Window.CloseListener;
 import com.vaadin.ui.themes.ValoTheme;
 
 /**
- * Main class of Log managment app.<p>
+ * Main class of Log management app.<p>
  */
 public class CmsLogFileApp extends A_CmsWorkplaceApp implements I_CmsCRUDApp<Logger> {
 
     /**Log folder path.*/
-    protected static final String LOG_FOLDER = OpenCms.getSystemInfo().getLogFileRfsPath() == null
-    ? ""
-    : OpenCms.getSystemInfo().getLogFileRfsPath().substring(
-        0,
-        OpenCms.getSystemInfo().getLogFileRfsPath().lastIndexOf(File.separatorChar) + 1);
+    protected static final String LOG_FOLDER =
+            OpenCms.getSystemInfo().getLogFileRfsFolder() == null ?
+                    "" : OpenCms.getSystemInfo().getLogFileRfsFolder();
 
     /**Path to channel settings view.*/
     protected static String PATH_LOGCHANNEL = "log-channel";
@@ -124,42 +122,18 @@ public class CmsLogFileApp extends A_CmsWorkplaceApp implements I_CmsCRUDApp<Log
      */
     public static String getDirectLogFile(Logger logger) {
 
-        String test = "";
-        int count = 0;
-        // select the Appender from logger
-        for (Appender appender : logger.getAppenders().values()) {
-            // only use file appenders
-            if (CmsLogFileApp.isFileAppender(appender)) {
-                String fileName = CmsLogFileApp.getFileName(appender);
-                String temp = "";
-                temp = fileName.substring(fileName.lastIndexOf(File.separatorChar) + 1);
-                test = test + temp;
-                count++;
-                break;
-            }
-        }
-
-        //iterate all parent loggers until a logger with appender was found
-        while (!logger.equals(LogManager.getRootLogger())) {
-
-            logger = logger.getParent();
-            // if no Appender found from logger, select the Appender from parent logger
-            if (count == 0) {
-                for (Appender appender : logger.getAppenders().values()) {
-                    // only use file appenders
-                    if (CmsLogFileApp.isFileAppender(appender)) {
-                        String fileName = CmsLogFileApp.getFileName(appender);
-                        String temp = "";
-                        temp = fileName.substring(fileName.lastIndexOf(File.separatorChar) + 1);
-                        test = test + temp;
-                        count++;
-                        break;
-                    }
+        LoggerConfig conf = logger.get();
+        while (conf != null) {
+            for (Appender appender : conf.getAppenders().values()) {
+                if (CmsLogFileApp.isFileAppender(appender)) {
+                    String path = CmsLogFileApp.getFileName(appender);
+                    String name = path.substring(path.lastIndexOf(File.separatorChar) + 1);
+                    return name;
                 }
             }
+            conf = conf.getParent();
         }
-
-        return test;
+        return null;
     }
 
     /**
@@ -440,42 +414,8 @@ public class CmsLogFileApp extends A_CmsWorkplaceApp implements I_CmsCRUDApp<Log
      */
     public String getLogFile(Logger logger) {
 
-        String test = "";
-        int count = 0;
-        // select the Appender from logger
-        for (Appender appender : logger.getAppenders().values()) {
-            // only use file appenders
-            if (CmsLogFileApp.isFileAppender(appender)) {
-                String fileName = CmsLogFileApp.getFileName(appender);
-                String temp = "";
-                temp = fileName.substring(fileName.lastIndexOf(File.separatorChar) + 1);
-                test = test + temp;
-                count++;
-                break;
-            }
-        }
+        return getDirectLogFile(logger);
 
-        //iterate all parent loggers until a logger with appender was found
-        while (!logger.equals(LogManager.getRootLogger())) {
-
-            logger = logger.getParent();
-            // if no Appender found from logger, select the Appender from parent logger
-            if (count == 0) {
-                for (Appender appender : logger.getAppenders().values()) {
-                    // only use file appenders
-                    if (CmsLogFileApp.isFileAppender(appender)) {
-                        String fileName = CmsLogFileApp.getFileName(appender);
-                        String temp = "";
-                        temp = fileName.substring(fileName.lastIndexOf(File.separatorChar) + 1);
-                        test = test + temp;
-                        count++;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return test;
     }
 
     /**

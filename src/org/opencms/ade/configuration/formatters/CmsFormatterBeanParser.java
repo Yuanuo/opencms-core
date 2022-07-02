@@ -29,6 +29,7 @@ package org.opencms.ade.configuration.formatters;
 
 import org.opencms.ade.configuration.CmsConfigurationReader;
 import org.opencms.ade.configuration.CmsPropertyConfig;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
@@ -154,6 +155,9 @@ public class CmsFormatterBeanParser {
     public static final String N_FORMATTERS = "Formatters";
 
     /** Content value node name. */
+    public static final String N_GROUP = "Group";
+
+    /** Content value node name. */
     public static final String N_HEAD_INCLUDE_CSS = "HeadIncludeCss";
 
     /** Content value node name. */
@@ -173,6 +177,9 @@ public class CmsFormatterBeanParser {
 
     /** Content value node name. */
     public static final String N_KEY = "Key";
+
+    /** Content value node name. */
+    public static final String N_KEY_ALIAS = "KeyAlias";
 
     /** Node name. */
     public static final String N_MACRO = "Macro";
@@ -208,6 +215,9 @@ public class CmsFormatterBeanParser {
     public static final String N_PLACEHOLDER_STRING_TEMPLATE = "PlaceholderStringTemplate";
 
     /** Content value node name. */
+    public static final String N_PLUGIN = "Plugin";
+
+    /** Content value node name. */
     public static final String N_PREVIEW = "Preview";
 
     /** Content value node name. */
@@ -224,6 +234,9 @@ public class CmsFormatterBeanParser {
 
     /** Node name. */
     public static final String N_STRING_TEMPLATE = "StringTemplate";
+
+    /** XML node name. */
+    public static final String N_TARGET = "Target";
 
     /** Content value node name. */
     public static final String N_TYPE = "Type";
@@ -249,8 +262,8 @@ public class CmsFormatterBeanParser {
     /** Parsed field. */
     int m_width;
 
-    /** Additional setting configurations for includes. */
-    private Map<CmsUUID, List<CmsXmlContentProperty>> m_additionalSettingConfigs = new HashMap<>();
+    /** Additional setting configurations for includes. Entries consist of structure ids of setting definition files as keys and the corresponding setting definition maps as entries. */
+    private Map<CmsUUID, Map<CmsSharedSettingKey, CmsXmlContentProperty>> m_additionalSettingConfigs = new HashMap<>();
 
     /** Parsed field. */
     private boolean m_autoEnabled;
@@ -300,9 +313,6 @@ public class CmsFormatterBeanParser {
     /** Setting configurations read from content. **/
     private List<CmsXmlContentProperty> m_settingList = new ArrayList<>();
 
-    /** Settings merged with included settings. */
-    private Map<String, CmsXmlContentProperty> m_settings = new HashMap<>();
-
     /**
      * Creates a new parser instance.<p>
      *
@@ -311,7 +321,9 @@ public class CmsFormatterBeanParser {
      * @param cms the CMS context to use for parsing
      * @param settingConfigs the additional setting configurations used for includes
      */
-    public CmsFormatterBeanParser(CmsObject cms, Map<CmsUUID, List<CmsXmlContentProperty>> settingConfigs) {
+    public CmsFormatterBeanParser(
+        CmsObject cms,
+        Map<CmsUUID, Map<CmsSharedSettingKey, CmsXmlContentProperty>> settingConfigs) {
 
         m_cms = cms;
         m_additionalSettingConfigs = settingConfigs;
@@ -344,7 +356,6 @@ public class CmsFormatterBeanParser {
     public I_CmsFormatterBean parse(CmsXmlContent content, String location, String id)
     throws CmsException, ParseException {
 
-        String path = content.getFile().getRootPath();
         I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(content.getFile());
         boolean isMacroFromatter = CmsFormatterConfigurationCache.TYPE_MACRO_FORMATTER.equals(type.getTypeName());
         boolean isFlexFormatter = CmsFormatterConfigurationCache.TYPE_FLEX_FORMATTER.equals(type.getTypeName());
@@ -376,52 +387,16 @@ public class CmsFormatterBeanParser {
         parseSettings(root);
         List<I_CmsXmlContentValue> settingIncludes = content.getValues(N_INCLUDE_SETTINGS, en);
         settingIncludes = Lists.reverse(settingIncludes); // make defaults from earlier include files 'win' when merging them into a map
-        Map<String, CmsXmlContentProperty> includesByIncludeName = new HashMap<>();
+        List<CmsUUID> includeIds = new ArrayList<>();
         for (I_CmsXmlContentValue settingInclude : settingIncludes) {
             try {
                 CmsXmlVfsFileValue includeFileVal = (CmsXmlVfsFileValue)settingInclude;
                 CmsUUID includeSettingsId = includeFileVal.getLink(m_cms).getStructureId();
-                List<CmsXmlContentProperty> includedSettings = m_additionalSettingConfigs.get(includeSettingsId);
-                if (includedSettings == null) {
-                    continue;
-                }
-                for (CmsXmlContentProperty prop : includedSettings) {
-                    String includeName = prop.getIncludeName(prop.getName());
-                    if (includeName != null) {
-                        CmsXmlContentProperty existingProp = includesByIncludeName.get(includeName);
-                        if (existingProp != null) {
-                            LOG.warn("Conflict with included setting configuration: " + path);
-                        }
-                        includesByIncludeName.put(includeName, prop);
-                    }
-                }
+                includeIds.add(includeSettingsId);
             } catch (Exception e) {
                 LOG.error(e.getLocalizedMessage(), e);
             }
         }
-
-        Map<String, CmsXmlContentProperty> mergedSettings = new LinkedHashMap<>();
-
-        for (CmsXmlContentProperty setting : m_settingList) {
-            String includeName = setting.getIncludeName(setting.getName());
-            if (includeName == null) {
-                LOG.warn("Neither name nor include name given in setting definition in " + path);
-                continue;
-            }
-            CmsXmlContentProperty defaultSetting = includesByIncludeName.get(includeName);
-            CmsXmlContentProperty mergedSetting;
-            if (defaultSetting != null) {
-                mergedSetting = setting.mergeDefaults(defaultSetting);
-            } else {
-                mergedSetting = setting;
-            }
-            if (mergedSetting.getName() == null) {
-                LOG.warn("Invalid setting without name in " + path);
-                continue;
-            }
-            mergedSettings.put(mergedSetting.getName(), mergedSetting);
-        }
-        m_settings = mergedSettings;
 
         String isDetailStr = getString(root, N_DETAIL, "false");
         boolean isDetail = Boolean.parseBoolean(isDetailStr);
@@ -429,22 +404,27 @@ public class CmsFormatterBeanParser {
         String displayType = getString(root, N_DISPLAY, null);
         if (CmsStringUtil.isEmptyOrWhitespaceOnly(displayType) || "false".equals(displayType)) {
             displayType = null;
-        } else if (!m_settings.containsKey(SETTING_DISPLAY_TYPE)) {
-            m_settings.put(
-                SETTING_DISPLAY_TYPE,
-                new CmsXmlContentProperty(
-                    SETTING_DISPLAY_TYPE,
-                    "string",
-                    "hidden",
-                    null,
-                    null,
-                    null,
-                    displayType,
-                    null,
-                    null,
-                    null,
-                    null));
         }
+
+        String key = getString(root, N_KEY, "").trim();
+        if (key.equals("")) {
+            key = null;
+        }
+        Set<String> aliasKeys = new HashSet<>();
+        for (I_CmsXmlContentValueLocation aliasKeyLoc : root.getSubValues(N_KEY_ALIAS)) {
+            String aliasKey = aliasKeyLoc.getValue().getStringValue(m_cms);
+            aliasKey = aliasKey.trim();
+            if (!aliasKey.equals("")) {
+                aliasKeys.add(aliasKey);
+            }
+        }
+
+        CmsSettingConfiguration settingConfig = new CmsSettingConfiguration(
+            m_settingList,
+            m_additionalSettingConfigs,
+            includeIds,
+            key,
+            displayType);
 
         String isAllowSettingsStr = getString(root, N_ALLOWS_SETTINGS_IN_EDITOR, "false");
         boolean isAllowSettings = Boolean.parseBoolean(isAllowSettingsStr);
@@ -463,14 +443,11 @@ public class CmsFormatterBeanParser {
         String useMetaMappinsForNormalElementsStr = getString(root, N_USE_META_MAPPINGS_FOR_NORMAL_ELEMENTS, "false");
         boolean useMetaMappingsForNormalElements = Boolean.parseBoolean(useMetaMappinsForNormalElementsStr);
 
+        List<CmsTemplatePlugin> plugins = CmsTemplatePlugin.parsePlugins(m_cms, root, N_PLUGIN);
+
         // Functions which just have been created don't have any matching rules, but should fit anywhere
         boolean strictMode = !isFunction;
         parseMatch(root, strictMode);
-
-        String key = getString(root, N_KEY, "").trim();
-        if (key.equals("")) {
-            key = null;
-        }
 
         m_key = key;
 
@@ -512,7 +489,7 @@ public class CmsFormatterBeanParser {
                     id,
                     defContentRes != null ? defContentRes.getRootPath() : null,
                     defContentRes != null ? defContentRes.getStructureId() : null,
-                    m_settings,
+                    settingConfig,
                     m_autoEnabled,
                     isDetail,
                     displayType,
@@ -542,7 +519,7 @@ public class CmsFormatterBeanParser {
                     id,
                     defContentRes != null ? defContentRes.getRootPath() : null,
                     defContentRes != null ? defContentRes.getStructureId() : null,
-                    m_settings,
+                    settingConfig,
                     m_autoEnabled,
                     isDetail,
                     displayType,
@@ -598,6 +575,7 @@ public class CmsFormatterBeanParser {
                     m_formatterResource.getRootPath(),
                     m_formatterResource.getStructureId(),
                     m_key,
+                    aliasKeys,
                     functionFormatter.getStructureId(),
                     m_width,
                     m_maxWidth,
@@ -606,10 +584,11 @@ public class CmsFormatterBeanParser {
                     m_inlineCss.toString(),
                     m_jsPaths,
                     m_inlineJs.toString(),
+                    plugins,
                     m_niceName,
                     description,
                     id,
-                    m_settings,
+                    settingConfig,
                     isAllowSettings,
                     isStrictContainers,
                     rparams);
@@ -619,6 +598,7 @@ public class CmsFormatterBeanParser {
                     m_formatterResource.getRootPath(),
                     m_formatterResource.getStructureId(),
                     m_key,
+                    aliasKeys,
                     m_width,
                     m_maxWidth,
                     m_preview,
@@ -628,12 +608,13 @@ public class CmsFormatterBeanParser {
                     m_inlineCss.toString(),
                     m_jsPaths,
                     m_inlineJs.toString(),
+                    plugins,
                     m_niceName,
                     description,
                     m_resourceType,
                     m_rank,
                     id,
-                    m_settings,
+                    settingConfig,
                     true,
                     m_autoEnabled,
                     isDetail,

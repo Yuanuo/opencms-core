@@ -29,12 +29,21 @@ package org.opencms.ade.publish.client;
 
 import org.opencms.ade.publish.shared.CmsPublishResource;
 import org.opencms.ade.publish.shared.CmsWorkflowAction;
+import org.opencms.gwt.client.CmsCoreProvider;
+import org.opencms.gwt.client.rpc.CmsRpcAction;
 import org.opencms.gwt.client.ui.CmsList;
 import org.opencms.gwt.client.ui.CmsListItemWidget;
 import org.opencms.gwt.client.ui.CmsPushButton;
 import org.opencms.gwt.client.ui.CmsScrollPanel;
+import org.opencms.gwt.client.ui.contextmenu.A_CmsContextMenuItem;
+import org.opencms.gwt.client.ui.contextmenu.CmsContextMenuButton;
+import org.opencms.gwt.client.ui.contextmenu.CmsContextMenuHandler;
+import org.opencms.gwt.client.ui.contextmenu.CmsContextMenuItem;
+import org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuEntry;
 import org.opencms.gwt.client.ui.tree.CmsTreeItem;
 import org.opencms.gwt.client.util.CmsDomUtil;
+import org.opencms.gwt.shared.CmsCoreData.AdeContext;
+import org.opencms.util.CmsUUID;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -47,6 +56,7 @@ import com.google.gwt.uibinder.client.UiBinder;
 import com.google.gwt.uibinder.client.UiField;
 import com.google.gwt.uibinder.client.UiHandler;
 import com.google.gwt.user.client.Timer;
+import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Composite;
 import com.google.gwt.user.client.ui.Label;
 import com.google.gwt.user.client.ui.Widget;
@@ -68,6 +78,17 @@ public class CmsBrokenLinksPanel extends Composite {
 
     /** The UiBinder instance for this widget. */
     private static final I_CmsBrokenLinksPanelUiBinder UI_BINDER = GWT.create(I_CmsBrokenLinksPanelUiBinder.class);
+
+    /** Button slot mapping for showing broken links. */
+    public static int[] SLOT_MAPPING;
+
+    static {
+        SLOT_MAPPING = new int[4];
+        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_WARNING] = 0;
+        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_EDIT] = -1;
+        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_REMOVE] = -1;
+        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_MENU] = 1;
+    }
 
     /** The button which makes the publish dialog go back to the "resource selection" state. */
     @UiField
@@ -98,9 +119,6 @@ public class CmsBrokenLinksPanel extends Composite {
     /** The publish dialog containing this widget. */
     private CmsPublishDialog m_publishDialog;
 
-    /** Button slot mapping for showing broken links. */
-    public static int[] SLOT_MAPPING;
-
     /**
      * Creates a new instance.<p>
      *
@@ -119,14 +137,6 @@ public class CmsBrokenLinksPanel extends Composite {
         m_actionButtons = new ArrayList<CmsPushButton>();
     }
 
-    static {
-        SLOT_MAPPING = new int[4];
-        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_WARNING] = 0;
-        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_EDIT] = -1;
-        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_REMOVE] = -1;
-        SLOT_MAPPING[CmsPublishGroupPanel.SLOT_MENU] = -1;
-    }
-
     /**
       * Adds a resource bean to be displayed.<p>
       *
@@ -137,11 +147,13 @@ public class CmsBrokenLinksPanel extends Composite {
 
         final CmsListItemWidget itemWidget = CmsPublishGroupPanel.createListItemWidget(res, SLOT_MAPPING);
         CmsTreeItem item = new CmsTreeItem(false, itemWidget);
+        addContextMenu(item, res);
 
         item.setOpen(true);
         for (CmsPublishResource subRes : res.getRelated()) {
             final CmsListItemWidget subWidget = CmsPublishGroupPanel.createListItemWidget(subRes, SLOT_MAPPING);
             CmsTreeItem subItem = new CmsTreeItem(false, subWidget);
+            addContextMenu(subItem, subRes);
             item.addChild(subItem);
         }
         m_list.addItem(item);
@@ -249,6 +261,147 @@ public class CmsBrokenLinksPanel extends Composite {
     protected void executeAction(CmsWorkflowAction action) {
 
         m_publishDialog.executeAction(action);
+    }
+
+    /**
+     * Adds a context menu button to the resource box, unless the structure id is null (this can happen with already broken relations).
+     *
+     * @param item the item to add the button to
+     * @param res the publish resource data
+     */
+    private void addContextMenu(CmsTreeItem item, CmsPublishResource res) {
+
+        if (!res.getId().isNullUUID()) {
+            CmsContextMenuButton button = new CmsContextMenuButton(
+                res.getId(),
+                m_publishDialog.getContextMenuHandler(),
+                AdeContext.resourceinfo);
+            CmsPublishGroupPanel.fillButtonSlot(
+                item.getListItemWidget(),
+                CmsPublishGroupPanel.SLOT_MENU,
+                button,
+                SLOT_MAPPING);
+        } else if (CmsCoreProvider.get().getUserInfo().isWorkplaceUser()) {
+            // Null UUID, so resource probably doesn't exist.
+            // We can't use the normal context menu handler, since it uses the structure id for loading the context menu entries,
+            // so we create an individual context menu handler instance for each broken link item.
+            CmsContextMenuButton button = new CmsContextMenuButton(res.getId(), new CmsContextMenuHandler() {
+
+                @Override
+                public void loadContextMenu(CmsUUID structureId, AdeContext context, CmsContextMenuButton menuButton) {
+
+                    List<I_CmsContextMenuEntry> menuEntries = new ArrayList<>();
+                    I_CmsContextMenuEntry entry = new I_CmsContextMenuEntry() {
+
+                        public void execute() {
+
+                            CmsRpcAction<String> rpcAction = new CmsRpcAction<String>() {
+
+                                @Override
+                                public void execute() {
+
+                                    start(0, false);
+                                    CmsCoreProvider.getService().getWorkplaceLinkForPath(res.getSubTitle(), this);
+                                }
+
+                                @Override
+                                protected void onResponse(String result) {
+
+                                    stop(false);
+                                    if (result != null) {
+                                        Window.Location.assign(result);
+                                        // In case we already are in the workplace, setting the URL does not necessarily update the state.
+                                        // Schedule a timer to trigger a reload, which only fires in that scenario.
+                                        Timer timer = new Timer() {
+
+                                            @Override
+                                            public void run() {
+
+                                                Window.Location.reload();
+                                            }
+
+                                        };
+                                        timer.schedule(50);
+                                    }
+                                }
+                            };
+                            rpcAction.execute();
+                        }
+
+                        public A_CmsContextMenuItem generateMenuItem() {
+
+                            return new CmsContextMenuItem(this);
+
+                        }
+
+                        public String getIconClass() {
+
+                            return null;
+                        }
+
+                        public String getJspPath() {
+
+                            return null;
+                        }
+
+                        public String getLabel() {
+
+                            return Messages.get().key(Messages.GUI_BROKEN_LINK_SHOW_IN_EXPLORER_0);
+                        }
+
+                        public String getName() {
+
+                            return "";
+                        }
+
+                        public String getReason() {
+
+                            return null;
+                        }
+
+                        public List<I_CmsContextMenuEntry> getSubMenu() {
+
+                            return null;
+                        }
+
+                        public boolean hasSubMenu() {
+
+                            return false;
+                        }
+
+                        public boolean isActive() {
+
+                            return true;
+                        }
+
+                        public boolean isSeparator() {
+
+                            return false;
+                        }
+
+                        public boolean isVisible() {
+
+                            return true;
+                        }
+                    };
+                    menuEntries.add(entry);
+                    menuButton.showMenu(menuEntries);
+
+                }
+
+                @Override
+                public void refreshResource(CmsUUID structureId) {
+
+                    m_publishDialog.getContextMenuHandler().refreshResource(structureId);
+                }
+
+            }, AdeContext.resourceinfo);
+            CmsPublishGroupPanel.fillButtonSlot(
+                item.getListItemWidget(),
+                CmsPublishGroupPanel.SLOT_MENU,
+                button,
+                SLOT_MAPPING);
+        }
     }
 
     /**

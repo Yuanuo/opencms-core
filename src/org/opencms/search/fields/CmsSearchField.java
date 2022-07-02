@@ -31,13 +31,14 @@
 
 package org.opencms.search.fields;
 
-import org.apache.solr.uninverting.UninvertingReader.Type;
 import org.opencms.util.CmsStringUtil;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.solr.uninverting.UninvertingReader.Type;
 
 /**
  * A abstract implementation for a search field.<p>
@@ -145,8 +146,17 @@ public class CmsSearchField implements Serializable {
     /** The default (multi-valued) dates field postfix. */
     public static final String FIELD_POSTFIX_DATES = "_dts";
 
+    /** The default (single-valued) date range field postfix. */
+    public static final String FIELD_POSTFIX_DATE_RANGE = "_dr";
+
+    /** The default (multi-valued) date range field postfix. */
+    public static final String FIELD_POSTFIX_DATE_RANGES = "_drs";
+
     /** The default int field postfix. */
     public static final String FIELD_POSTFIX_INT = "_i";
+
+    /** The default local field postfix. */
+    public static final String FIELD_POSTFIX_LOC = "_loc";
 
     /** The default field postfix for alpha-numeric sorting. */
     public static final String FIELD_POSTFIX_SORT = "_sort";
@@ -221,6 +231,9 @@ public class CmsSearchField implements Serializable {
     /** The field PREFIX of the fields that contain the display order (without locale and postfix "_i"). */
     public static final String FIELD_DISPORDER = "disporder";
 
+    /** Name of the field that contains Geo coordinates. */
+    public static final String FIELD_GEOCOORDS = "geocoords" + FIELD_POSTFIX_LOC;
+
     /** The field PREFIX where the start date for the single entry of a serial date entry set is stored. */
     public static final String FIELD_INSTANCEDATE = "instancedate";
 
@@ -229,6 +242,9 @@ public class CmsSearchField implements Serializable {
 
     /** The field PREFIX where the date until which the single entry of a serial date entry should be treated as "current" is stored. */
     public static final String FIELD_INSTANCEDATE_CURRENT_TILL = "instancedatecurrenttill";
+
+    /** The field PREFIX where the start date and the end date of the single entry of a serial date entry is stored as a date range. */
+    public static final String FIELD_INSTANCEDATE_RANGE = "instancedaterange";
 
     /** The field where the dates for a serial date are stored. */
     public static final String FIELD_SERIESDATES = "seriesdates" + FIELD_POSTFIX_DATES;

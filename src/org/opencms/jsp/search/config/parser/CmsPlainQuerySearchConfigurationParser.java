@@ -35,6 +35,7 @@ import org.opencms.jsp.search.config.I_CmsSearchConfigurationDidYouMean;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationFacetField;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationFacetQuery;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationFacetRange;
+import org.opencms.jsp.search.config.I_CmsSearchConfigurationGeoFilter;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationHighlighting;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationPagination;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationSorting;
@@ -100,7 +101,7 @@ public class CmsPlainQuerySearchConfigurationParser implements I_CmsSearchConfig
         if (null != indexName) {
             indexName = indexName.trim();
         }
-        if ((null == indexName) || (null == OpenCms.getSearchManager().getIndexSolr(indexName))) {
+        if (null == indexName) {
             indexName = cms.getRequestContext().getCurrentProject().isOnlineProject()
             ? CmsSolrIndex.DEFAULT_INDEX_NAME_ONLINE
             : CmsSolrIndex.DEFAULT_INDEX_NAME_OFFLINE;
@@ -116,7 +117,21 @@ public class CmsPlainQuerySearchConfigurationParser implements I_CmsSearchConfig
             }
         }
         if (null == maxResNum) {
-            maxResNum = Integer.valueOf(OpenCms.getSearchManager().getIndexSolr(indexName).getMaxProcessedResults());
+            try {
+                CmsSolrIndex idx = OpenCms.getSearchManager().getIndexSolr(indexName);
+                if (null != idx) {
+                    maxResNum = Integer.valueOf(idx.getMaxProcessedResults());
+                } else {
+                    maxResNum = Integer.valueOf(CmsSolrIndex.MAX_RESULTS_UNLIMITED);
+                }
+            } catch (Throwable t) {
+                // This is ok, it's allowed to have an external other index here.
+                LOG.debug(
+                    "Parsing plain search configuration for none-CmsSolrIndex "
+                        + indexName
+                        + ". Setting max processed results to unlimited.");
+                maxResNum = Integer.valueOf(CmsSolrIndex.MAX_RESULTS_UNLIMITED);
+            }
         }
 
         return new CmsSearchConfigurationCommon(
@@ -150,6 +165,15 @@ public class CmsPlainQuerySearchConfigurationParser implements I_CmsSearchConfig
     public Map<String, I_CmsSearchConfigurationFacetField> parseFieldFacets() {
 
         return null != m_baseConfig ? m_baseConfig.getFieldFacetConfigs() : Collections.emptyMap();
+    }
+
+    /**
+     * @see org.opencms.jsp.search.config.parser.I_CmsSearchConfigurationParser#parseGeoFilter()
+     */
+    @Override
+    public I_CmsSearchConfigurationGeoFilter parseGeoFilter() {
+
+        return null;
     }
 
     /**

@@ -30,6 +30,8 @@ package org.opencms.jsp.util;
 import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.ade.configuration.CmsFunctionReference;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
+import org.opencms.ade.configuration.plugins.CmsTemplatePluginFinder;
 import org.opencms.ade.containerpage.CmsContainerpageService;
 import org.opencms.ade.containerpage.CmsDetailOnlyContainerUtil;
 import org.opencms.ade.containerpage.CmsModelGroupHelper;
@@ -39,10 +41,12 @@ import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.ade.detailpage.CmsDetailPageResourceHandler;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
+import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.history.CmsHistoryResourceHandler;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.flex.CmsFlexController;
@@ -65,10 +69,14 @@ import org.opencms.relations.CmsCategory;
 import org.opencms.relations.CmsCategoryService;
 import org.opencms.search.galleries.CmsGalleryNameMacroResolver;
 import org.opencms.site.CmsSite;
+import org.opencms.ui.apps.lists.CmsListManager;
 import org.opencms.util.CmsCollectionsGenericWrapper;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
+import org.opencms.workplace.galleries.CmsAjaxDownloadGallery;
+import org.opencms.workplace.galleries.CmsAjaxImageGallery;
 import org.opencms.xml.containerpage.CmsADESessionCache;
 import org.opencms.xml.containerpage.CmsContainerBean;
 import org.opencms.xml.containerpage.CmsContainerElementBean;
@@ -95,6 +103,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
@@ -102,6 +112,8 @@ import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.collections.Transformer;
 import org.apache.commons.lang3.LocaleUtils;
 import org.apache.commons.logging.Log;
+
+import com.google.common.collect.Multimap;
 
 /**
  * Allows convenient access to the most important OpenCms functions on a JSP page,
@@ -712,6 +724,9 @@ public final class CmsJspStandardContextBean {
     /** Lazily initialized map from a category path to all sub-categories of that category. */
     private Map<String, CmsJspCategoryAccessBean> m_allSubCategories;
 
+    /** Lazily initialized nested map for reading either attributes or properties (first key: file name, second key: attribute / property name). */
+    private Map<String, Map<String, CmsJspObjectValueWrapper>> m_attributesOrProperties;
+
     /** Lazily initialized map from a category path to the path's category object. */
     private Map<String, CmsCategory> m_categories;
 
@@ -742,6 +757,9 @@ public final class CmsJspStandardContextBean {
     /** The lazy initialized map for the function detail pages. */
     private Map<String, String> m_functionDetailPage;
 
+    /** The lazy initialized map for the function detail pages. */
+    private Map<String, String> m_functionDetailPageExact;
+
     /** Indicates if in drag mode. */
     private boolean m_isDragMode;
 
@@ -769,6 +787,9 @@ public final class CmsJspStandardContextBean {
     /** Map from root paths to site relative paths. */
     private Map<String, String> m_sitePaths;
 
+    /** The template plugins. */
+    private Map<String, List<CmsTemplatePluginWrapper>> m_templatePlugins;
+
     /** The lazy initialized map for the detail pages. */
     private Map<String, String> m_typeDetailPage;
 
@@ -780,7 +801,6 @@ public final class CmsJspStandardContextBean {
      */
     private CmsJspStandardContextBean() {
 
-        // NOOP
     }
 
     /**
@@ -790,6 +810,7 @@ public final class CmsJspStandardContextBean {
      */
     private CmsJspStandardContextBean(ServletRequest req) {
 
+        this();
         CmsFlexController controller = CmsFlexController.getController(req);
         m_request = req;
         CmsObject cms;
@@ -827,10 +848,8 @@ public final class CmsJspStandardContextBean {
             cms.addSiteRoot(cms.getRequestContext().getUri()));
         List<CmsDetailPageInfo> detailPages = config.getDetailPagesForType(type);
         CmsDetailPageInfo detailPage = null;
-        boolean usingDefault = false;
         if ((detailPages == null) || (detailPages.size() == 0)) {
             detailPage = config.getDefaultDetailPage();
-            usingDefault = true;
         } else {
             detailPage = detailPages.get(0);
         }
@@ -845,9 +864,6 @@ public final class CmsJspStandardContextBean {
             try {
                 cms.getRequestContext().setForceAbsoluteLinks(fullLink || originalForceAbsoluteLinks);
                 String link = OpenCms.getLinkManager().substituteLink(cms, r);
-                if (usingDefault) {
-                    link = CmsStringUtil.joinPaths(link, functionName);
-                }
                 return link;
             } finally {
                 cms.getRequestContext().setForceAbsoluteLinks(originalForceAbsoluteLinks);
@@ -856,6 +872,46 @@ public final class CmsJspStandardContextBean {
             LOG.warn(e.getLocalizedMessage(), e);
             return "[Error reading detail page for type =" + type + "=]";
         }
+    }
+
+    /**
+     * Gets the link to a function detail page.
+     *
+     * <p>This just returns null if no function detail page is defined, it does not use the default detail page as a fallback.
+     *
+     * @param cms the CMS context
+     * @param functionName the function name
+     *
+     * @return the link
+     */
+    public static String getFunctionDetailLinkExact(CmsObject cms, String functionName) {
+
+        String type = CmsDetailPageInfo.FUNCTION_PREFIX + functionName;
+
+        CmsADEConfigData config = OpenCms.getADEManager().lookupConfigurationWithCache(
+            cms,
+            cms.addSiteRoot(cms.getRequestContext().getUri()));
+        List<CmsDetailPageInfo> detailPages = config.getDetailPagesForType(type);
+
+        CmsDetailPageInfo detailPage = null;
+        if ((detailPages == null) || (detailPages.size() == 0)) {
+            return null;
+        }
+        detailPage = detailPages.get(0);
+        if (detailPage.isDefaultDetailPage()) {
+            return null;
+        }
+
+        CmsUUID id = detailPage.getId();
+        try {
+            CmsResource r = cms.readResource(id);
+            String link = OpenCms.getLinkManager().substituteLink(cms, r);
+            return link;
+        } catch (CmsException e) {
+            LOG.warn(e.getLocalizedMessage(), e);
+            return null;
+        }
+
     }
 
     /**
@@ -986,6 +1042,70 @@ public final class CmsJspStandardContextBean {
         }
         return null;
 
+    }
+
+    /**
+     * Finds the folder to use for binary uploads, based on the list configuration given as an argument or
+     * the current sitemap configuration.
+     *
+     * @param content the list configuration content
+     *
+     * @return the binary upload folder
+     */
+    public String getBinaryUploadFolder(CmsJspContentAccessBean content) {
+
+        String keyToFind = CmsADEConfigData.ATTR_BINARY_UPLOAD_TARGET;
+        String baseValue = null;
+        if (content != null) {
+            for (CmsJspContentAccessValueWrapper wrapper : content.getValueList().get(CmsListManager.N_PARAMETER)) {
+                String paramKey = wrapper.getValue().get(CmsListManager.N_KEY).getToString();
+                String paramValue = wrapper.getValue().get(CmsListManager.N_VALUE).getToString();
+                if (paramKey.equals(keyToFind)) {
+                    LOG.debug("Found upload folder in configuration: " + paramValue);
+                    baseValue = paramValue;
+                    break;
+                }
+            }
+
+            if (baseValue == null) {
+                List<CmsJspContentAccessValueWrapper> folderEntries = content.getValueList().get(
+                    CmsListManager.N_SEARCH_FOLDER);
+                if (folderEntries.size() == 1) {
+                    CmsResource resource = folderEntries.get(0).getToResource();
+                    List<String> galleryTypes = Arrays.asList(
+                        CmsAjaxDownloadGallery.GALLERYTYPE_NAME,
+                        CmsAjaxImageGallery.GALLERYTYPE_NAME);
+                    if ((resource != null) && (null != findAncestor(m_cms, resource, (ancestor) -> {
+                        return galleryTypes.stream().anyMatch(
+                            type -> OpenCms.getResourceManager().matchResourceType(type, ancestor.getTypeId()));
+                    }))) {
+                        baseValue = m_cms.getSitePath(resource);
+                        LOG.debug(
+                            "Using single download gallery from search folder configuration as upload folder: "
+                                + baseValue);
+
+                    }
+                }
+            }
+        }
+
+        if (baseValue == null) {
+            baseValue = m_config.getAttribute(keyToFind, null);
+            if (baseValue != null) {
+                LOG.debug("Found upload folder in sitemap configuration: " + baseValue);
+            }
+        }
+
+        CmsMacroResolver resolver = new CmsMacroResolver();
+        resolver.setCmsObject(getCmsObject());
+        resolver.addMacro("subsitepath", CmsFileUtil.removeTrailingSeparator(getSubSitePath()));
+        resolver.addMacro("sitepath", "/");
+
+        // if baseValue is still null, then resolveMacros will just return null
+        String result = resolver.resolveMacros(baseValue);
+
+        LOG.debug("Final value for upload folder : " + result);
+        return result;
     }
 
     /**
@@ -1259,6 +1379,30 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Returns a lazy initialized Map that provides the detail page link as a value when given the name of a
+     * (named) dynamic function as a key.<p>
+     *
+     * The provided Map key is assumed to be a String that represents a named dynamic function.<p>
+     *
+     * Usage example on a JSP with the JSTL:<pre>
+     * &lt;a href=${cms.functionDetailPage['search']} /&gt
+     * </pre>
+     *
+     * @return a lazy initialized Map that provides the detail page link as a value when given the name of a
+     * (named) dynamic function as a key
+     *
+     * @see #getTypeDetailPage()
+     */
+    public Map<String, String> getFunctionDetailPageExact() {
+
+        if (m_functionDetailPageExact == null) {
+            m_functionDetailPageExact = CmsCollectionsGenericWrapper.createLazyMap(
+                name -> getFunctionDetailLinkExact(m_cms, (String)name));
+        }
+        return m_functionDetailPageExact;
+    }
+
+    /**
      * Returns a lazy map which creates a wrapper object for a dynamic function format when given an XML content
      * as a key.<p>
      *
@@ -1294,6 +1438,17 @@ public final class CmsJspStandardContextBean {
             }
         };
         return CmsCollectionsGenericWrapper.createLazyMap(transformer);
+    }
+
+    /**
+     * Checks if the current page is a detail page.
+     *
+     * @return true if the current page is a detail page
+     */
+    public boolean getIsDetailPage() {
+
+        CmsJspResourceWrapper page = getPageResource();
+        return OpenCms.getADEManager().isDetailPage(m_cms, page);
     }
 
     /**
@@ -1518,6 +1673,39 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Gets the set of plugin group names.
+     *
+     * @return the set of plugin group names
+     */
+    public Set<String> getPluginGroups() {
+
+        return getPlugins().keySet();
+    }
+
+    /**
+     * Gets the map of plugins by group.
+     *
+     * @return the map of active plugins by group
+     */
+    public Map<String, List<CmsTemplatePluginWrapper>> getPlugins() {
+
+        if (m_templatePlugins == null) {
+            final Multimap<String, CmsTemplatePlugin> templatePluginsMultimap = new CmsTemplatePluginFinder(
+                this).getTemplatePlugins();
+            Map<String, List<CmsTemplatePluginWrapper>> templatePlugins = new HashMap<>();
+            for (String key : templatePluginsMultimap.keySet()) {
+                List<CmsTemplatePluginWrapper> wrappers = new ArrayList<>();
+                for (CmsTemplatePlugin plugin : templatePluginsMultimap.get(key)) {
+                    wrappers.add(new CmsTemplatePluginWrapper(m_cms, plugin));
+                }
+                templatePlugins.put(key, Collections.unmodifiableList(wrappers));
+            }
+            m_templatePlugins = templatePlugins;
+        }
+        return m_templatePlugins;
+    }
+
+    /**
      * JSP EL accessor method for retrieving the preview formatters.<p>
      *
      * @return a lazy map for accessing preview formatters
@@ -1589,6 +1777,41 @@ public final class CmsJspStandardContextBean {
             });
         }
         return m_allSubCategories;
+    }
+
+    /**
+     * Lazily reads the given attribute from the current sitemap or a property of the same name from the given resource.
+     *
+     * <p>Usage example: ${cms.readAttributeOrProperty['/index.html']['attr']}
+     *
+     * @return a lazy loading map for accessing attributes / properties
+     */
+    public Map<String, Map<String, CmsJspObjectValueWrapper>> getReadAttributeOrProperty() {
+
+        if (m_attributesOrProperties == null) {
+            m_attributesOrProperties = CmsCollectionsGenericWrapper.createLazyMap(pathObj -> {
+                return CmsCollectionsGenericWrapper.createLazyMap(keyObj -> {
+
+                    String path = (String)pathObj;
+                    String key = (String)keyObj;
+
+                    CmsObject cms = getCmsObject();
+                    String result = m_config.getAttribute(key, null);
+                    if (result == null) {
+                        try {
+                            CmsProperty prop = cms.readPropertyObject(path, key, /*search=*/true);
+                            result = prop.getValue();
+                        } catch (CmsVfsResourceNotFoundException e) {
+                            LOG.info(e.getLocalizedMessage(), e);
+                        } catch (Exception e) {
+                            LOG.error(e.getLocalizedMessage(), e);
+                        }
+                    }
+                    return CmsJspObjectValueWrapper.createWrapper(cms, result);
+                });
+            });
+        }
+        return m_attributesOrProperties;
     }
 
     /**
@@ -1714,6 +1937,16 @@ public final class CmsJspStandardContextBean {
         } else {
             return CmsGwtConstants.FORMATTER_RELOAD_MARKER;
         }
+    }
+
+    /**
+     * Gets the stored request.
+     *
+     * @return the stored request
+     */
+    public ServletRequest getRequest() {
+
+        return m_request;
     }
 
     /**
@@ -1935,7 +2168,7 @@ public final class CmsJspStandardContextBean {
             if (pageResource == null) {
                 pageResource = m_cms.readResource(requestUri, CmsResourceFilter.ignoreExpirationOffline(m_cms));
             }
-            m_config = OpenCms.getADEManager().lookupConfiguration(m_cms, pageResource.getRootPath());
+            m_config = OpenCms.getADEManager().lookupConfigurationWithCache(m_cms, pageResource.getRootPath());
             m_page = getPage(pageResource);
             m_page = CmsTemplateMapper.get(m_request).transformContainerpageBean(
                 m_cms,
@@ -2322,6 +2555,43 @@ public final class CmsJspStandardContextBean {
 
         m_elementInstances = null;
         m_parentContainers = null;
+    }
+
+    /**
+     * Finds the first ancestor of a resource matching a given predicate.
+     *
+     * @param cms the CMS context
+     * @param resource the resource
+     * @param predicate the predicate to test
+     *
+     * @return the first ancestor matching the predicate (which may possibly be the given resource itself), or null if no matching ancestor is found
+     * @throws CmsException
+     */
+    private CmsResource findAncestor(CmsObject cms, CmsResource resource, Predicate<CmsResource> predicate) {
+
+        try {
+            CmsObject rootCms = OpenCms.initCmsObject(cms);
+            rootCms.getRequestContext().setSiteRoot("");
+            CmsResource ancestor = resource;
+            while (ancestor != null) {
+                if (predicate.test(ancestor)) {
+                    return ancestor;
+                }
+                String parentFolder = CmsResource.getParentFolder(ancestor.getRootPath());
+                if (parentFolder == null) {
+                    break;
+                }
+                try {
+                    ancestor = rootCms.readResource(parentFolder, CmsResourceFilter.IGNORE_EXPIRATION);
+                } catch (CmsException e) {
+                    LOG.info(e.getLocalizedMessage(), e);
+                    break;
+                }
+            }
+        } catch (CmsException e) {
+            LOG.error(e.getLocalizedMessage(), e);
+        }
+        return null;
     }
 
     /**

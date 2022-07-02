@@ -34,9 +34,11 @@ import org.opencms.gwt.client.ui.I_CmsToolbarHandler;
 import org.opencms.gwt.client.ui.contenteditor.CmsContentEditorDialog;
 import org.opencms.gwt.client.ui.contenteditor.CmsContentEditorDialog.DialogOptions;
 import org.opencms.gwt.client.ui.contenteditor.I_CmsContentEditorHandler;
+import org.opencms.gwt.client.util.CmsEditableDataUtil;
 import org.opencms.gwt.shared.CmsContextMenuEntryBean;
 import org.opencms.gwt.shared.CmsMenuCommandParameters;
 import org.opencms.gwt.shared.CmsPrepareEditResponse;
+import org.opencms.gwt.shared.I_CmsEditableDataExtensions;
 import org.opencms.util.CmsUUID;
 
 import java.util.Map;
@@ -117,6 +119,11 @@ public final class CmsEditFile implements I_CmsHasContextMenuCommand, I_CmsValid
                 return null;
             }
 
+            public I_CmsEditableDataExtensions getExtensions() {
+
+                return CmsEditableDataUtil.parseExtensions("{}");
+            }
+
             public String getNewLink() {
 
                 return null;
@@ -176,7 +183,12 @@ public final class CmsEditFile implements I_CmsHasContextMenuCommand, I_CmsValid
             I_CmsContentEditorHandler handler = new I_CmsContentEditorHandler() {
 
                 @SuppressWarnings("synthetic-access")
-                public void onClose(String sitePath, CmsUUID id, boolean isNew, boolean hasChangedSettings) {
+                public void onClose(
+                    String sitePath,
+                    CmsUUID id,
+                    boolean isNew,
+                    boolean hasChangedSettings,
+                    boolean usedPublishDialog) {
 
                     if (!m_reload) {
                         return;

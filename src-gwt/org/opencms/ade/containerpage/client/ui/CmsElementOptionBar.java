@@ -28,6 +28,8 @@
 package org.opencms.ade.containerpage.client.ui;
 
 import org.opencms.gwt.client.CmsCoreProvider;
+import org.opencms.gwt.client.CmsPageEditorTouchHandler;
+import org.opencms.gwt.client.I_CmsElementToolbarContext;
 import org.opencms.gwt.client.dnd.CmsDNDHandler;
 import org.opencms.gwt.client.ui.A_CmsHoverHandler;
 import org.opencms.gwt.client.ui.css.I_CmsLayoutBundle;
@@ -53,7 +55,7 @@ import com.google.gwt.user.client.ui.Widget;
  * @since 8.0.0
  */
 public class CmsElementOptionBar extends Composite
-implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
+implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem, I_CmsElementToolbarContext {
 
     /**
      * Hover handler for option bar.<p>
@@ -66,9 +68,11 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         @Override
         protected void onHoverIn(MouseOverEvent event) {
 
-            timer = null;
-            CmsCoreProvider.get().getFlyoutMenuContainer().setActiveItem(CmsElementOptionBar.this);
-            addHighlighting();
+            if (!CmsPageEditorTouchHandler.get().ignoreHover()) {
+                timer = null;
+                CmsCoreProvider.get().getFlyoutMenuContainer().setActiveItem(CmsElementOptionBar.this);
+                addHighlighting();
+            }
         }
 
         /**
@@ -77,25 +81,25 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         @Override
         protected void onHoverOut(MouseOutEvent event) {
 
-            timer = new Timer() {
+            if (!CmsPageEditorTouchHandler.get().ignoreHover()) {
 
-                @Override
-                public void run() {
+                timer = new Timer() {
 
-                    if (timer == this) {
-                        removeHighlighting();
+                    @Override
+                    public void run() {
+
+                        if (timer == this) {
+                            removeHighlighting();
+                        }
                     }
-                }
-            };
-            timer.schedule(750);
+                };
+                timer.schedule(750);
+            }
         }
     }
 
     /** The timer used for hiding the option bar. */
     /*default */static Timer timer;
-
-    /** The CSS class to be assigned to each option-bar. */
-    public static String CSS_CLASS = org.opencms.ade.containerpage.client.ui.css.I_CmsLayoutBundle.INSTANCE.containerpageCss().optionBar();
 
     /** The calculated panel width. */
     private int m_calculatedWidth;
@@ -119,7 +123,7 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         HoverHandler handler = new HoverHandler();
         addMouseOverHandler(handler);
         addMouseOutHandler(handler);
-        setStyleName(CSS_CLASS);
+        setStyleName(I_CmsElementToolbarContext.ELEMENT_OPTION_BAR_CSS_CLASS);
         addStyleName(I_CmsLayoutBundle.INSTANCE.generalCss().opencms());
     }
 
@@ -152,6 +156,14 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
             }
         }
         return optionBar;
+    }
+
+    /**
+     * @see org.opencms.gwt.client.I_CmsElementToolbarContext#activateToolbarContext()
+     */
+    public void activateToolbarContext() {
+
+        addHighlighting();
     }
 
     /**
@@ -188,6 +200,18 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
 
         m_panel.clear();
         m_calculatedWidth = 0;
+    }
+
+    /**
+     * @see org.opencms.gwt.client.I_CmsElementToolbarContext#deactivateToolbarContext()
+     */
+    public void deactivateToolbarContext() {
+
+        try {
+            internalRemoveHighlighting();
+        } catch (Exception e) {
+            // ignore
+        }
     }
 
     /**

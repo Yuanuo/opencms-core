@@ -43,6 +43,12 @@ public interface I_CmsContentEditorHandler {
      * @param structureId the structure id of the edited resource
      * @param isNew <code>true</code> if the resource was newly created
      * @param hasChangedSettings <code>true</code> in case container page element settings where changed during edit
+     * @param usedPublishDialog true if the editor was closed by using the publish button
      */
-    void onClose(String sitePath, CmsUUID structureId, boolean isNew, boolean hasChangedSettings);
+    void onClose(
+        String sitePath,
+        CmsUUID structureId,
+        boolean isNew,
+        boolean hasChangedSettings,
+        boolean usedPublishDialog);
 }

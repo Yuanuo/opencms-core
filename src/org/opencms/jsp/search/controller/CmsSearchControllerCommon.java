@@ -29,6 +29,7 @@ package org.opencms.jsp.search.controller;
 
 import org.opencms.file.CmsObject;
 import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationCommon;
 import org.opencms.jsp.search.state.CmsSearchStateCommon;
 import org.opencms.jsp.search.state.I_CmsSearchStateCommon;
@@ -52,7 +53,7 @@ public class CmsSearchControllerCommon implements I_CmsSearchControllerCommon {
     private static final String MACRO_VALUE = "value";
     /** Site root macro. */
     private static final String MACRO_SITE_ROOT = "site_root";
-    /** Cms locale macro. */
+    /** Locale macro. */
     private static final String MACRO_LOCALE = "locale";
     /** Query macro. */
     private static final String MACRO_QUERY = "query";
@@ -120,8 +121,13 @@ public class CmsSearchControllerCommon implements I_CmsSearchControllerCommon {
             if ((null != currentSiteRoot) && !currentSiteRoot.endsWith("/")) {
                 currentSiteRoot = currentSiteRoot + "/";
             }
-            String currentLocale = (null == cms ? CmsLocaleManager.MASTER_LOCALE : cms.getRequestContext().getLocale()).toString();
-            Map<String, String[]> extraParamsMap = CmsRequestUtil.createParameterMap(m_config.getExtraSolrParams(), true, null);
+            String currentLocale = (null == cms
+            ? CmsLocaleManager.getDefaultLocale()
+            : cms.getRequestContext().getLocale()).toString();
+            Map<String, String[]> extraParamsMap = CmsRequestUtil.createParameterMap(
+                m_config.getExtraSolrParams(),
+                true,
+                null);
             for (String key : extraParamsMap.keySet()) {
                 for (String value : Arrays.asList(extraParamsMap.get(key))) {
                     value = resolveMacro(value, MACRO_SITE_ROOT, currentSiteRoot);

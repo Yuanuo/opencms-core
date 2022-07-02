@@ -404,7 +404,7 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                             elementWidget,
                             settingsConfig,
                             settingPresets);
-                        dialog.center();
+                        dialog.show();
                     } catch (NoFormatterException e) {
                         String ctype = "???";
                         String cname = "???";
@@ -820,7 +820,9 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
 
             public void execute() {
 
-                m_controller.reloadElements(new String[] {element.getStructureId().toString()});
+                m_controller.reloadElements(
+                    new String[] {element.getStructureId().toString()},
+                    () -> { /*do nothing*/});
             }
         }, null);
     }
@@ -894,10 +896,11 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
      * Reloads the content for the given element and all related elements.<p>
      *
      * @param elementIds the element id's
+     * @param callback the callback to execute after reloading
      */
-    public void reloadElements(String... elementIds) {
+    public void reloadElements(String[] elementIds, Runnable callback) {
 
-        m_controller.reloadElements(elementIds);
+        m_controller.reloadElements(elementIds, callback);
     }
 
     /**
@@ -928,10 +931,11 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
      *
      * @param element the element to replace
      * @param elementId the id of the replacing content
+     * @param callback the callback to execute after replacing the element
      */
-    public void replaceElement(CmsContainerPageElementPanel element, String elementId) {
+    public void replaceElement(CmsContainerPageElementPanel element, String elementId, Runnable callback) {
 
-        m_controller.replaceElement(element, elementId);
+        m_controller.replaceElement(element, elementId, callback);
     }
 
     /**
@@ -1053,7 +1057,7 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
 
             public void onClose(CloseEvent<PopupPanel> event) {
 
-                reloadElements(element.getId());
+                reloadElements(new String[] {element.getId()}, () -> {/*do nothing*/});
             }
         });
     }

@@ -218,6 +218,8 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         // nothing to do
     }
 
+    public static final String ATTR_KEY = "data-key";
+
     /** The first column compact view mode. */
     public static final int COMPACT_MODE_FIRST_COLUMN = 1;
 
@@ -235,6 +237,9 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
 
     /** The toolbar height. */
     private static final int TOOLBAR_HEIGHT = 52;
+
+    /** Attribute for marking menu bars that are actually menu bars which should open on hovering (rather than just a single button). */
+    public static final String ATTR_HAS_HOVER = "data-has-hover-menu";
 
     /** The UI binder instance. */
     private static I_AttributeValueUiBinder uiBinder = GWT.create(I_AttributeValueUiBinder.class);
@@ -355,7 +360,9 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         initWidget(uiBinder.createAndBindUi(this));
         m_handler = handler;
         m_handler.registerAttributeValue(this);
-        m_moveButton.addMouseDownHandler(m_handler.getDNDHandler());
+        if (!CmsCoreProvider.isTouchOnly()) {
+            m_moveButton.addMouseDownHandler(m_handler.getDNDHandler());
+        }
         m_label = label;
         m_help = help;
         if (m_help == null) {
@@ -369,9 +376,12 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
         m_compacteModeStyle.setValue(formCss().defaultView());
         initHighlightingHandler();
         initButtons();
+        m_buttonBar.addStyleName(CmsButtonBarHandler.HOVERABLE_MARKER);
+
         m_buttonBar.addDomHandler(CmsButtonBarHandler.INSTANCE, MouseOverEvent.getType());
         m_buttonBar.addDomHandler(CmsButtonBarHandler.INSTANCE, MouseOutEvent.getType());
         m_collapsedStyle.setValue(formCss().uncollapsed());
+
     }
 
     /**
@@ -423,6 +433,11 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
     public HandlerRegistration addMouseOverHandler(MouseOverHandler handler) {
 
         return addDomHandler(handler, MouseOverEvent.getType());
+    }
+
+    public FlowPanel getButtonBar() {
+
+        return m_buttonBar;
     }
 
     /**
@@ -864,6 +879,11 @@ implements I_CmsDraggable, I_CmsHasResizeOnShow, HasMouseOverHandlers, HasMouseO
      * @param hasSortButtons <code>true</code> if the sort buttons should be visible
      */
     public void updateButtonVisibility(boolean hasAddButton, boolean hasRemoveButton, boolean hasSortButtons) {
+
+        boolean hasOnlyDelete = !hasAddButton && hasRemoveButton && !hasSortButtons;
+        boolean hasHoverMenu = !hasOnlyDelete;
+
+        m_buttonBar.getElement().setAttribute(ATTR_HAS_HOVER, "" + hasHoverMenu);
 
         if (hasAddButton && m_isChoice) {
             m_attributeChoice.getElement().getStyle().clearDisplay();

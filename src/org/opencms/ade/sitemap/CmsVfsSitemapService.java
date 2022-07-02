@@ -81,7 +81,6 @@ import org.opencms.gwt.CmsIconUtil;
 import org.opencms.gwt.CmsPropertyEditorHelper;
 import org.opencms.gwt.CmsRpcException;
 import org.opencms.gwt.CmsTemplateFinder;
-import org.opencms.gwt.shared.CmsBrokenLinkBean;
 import org.opencms.gwt.shared.CmsCategoryTreeEntry;
 import org.opencms.gwt.shared.CmsClientLock;
 import org.opencms.gwt.shared.CmsCoreData;
@@ -121,6 +120,7 @@ import org.opencms.site.CmsSite;
 import org.opencms.ui.apps.CmsQuickLaunchLocationCache;
 import org.opencms.util.CmsDateUtil;
 import org.opencms.util.CmsFileUtil;
+import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplaceManager;
@@ -142,6 +142,7 @@ import org.opencms.xml.containerpage.mutable.CmsMutableContainer;
 import org.opencms.xml.containerpage.mutable.CmsMutableContainerPage;
 import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.content.CmsXmlContentProperty;
+import org.opencms.xml.content.CmsXmlContentPropertyHelper;
 import org.opencms.xml.types.I_CmsXmlContentValue;
 
 import java.text.DateFormat;
@@ -835,6 +836,9 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                 cms.getRequestContext().addSiteRoot(openPath));
             Map<String, CmsXmlContentProperty> propertyConfig = new LinkedHashMap<String, CmsXmlContentProperty>(
                 configData.getPropertyConfigurationAsMap());
+            propertyConfig = CmsXmlContentPropertyHelper.resolveMacrosInProperties(
+                propertyConfig,
+                CmsMacroResolver.newWorkplaceLocaleResolver(getCmsObject()));
 
             Map<String, CmsClientProperty> parentProperties = generateParentProperties(configData.getBasePath());
             String siteRoot = cms.getRequestContext().getSiteRoot();
@@ -1177,27 +1181,6 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             }
         }
         return result;
-    }
-
-    /**
-     * Creates a "broken link" bean based on a resource.<p>
-     *
-     * @param resource the resource
-     *
-     * @return the "broken link" bean with the data from the resource
-     *
-     * @throws CmsException if something goes wrong
-     */
-    protected CmsBrokenLinkBean createSitemapBrokenLinkBean(CmsResource resource) throws CmsException {
-
-        CmsObject cms = getCmsObject();
-        CmsProperty titleProp = cms.readPropertyObject(resource, CmsPropertyDefinition.PROPERTY_TITLE, true);
-        String defaultTitle = "";
-        String title = titleProp.getValue(defaultTitle);
-        String path = cms.getSitePath(resource);
-        String subtitle = path;
-        return new CmsBrokenLinkBean(resource.getStructureId(), title, subtitle);
-
     }
 
     /**
@@ -2569,21 +2552,21 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             defaultPageInfo = new CmsNewResourceInfo(
                 modelResource.getTypeId(),
                 CmsADEManager.DEFAULT_DETAILPAGE_TYPE,
-                "Default",
-                "The default detail page will be used to display detail contents or functions.",
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_TITLE_0),
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_DESCRIPTION_0),
                 modelResource.getStructureId(),
                 false,
-                "The default detail page will be used to display detail contents or functions.");
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_DESCRIPTION_0));
 
         } else {
             defaultPageInfo = new CmsNewResourceInfo(
                 CmsResourceTypeXmlContainerPage.getContainerPageTypeIdSafely(),
                 CmsADEManager.DEFAULT_DETAILPAGE_TYPE,
-                "Default",
-                "The default detail page will be used to display detail contents or functions.",
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_TITLE_0),
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_DESCRIPTION_0),
                 null,
                 false,
-                "The default detail page will be used to display detail contents or functions.");
+                Messages.get().getBundle(getWorkplaceLocale()).key(Messages.GUI_DEFAULT_DETAIL_PAGE_DESCRIPTION_0));
         }
 
         defaultPageInfo.setBigIconClasses(
@@ -2982,7 +2965,8 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                         destinationPath = destinationPath.substring(0, destinationPath.length() - 1);
                     }
                     // only if the site-path has really changed
-                    if (!cms.getSitePath(entryFolder).equals(destinationPath)) {
+                    if (!CmsFileUtil.removeTrailingSeparator(cms.getSitePath(entryFolder)).equals(
+                        CmsFileUtil.removeTrailingSeparator(destinationPath))) {
                         cms.moveResource(cms.getSitePath(entryFolder), destinationPath);
                     }
                     entryFolder = cms.readResource(

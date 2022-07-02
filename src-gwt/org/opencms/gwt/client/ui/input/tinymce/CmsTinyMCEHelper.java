@@ -46,6 +46,7 @@ public final class CmsTinyMCEHelper {
      * Hidden default constructor.<p>
      */
     private CmsTinyMCEHelper() {
+
         // nothing here
     }
 
@@ -89,7 +90,13 @@ public final class CmsTinyMCEHelper {
 			}
 
 			if (config.language) {
-				options.language = config.language;
+                var languageMap = { "it": "it_IT", "cs": "cs_CZ", "ru": "ru_RU", "zh": "zh_CN"};
+                var translatedLanguage = languageMap[config.language];
+                if (translatedLanguage) {
+                    options.language = translatedLanguage;
+                } else {
+				    options.language = config.language;
+				}
 			}
 			if (config.content_css) {
 				options.content_css = config.content_css;
@@ -128,6 +135,7 @@ public final class CmsTinyMCEHelper {
 				options.cmsGalleryUseThickbox = config.cmsGalleryUseThickbox;
 			}
 			options.plugins = "anchor charmap importcss autolink lists pagebreak table save hr codemirror image link emoticons insertdatetime preview media searchreplace print paste directionality fullscreen noneditable visualchars nonbreaking template wordcount advlist spellchecker -opencms";
+			options.preview_styles="font-family font-size font-weight font-style text-decoration text-transform border border-radius outline text-shadow";
 			if (config.fullpage) {
 				options.plugins += " fullpage";
 			}

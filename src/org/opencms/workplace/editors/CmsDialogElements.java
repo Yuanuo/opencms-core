@@ -343,7 +343,7 @@ public class CmsDialogElements extends CmsDialog {
                     retValue.append(" disabled=\"disabled\"");
                 }
                 retValue.append(">");
-                retValue.append("<script type=\"text/javascript\">registerElement(\"");
+                retValue.append("<script >registerElement(\"");
 
                 retValue.append(element.getName());
                 retValue.append("\", ");
@@ -357,7 +357,7 @@ public class CmsDialogElements extends CmsDialog {
         } catch (CmsException e) {
             // should usually never happen
             if (LOG.isInfoEnabled()) {
-                LOG.info(e);
+                LOG.info(e.getLocalizedMessage(), e);
             }
         }
 

@@ -30,6 +30,7 @@ package org.opencms.gwt.client.ui.css;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.resources.client.ClientBundle;
 import com.google.gwt.resources.client.CssResource;
+import com.google.gwt.resources.client.CssResource.Import;
 import com.google.gwt.resources.client.CssResource.ImportedWithPrefix;
 import com.google.gwt.resources.client.CssResource.Shared;
 
@@ -424,6 +425,7 @@ public interface I_CmsLayoutBundle extends ClientBundle {
 
     /** Dialog CSS. */
     @Shared
+    @ImportedWithPrefix("dialog")
     interface I_CmsDialogCss extends I_CmsPopupCss {
 
         /**
@@ -1297,6 +1299,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
 
     /** ListTree CSS. */
     interface I_CmsListTreeCss extends CssResource {
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String bigIndentation();
 
         /**
          * Access method.<p>
@@ -2382,6 +2391,7 @@ public interface I_CmsLayoutBundle extends ClientBundle {
      * @return the dialog CSS
      */
     @Source("dialog.gss")
+    @Import(value = {I_CmsInputCss.class})
     I_CmsDialogCss dialogCss();
 
     /**
@@ -2399,6 +2409,15 @@ public interface I_CmsLayoutBundle extends ClientBundle {
      */
     @Source("dragdrop.gss")
     I_CmsDragCss dragdropCss();
+
+    /**
+     * Access method.<p>
+     *
+     * @return the error dialog CSS
+     */
+    @Source("elementSettingsDialog.gss")
+    @Import(value = {I_CmsInputCss.class, I_CmsDialogCss.class})
+    I_CmsElementSettingsDialogCss elementSettingsDialogCss();
 
     /**
      * Access method.<p>

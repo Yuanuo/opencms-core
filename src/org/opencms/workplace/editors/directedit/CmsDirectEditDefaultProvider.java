@@ -164,7 +164,7 @@ public class CmsDirectEditDefaultProvider extends A_CmsDirectEditProvider {
 
         String content;
         // check the direct edit permissions of the current user
-        CmsDirectEditResourceInfo resourceInfo = getResourceInfo(params.getResourceName());
+        CmsDirectEditResourceInfo resourceInfo = getResourceInfo(params, params.getResourceName());
         // check the permission mode
         m_lastPermissionMode = resourceInfo.getPermissions().getPermission();
         switch (m_lastPermissionMode) {
@@ -226,7 +226,7 @@ public class CmsDirectEditDefaultProvider extends A_CmsDirectEditProvider {
         }
         result.append(" -->\n");
 
-        result.append("<script type=\"text/javascript\">\n");
+        result.append("<script >\n");
         result.append("registerButtonOcms(\"").append(editId).append("\");\n");
         result.append("</script>\n");
         result.append("<div class=\"ocms_de_bt\" id=\"buttons_").append(editId).append("\">\n");
@@ -286,7 +286,7 @@ public class CmsDirectEditDefaultProvider extends A_CmsDirectEditProvider {
         }
         result.append(" -->\n");
 
-        result.append("<script type=\"text/javascript\">\n");
+        result.append("<script >\n");
         result.append("registerButtonOcms(\"").append(editId).append("\");\n");
         result.append("</script>\n");
         result.append("<div class=\"ocms_de_bt\" id=\"buttons_").append(editId).append("\">\n");

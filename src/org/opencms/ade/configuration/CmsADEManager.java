@@ -31,6 +31,8 @@ import org.opencms.ade.configuration.CmsADEConfigData.DetailInfo;
 import org.opencms.ade.configuration.CmsElementView.ElementViewComparator;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCache;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCacheState;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
+import org.opencms.ade.configuration.plugins.CmsTemplatePluginFinder;
 import org.opencms.ade.containerpage.inherited.CmsContainerConfigurationCache;
 import org.opencms.ade.containerpage.inherited.CmsContainerConfigurationWriter;
 import org.opencms.ade.containerpage.inherited.CmsInheritedContainerState;
@@ -49,6 +51,7 @@ import org.opencms.file.CmsUser;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
+import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.CmsPermissionInfo;
 import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.i18n.CmsEncoder;
@@ -60,6 +63,7 @@ import org.opencms.jsp.CmsJspNavBuilder;
 import org.opencms.jsp.CmsJspNavElement;
 import org.opencms.jsp.CmsJspTagLink;
 import org.opencms.jsp.util.CmsJspStandardContextBean;
+import org.opencms.jsp.util.CmsTemplatePluginWrapper;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
@@ -99,6 +103,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
@@ -108,6 +113,7 @@ import org.apache.commons.logging.Log;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
 
 /**
  * This is the main class used to access the ADE configuration and also accomplish some other related tasks
@@ -159,7 +165,7 @@ public class CmsADEManager {
     public static final String CONTENT_FOLDER_NAME = ".content";
 
     /** The default detail page type name. */
-    public static final String DEFAULT_DETAILPAGE_TYPE = "##DEFAULT##";
+    public static final String DEFAULT_DETAILPAGE_TYPE = CmsGwtConstants.DEFAULT_DETAILPAGE_TYPE;
 
     /** Default favorite/recent list size constant. */
     public static final int DEFAULT_ELEMENT_LIST_SIZE = 10;
@@ -346,6 +352,18 @@ public class CmsADEManager {
 
         CmsFormatterConfigurationCache cache = online ? m_onlineFormatterCache : m_offlineFormatterCache;
         return cache.getState();
+    }
+
+    /**
+     * Gets the current ADE configuration cache state.<p>
+     *
+     * @param online true if you want the online state, false for the offline state
+     *
+     * @return the configuration cache state
+     */
+    public CmsADEConfigCacheState getCacheState(boolean online) {
+
+        return (online ? m_onlineCache : m_offlineCache).getState();
     }
 
     /**
@@ -594,7 +612,7 @@ public class CmsADEManager {
         Map<String, CmsXmlContentProperty> result = new LinkedHashMap<String, CmsXmlContentProperty>();
         Visibility defaultVisibility = Visibility.elementAndParentIndividual;
         if (mainFormatter != null) {
-            for (Entry<String, CmsXmlContentProperty> entry : mainFormatter.getSettings().entrySet()) {
+            for (Entry<String, CmsXmlContentProperty> entry : mainFormatter.getSettings(config).entrySet()) {
                 Visibility visibility = entry.getValue().getVisibility(defaultVisibility);
                 if (!(visibility.equals(Visibility.parentShared) || visibility.equals(Visibility.parentIndividual))) {
                     result.put(entry.getKey(), entry.getValue());
@@ -604,7 +622,7 @@ public class CmsADEManager {
                 List<I_CmsFormatterBean> nestedFormatters = getNestedFormatters(cms, config, res, locale, req);
                 if (nestedFormatters != null) {
                     for (I_CmsFormatterBean formatter : nestedFormatters) {
-                        for (Entry<String, CmsXmlContentProperty> entry : formatter.getSettings().entrySet()) {
+                        for (Entry<String, CmsXmlContentProperty> entry : formatter.getSettings(config).entrySet()) {
                             Visibility visibility = entry.getValue().getVisibility(defaultVisibility);
                             switch (visibility) {
                                 case parentShared:
@@ -849,6 +867,32 @@ public class CmsADEManager {
 
         }
         return new CmsPermissionInfo(hasView, hasWrite, noEdit);
+    }
+
+    /**
+     * Gets a map of plugin wrappers for the given site path.
+     *
+     * <p>This *only* includes plugins defined in site plugins active on the given path, not those referenced in formatters.
+     *
+     * @param cms the CMS context
+     * @param path the path for which to get the plugins
+     *
+     * @return the map of plugin wrappers, with the plugin groups as keys
+     */
+    public Map<String, List<CmsTemplatePluginWrapper>> getPluginsForPath(CmsObject cms, String path) {
+
+        CmsADEConfigData config = lookupConfigurationWithCache(cms, cms.getRequestContext().addSiteRoot(path));
+
+        Multimap<String, CmsTemplatePlugin> plugins = CmsTemplatePluginFinder.getActiveTemplatePluginsFromSitePlugins(
+            config);
+        Map<String, List<CmsTemplatePluginWrapper>> result = new HashMap<>();
+        for (String key : plugins.keySet()) {
+            List<CmsTemplatePluginWrapper> wrappers = plugins.get(key).stream().map(
+                plugin -> new CmsTemplatePluginWrapper(cms, plugin)).collect(Collectors.toList());
+            result.put(key, Collections.unmodifiableList(wrappers));
+        }
+        return Collections.unmodifiableMap(result);
+
     }
 
     /**
@@ -1438,18 +1482,6 @@ public class CmsADEManager {
     protected CmsConfigurationCache getCache(boolean online) {
 
         return online ? m_onlineCache : m_offlineCache;
-    }
-
-    /**
-     * Gets the current ADE configuration cache state.<p>
-     *
-     * @param online true if you want the online state, false for the offline state
-     *
-     * @return the configuration cache state
-     */
-    protected CmsADEConfigCacheState getCacheState(boolean online) {
-
-        return (online ? m_onlineCache : m_offlineCache).getState();
     }
 
     /**

@@ -8,6 +8,7 @@
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/formatter_settings.xsd" />
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/choice_type_width.xsd" />
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/meta_mapping.xsd" />
+    <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/formatters/plugin.xsd" />
     <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/parameters.xsd" />
 
     <xsd:element name="NewFormatters" type="OpenCmsNewFormatters" />
@@ -23,6 +24,7 @@
             <xsd:element name="NiceName" type="OpenCmsString" />
             <xsd:element name="Type" type="OpenCmsString" maxOccurs="unbounded" />
             <xsd:element name="Key" type="OpenCmsString" minOccurs="0" />
+            <xsd:element name="KeyAlias" type="OpenCmsString" minOccurs="0" maxOccurs="unbounded" />
             <xsd:element name="Jsp" type="OpenCmsVfsFile" />
             <xsd:element name="Description" type="OpenCmsString" minOccurs="0" />
             <xsd:element name="Rank" type="OpenCmsString"/>
@@ -38,6 +40,7 @@
             <xsd:element name="Preview" type="OpenCmsBoolean" minOccurs="0"/>
             <xsd:element name="HeadIncludeCss" type="OpenCmsHeadIncludeCss" minOccurs="0" maxOccurs="1"/>
             <xsd:element name="HeadIncludeJs" type="OpenCmsHeadIncludeJavascript" minOccurs="0" maxOccurs="1" />
+            <xsd:element name="Plugin" type="OpenCmsPlugin" minOccurs="0" maxOccurs="unbounded" />
             <xsd:element name="IncludeSettings" type="OpenCmsVfsFile" minOccurs="0" maxOccurs="unbounded" />
             <xsd:element name="Setting" type="OpenCmsFormatterSetting" minOccurs="0" maxOccurs="unbounded" />
             <xsd:element name="MetaMapping" type="OpenCmsMetaMapping" minOccurs="0" maxOccurs="unbounded" />
@@ -69,7 +72,7 @@
                 <relation element="HeadIncludeJs/JavascriptLink" invalidate="false" />
             </relations>
             <validationrules>
-            	<validationrule element="Key" regex="^[a-zA-Z0-9-\./]+$" message="%(key.formatterkey.validation)" />
+            	<validationrule element="Key" regex="^[a-zA-Z0-9-#\./]+$" message="%(key.formatterkey.validation)" />
             </validationrules>
             <tabs>
                 <tab element="NiceName" name="TabBasic" collapse="false" />

@@ -27,9 +27,10 @@
 
 package org.opencms.xml.containerpage;
 
+import org.opencms.ade.configuration.formatters.CmsSettingConfiguration;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
 import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.util.CmsUUID;
-import org.opencms.xml.content.CmsXmlContentProperty;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -59,6 +60,8 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
      * @param containerTypes the formatter container types
      * @param jspRootPath the formatter JSP VFS root path
      * @param jspStructureId the structure id of the formatter JSP
+     * @param key the key
+     * @param aliasKeys the alias keys
      * @param functionFormatterId the standard function formatter structure id
      * @param minWidth the formatter min width
      * @param maxWidth the formatter max width
@@ -67,10 +70,11 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
      * @param inlineCss the in-line CSS
      * @param javascriptHeadIncludes the JavaScript headincludes
      * @param inlineJavascript the in-line JavaScript
+     * @param plugins the template plugins
      * @param niceName the configuration display name
      * @param description the description text for the formatter
      * @param id the configuration id
-     * @param settings the settings configuration
+     * @param settingConfig the settings configuration
      * @param isAllowsSettingsInEditor whether this formatter allows settings to be edited in the content editor
      * @param isStrictContainers <code>true</code> if this formatter will always render all nested containers
      * @param parameters the request parameters to add for the included JSP
@@ -80,6 +84,7 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
         String jspRootPath,
         CmsUUID jspStructureId,
         String key,
+        Set<String> aliasKeys,
         CmsUUID functionFormatterId,
         int minWidth,
         int maxWidth,
@@ -88,10 +93,11 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
         String inlineCss,
         List<String> javascriptHeadIncludes,
         String inlineJavascript,
+        List<CmsTemplatePlugin> plugins,
         String niceName,
         String description,
         String id,
-        Map<String, CmsXmlContentProperty> settings,
+        CmsSettingConfiguration settingConfig,
         boolean isAllowsSettingsInEditor,
         boolean isStrictContainers,
         Map<String, String[]> parameters) {
@@ -101,6 +107,7 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
             jspRootPath,
             jspStructureId,
             key,
+            aliasKeys,
             minWidth,
             maxWidth,
             true, // preview
@@ -110,12 +117,13 @@ public class CmsFunctionFormatterBean extends CmsFormatterBean {
             inlineCss,
             javascriptHeadIncludes,
             inlineJavascript,
+            plugins,
             niceName,
             description,
             Arrays.asList(CmsResourceTypeFunctionConfig.TYPE_NAME),
             10099, // rank
             id,
-            settings,
+            settingConfig,
             true, //isFromConfigFile
             true, // isAutoEnabled
             false, // detailType

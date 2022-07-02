@@ -311,6 +311,14 @@ public interface I_CmsVfsServiceAsync {
     void getStructureId(String vfsPath, AsyncCallback<CmsUUID> callback);
 
     /**
+     * Gets the resource info to display for an upload folder.
+     *
+     * @param path the folder path
+     * @param callback the callback to call with the result
+     */
+    void getUploadFolderInfo(String path, AsyncCallback<CmsListInfoBean> callback);
+
+    /**
      * Loads the external link info.<p>
      *
      * @param structureId the external link structure id
@@ -393,10 +401,10 @@ public interface I_CmsVfsServiceAsync {
      * Saves a set of property changes.<p>
      *
      * @param changes the property changes
-     *
+     * @param updateIndex true if the index should be updated after saving the property changes
      * @param callback the asynchronous callback
      */
-    void saveProperties(CmsPropertyChangeSet changes, AsyncCallback<Void> callback);
+    void saveProperties(CmsPropertyChangeSet changes, boolean updateIndex, AsyncCallback<Void> callback);
 
     /**
      * Returns the absolute link to the given root path.<p>

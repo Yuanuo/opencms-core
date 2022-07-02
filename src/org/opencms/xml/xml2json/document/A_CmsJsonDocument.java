@@ -28,13 +28,16 @@
 package org.opencms.xml.xml2json.document;
 
 import org.opencms.json.JSONObject;
-import org.opencms.xml.xml2json.CmsJsonHandlerContext;
 import org.opencms.xml.xml2json.CmsJsonRequest;
+import org.opencms.xml.xml2json.handler.CmsJsonHandlerContext;
 
 /**
  * Abstract class representing a JSON document.
  */
 public abstract class A_CmsJsonDocument {
+
+    /** The related contents property */
+    protected static final String FIELD_LINKED_CONTENTS = "linkedContents";
 
     /** The handler context. */
     protected CmsJsonHandlerContext m_context;

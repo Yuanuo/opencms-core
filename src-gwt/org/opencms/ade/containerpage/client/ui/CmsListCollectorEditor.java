@@ -35,7 +35,10 @@ import org.opencms.ade.containerpage.shared.CmsDialogOptions;
 import org.opencms.ade.containerpage.shared.CmsDialogOptionsAndInfo;
 import org.opencms.ade.contenteditor.client.CmsContentEditor;
 import org.opencms.ade.contenteditor.shared.CmsEditHandlerData;
+import org.opencms.ade.upload.client.I_CmsUploadContext;
+import org.opencms.ade.upload.client.lists.CmsUploadPopup;
 import org.opencms.gwt.client.CmsCoreProvider;
+import org.opencms.gwt.client.rpc.CmsRpcAction;
 import org.opencms.gwt.client.ui.A_CmsDirectEditButtons;
 import org.opencms.gwt.client.ui.CmsCreateModeSelectionDialog;
 import org.opencms.gwt.client.ui.CmsDeleteWarningDialog;
@@ -46,10 +49,12 @@ import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.CmsPositionBean;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsGwtConstants;
+import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import com.google.common.collect.Maps;
@@ -71,6 +76,9 @@ public class CmsListCollectorEditor extends A_CmsDirectEditButtons {
 
     /** True if the parent element has offset height or width. */
     private boolean m_parentHasDimensions;
+
+    /** The currently active upload popup. */
+    private CmsUploadPopup m_uploadPopup;
 
     /**
      * Creates a new instance.<p>
@@ -241,6 +249,17 @@ public class CmsListCollectorEditor extends A_CmsDirectEditButtons {
     }
 
     /**
+     * @see org.opencms.gwt.client.ui.A_CmsDirectEditButtons#getUploadButtonTitle(java.lang.String)
+     */
+    @Override
+    protected String getUploadButtonTitle(String uploadFolder) {
+
+        return org.opencms.ade.galleries.client.Messages.get().key(
+            org.opencms.ade.galleries.client.Messages.GUI_GALLERY_UPLOAD_TITLE_1,
+            uploadFolder);
+    }
+
+    /**
      * @see org.opencms.gwt.client.ui.A_CmsDirectEditButtons#onClickDelete()
      */
     @Override
@@ -261,7 +280,9 @@ public class CmsListCollectorEditor extends A_CmsDirectEditButtons {
 
                             public void execute(Void arg1) {
 
-                                CmsContainerpageController.get().reloadElements(new String[] {getParentResourceId()});
+                                CmsContainerpageController.get().reloadElements(
+                                    new String[] {getParentResourceId()},
+                                    () -> {/*do nothing*/});
                             }
                         });
                     }
@@ -360,6 +381,58 @@ public class CmsListCollectorEditor extends A_CmsDirectEditButtons {
     }
 
     /**
+     * @see org.opencms.gwt.client.ui.A_CmsDirectEditButtons#onClickUpload()
+     */
+    @Override
+    protected void onClickUpload() {
+
+        removeHighlighting();
+        I_CmsUploadContext context = new I_CmsUploadContext() {
+
+            @SuppressWarnings("synthetic-access")
+            public void onUploadFinished(List<String> uploadedFiles) {
+
+                closeUploadPopup();
+                CmsContainerpageController.get().reloadElements(
+                    new String[] {getParentResourceId()},
+                    () -> {/*do nothing*/});
+            }
+        };
+        if (m_editableData.getStructureId() != null) {
+            CmsRpcAction<CmsListInfoBean> action = new CmsRpcAction<CmsListInfoBean>() {
+
+                @SuppressWarnings("synthetic-access")
+                @Override
+                public void execute() {
+
+                    start(0, false);
+                    CmsCoreProvider.get();
+                    CmsCoreProvider.getVfsService().getUploadFolderInfo(
+                        m_editableData.getExtensions().getUploadFolder(),
+                        this);
+                }
+
+                @SuppressWarnings("synthetic-access")
+                @Override
+                protected void onResponse(CmsListInfoBean result) {
+
+                    stop(false);
+                    setUploadPopup(new CmsUploadPopup(m_editableData, context, result));
+                    m_uploadPopup.center();
+
+                }
+
+            };
+            action.execute();
+        } else {
+            setUploadPopup(new CmsUploadPopup(m_editableData, context, null));
+            m_uploadPopup.center();
+
+        }
+
+    }
+
+    /**
      * Opens the content editor.<p>
      *
      * @param isNew <code>true</code> to create and edit a new resource
@@ -427,6 +500,28 @@ public class CmsListCollectorEditor extends A_CmsDirectEditButtons {
         } else {
             getElement().getStyle().clearDisplay();
         }
+    }
+
+    /**
+     * Closes the currently active upload popup.
+     */
+    private void closeUploadPopup() {
+
+        if (m_uploadPopup != null) {
+            m_uploadPopup.hide();
+            m_uploadPopup = null;
+        }
+    }
+
+    /**
+     * Sets the upload popup, and closes the previous one if it exists.
+     *
+     * @param popup the upload popup
+     */
+    private void setUploadPopup(CmsUploadPopup popup) {
+
+        closeUploadPopup();
+        m_uploadPopup = popup;
     }
 
 }

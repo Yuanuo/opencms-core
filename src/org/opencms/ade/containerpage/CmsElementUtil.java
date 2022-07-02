@@ -38,6 +38,7 @@ import org.opencms.ade.containerpage.shared.CmsContainer;
 import org.opencms.ade.containerpage.shared.CmsContainerElement;
 import org.opencms.ade.containerpage.shared.CmsContainerElement.ModelGroupState;
 import org.opencms.ade.containerpage.shared.CmsContainerElementData;
+import org.opencms.ade.containerpage.shared.CmsElementLockInfo;
 import org.opencms.ade.containerpage.shared.CmsElementSettingsConfig;
 import org.opencms.ade.containerpage.shared.CmsFormatterConfig;
 import org.opencms.ade.containerpage.shared.CmsFormatterConfigCollection;
@@ -50,6 +51,7 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.file.CmsUser;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
@@ -62,6 +64,7 @@ import org.opencms.i18n.CmsMessages;
 import org.opencms.jsp.util.CmsJspStandardContextBean;
 import org.opencms.jsp.util.CmsJspStandardContextBean.TemplateBean;
 import org.opencms.loader.CmsTemplateContextManager;
+import org.opencms.lock.CmsLock;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -399,11 +402,11 @@ public class CmsElementUtil {
         return formatter;
     }
 
-    /** 
-     * Checks if the given setting name is a system setting. 
-     * 
-     * @param name the setting name 
-     * @return true if the name corresponds to a system setting 
+    /**
+     * Checks if the given setting name is a system setting.
+     *
+     * @param name the setting name
+     * @return true if the name corresponds to a system setting
      */
     public static final boolean isSystemSetting(String name) {
 
@@ -741,12 +744,17 @@ public class CmsElementUtil {
             for (CmsContainer cnt : containers) {
                 if (cnt.getName().equals(containerId)) {
                     CmsFormatterConfigCollection containerFormatters = new CmsFormatterConfigCollection();
-                    boolean missesFormatterSetting = !elementData.getSettings().containsKey(
-                        CmsFormatterConfig.getSettingsKeyForContainer(cnt.getName()));
+                    String foundFormatterKey = null;
+                    for (String containerName : new String[] {cnt.getName(), ""}) {
+                        foundFormatterKey = elementData.getSettings().get(
+                            CmsFormatterConfig.getSettingsKeyForContainer(containerName));
+                        if (foundFormatterKey != null) {
+                            break;
+                        }
+                    }
+                    boolean missesFormatterSetting = (foundFormatterKey == null);
                     if (!missesFormatterSetting) {
-                        foundFormatter = adeConfig.findFormatter(
-                            elementData.getSettings().get(
-                                CmsFormatterConfig.getSettingsKeyForContainer(cnt.getName())));
+                        foundFormatter = adeConfig.findFormatter(foundFormatterKey);
                     }
                     Map<String, I_CmsFormatterBean> formatterSelection = formatterConfiguraton.getFormatterSelection(
                         cnt.getType(),
@@ -931,6 +939,8 @@ public class CmsElementUtil {
         String title;
         String subTitle;
         if (!elementBean.isInMemoryOnly()) {
+            CmsElementLockInfo lockInfo = getLockInfo(m_cms, resource);
+            result.setLockInfo(lockInfo);
             permissionInfo = OpenCms.getADEManager().getPermissionInfo(m_cms, resource, m_page.getRootPath());
             if (CmsResourceTypeXmlContent.isXmlContent(resource)) {
                 if (CmsStringUtil.isEmptyOrWhitespaceOnly(permissionInfo.getNoEditReason())
@@ -1063,7 +1073,15 @@ public class CmsElementUtil {
         setElementInfo(element, elementData);
         elementData.setLoadTime(System.currentTimeMillis());
         elementData.setLastModifiedDate(element.getResource().getDateLastModified());
-        elementData.setLastModifiedByUser(m_cms.readUser(element.getResource().getUserLastModified()).getName());
+        String userName = null;
+        try {
+            CmsUser user = m_cms.readUser(element.getResource().getUserLastModified());
+            userName = user.getName();
+        } catch (CmsException e) {
+            userName = "" + element.getResource().getUserLastModified();
+            LOG.debug(e.getLocalizedMessage(), e);
+        }
+        elementData.setLastModifiedByUser(userName);
         elementData.setNavText(resUtil.getNavText());
         Map<String, CmsXmlContentProperty> settingConfig = CmsXmlContentPropertyHelper.getPropertyInfo(
             m_cms,
@@ -1210,6 +1228,26 @@ public class CmsElementUtil {
     }
 
     /**
+     * Gets the lock information.
+     *
+     * @param cms the current CMS context
+     * @param resource the resource for which to get lock information
+     * @return the lock information
+     */
+    private CmsElementLockInfo getLockInfo(CmsObject cms, CmsResource resource) {
+
+        try {
+            CmsLock lock = cms.getLock(resource);
+            CmsUUID owner = lock.getUserId();
+            boolean isPublish = lock.isPublish();
+            return new CmsElementLockInfo(owner, isPublish);
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+            return new CmsElementLockInfo(null, false);
+        }
+    }
+
+    /**
      * Helper method for checking whether there are properties defined for a given content element.<p>
      *
      * @param cms the CmsObject to use for VFS operations
@@ -1225,12 +1263,12 @@ public class CmsElementUtil {
             return false;
         }
 
-        CmsFormatterConfiguration formatters = getConfigData().getFormatters(m_cms, resource);
+        CmsADEConfigData config = getConfigData();
+        CmsFormatterConfiguration formatters = config.getFormatters(m_cms, resource);
         boolean result = (formatters.getAllFormatters().size() > 1)
             || !CmsXmlContentPropertyHelper.getPropertyInfo(m_cms, null, resource).isEmpty();
         if (!result && (formatters.getAllFormatters().size() == 1)) {
-            result = (formatters.getAllFormatters().get(0).getSettings() != null)
-                && (formatters.getAllFormatters().get(0).getSettings().size() > 0);
+            result = (formatters.getAllFormatters().get(0).getSettings(config).size() > 0);
         }
         return result;
     }

@@ -43,6 +43,8 @@ public class CmsSearchController implements I_CmsSearchControllerMain {
     Collection<I_CmsSearchController> m_controllers;
     /** The controller for the common options. */
     I_CmsSearchControllerCommon m_common;
+    /** The controller for the Geo filter. */
+    I_CmsSearchControllerGeoFilter m_geoFilter;
     /** The controller for the sort options. */
     I_CmsSearchControllerSorting m_sorting;
     /** The controller for the pagination options. */
@@ -97,6 +99,10 @@ public class CmsSearchController implements I_CmsSearchControllerMain {
         if (config.getQueryFacetConfig() != null) {
             m_queryFacet = new CmsSearchControllerFacetQuery(config.getQueryFacetConfig());
             m_controllers.add(m_queryFacet);
+        }
+        if (config.getGeoFilterConfig() != null) {
+            m_geoFilter = new CmsSearchControllerGeoFilter(config.getGeoFilterConfig());
+            m_controllers.add(m_geoFilter);
         }
     }
 
@@ -155,6 +161,15 @@ public class CmsSearchController implements I_CmsSearchControllerMain {
     public I_CmsSearchControllerFacetsField getFieldFacets() {
 
         return m_fieldFacets;
+    }
+
+    /**
+     * @see org.opencms.jsp.search.controller.I_CmsSearchControllerMain#getGeoFilter()
+     */
+    @Override
+    public I_CmsSearchControllerGeoFilter getGeoFilter() {
+
+        return m_geoFilter;
     }
 
     /**

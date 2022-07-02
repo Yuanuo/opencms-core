@@ -43,6 +43,7 @@ import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.security.CmsPasswordInfo;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsSecurityException;
+import org.opencms.security.CmsUserLog;
 import org.opencms.security.I_CmsPasswordHandler;
 import org.opencms.security.I_CmsPasswordSecurityEvaluator;
 import org.opencms.security.I_CmsPasswordSecurityEvaluator.SecurityLevel;
@@ -1245,7 +1246,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
      */
     private void iniLanguage(CmsUserSettings settings) {
 
-        IndexedContainer container = CmsVaadinUtils.getLanguageContainer("caption");
+        IndexedContainer container = CmsVaadinUtils.getWorkplaceLanguageContainer("caption");
         m_language.setContainerDataSource(container);
         m_language.setItemCaptionPropertyId("caption");
         m_language.setNewItemsAllowed(false);
@@ -1455,6 +1456,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         if (!CmsStringUtil.isEmptyOrWhitespaceOnly(m_pw.getPassword1())) {
             if (isPasswordValid()) {
                 m_cms.setPassword(m_user.getName(), m_pw.getPassword1());
+                CmsUserLog.logPasswordChange(m_cms, m_user.getName());
             }
         }
 
@@ -1552,6 +1554,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
     private void updateUser(CmsUser user) {
 
         setUserPasswordStatus(user, m_forceResetPassword.getValue().booleanValue());
+        CmsUserLog.logSetForceResetPassword(A_CmsUI.getCmsObject(), user.getName());
         user.setDescription(m_description.getValue());
         user.setManaged(!m_selfmanagement.getValue().booleanValue());
         boolean enabled = m_enabled.getValue().booleanValue();

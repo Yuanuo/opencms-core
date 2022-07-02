@@ -27,6 +27,10 @@
 
 package org.opencms.xml.containerpage;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.formatters.CmsSettingConfiguration;
+import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
+import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
@@ -36,21 +40,25 @@ import org.opencms.xml.content.CmsXmlContentProperty;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.logging.Log;
+
+import com.google.common.collect.ImmutableList;
 
 /**
  * A bean containing formatter configuration data as strings.<p>
  *
  * @since 8.0.0
  */
-public class CmsFormatterBean implements I_CmsFormatterBean {
+public class CmsFormatterBean implements I_CmsFormatterBean, Cloneable {
 
     /** Default rank for formatters from formatter configuration files. */
     public static final int DEFAULT_CONFIGURATION_RANK = 1000;
@@ -67,6 +75,9 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     /** Wildcard formatter type for width based formatters. */
     public static final String WILDCARD_TYPE = "*";
 
+    /** Logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsFormatterBean.class);
+
     /** The formatter container type. */
     protected Set<String> m_containerTypes;
 
@@ -75,6 +86,12 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
 
     /** The description text for the formatter. */
     protected String m_description;
+
+    /** Set of alias keys. */
+    protected Set<String> m_aliasKeys = new HashSet<>();
+
+    /** Set of all formatter keys (main + alias keys). */
+    private Set<String> m_allKeys = new HashSet<>();
 
     /** Provides the display type. If empty if this formatter should not be used by the display tag. */
     protected String m_displayType;
@@ -133,6 +150,9 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     /** The nice name. */
     protected String m_niceName;
 
+    /** The referenced plugins. */
+    protected List<CmsTemplatePlugin> m_plugins = Collections.emptyList();
+
     /** The rank. */
     protected int m_rank;
 
@@ -141,9 +161,6 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
 
     /** Indicates if the content should be searchable in the online index when this formatter is used. */
     protected boolean m_search;
-
-    /** The settings. */
-    protected Map<String, CmsXmlContentProperty> m_settings = new LinkedHashMap<String, CmsXmlContentProperty>();
 
     /** Indicating if this formatter will always render all nested containers. */
     protected boolean m_strictContainers;
@@ -157,6 +174,9 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     /** Flag indicating this formatter allows settings to be edited in the content editor. */
     private boolean m_isAllowsSettingsInEditor;
 
+    /** The setting configuration. */
+    private CmsSettingConfiguration m_settingConfig;
+
     /**
      * Constructor for creating a new formatter configuration with resource structure id.<p>
      *
@@ -164,6 +184,7 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
      * @param jspRootPath the formatter JSP VFS root path
      * @param jspStructureId the structure id of the formatter JSP
      * @param key the formatter key
+     * @param aliasKeys the alias keys
      * @param minWidth the formatter min width
      * @param maxWidth the formatter max width
      * @param preview indicates if this formatter is to be used for the preview in the ADE gallery GUI
@@ -173,12 +194,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
      * @param inlineCss the in-line CSS
      * @param javascriptHeadIncludes the JavaScript headincludes
      * @param inlineJavascript the in-line JavaScript
+     * @param plugins the template plugins
      * @param niceName the configuration display name
      * @param description the description text for the formatter
      * @param resourceTypeNames the resource type names
      * @param rank the configuration rank
      * @param id the configuration id
-     * @param settings the settings configuration
+     * @param settingConfig the settings configuration
      * @param isFromConfigFile <code>true</code> if configuration file based
      * @param isAutoEnabled <code>true</code> if auto enabled
      * @param isDetail <code>true</code> if detail formatter
@@ -195,6 +217,7 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         String jspRootPath,
         CmsUUID jspStructureId,
         String key,
+        Set<String> aliasKeys,
         int minWidth,
         int maxWidth,
         boolean preview,
@@ -204,12 +227,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         String inlineCss,
         List<String> javascriptHeadIncludes,
         String inlineJavascript,
+        List<CmsTemplatePlugin> plugins,
         String niceName,
         String description,
         Collection<String> resourceTypeNames,
         int rank,
         String id,
-        Map<String, CmsXmlContentProperty> settings,
+        CmsSettingConfiguration settingConfig,
         boolean isFromConfigFile,
         boolean isAutoEnabled,
         boolean isDetail,
@@ -226,7 +250,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         m_key = key;
         if (m_key != null) {
             m_key = m_key.trim();
+            m_allKeys.add(m_key);
         }
+        if (aliasKeys != null) {
+            m_aliasKeys.addAll(aliasKeys);
+            m_allKeys.addAll(aliasKeys);
+        }
+
         m_containerTypes = containerTypes;
         m_minWidth = minWidth;
         m_maxWidth = maxWidth;
@@ -244,7 +274,8 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
         m_inlineJavascript = inlineJavascript;
         m_javascriptHeadIncludes.addAll(javascriptHeadIncludes);
         m_cssHeadIncludes.addAll(cssHeadIncludes);
-        m_settings.putAll(settings);
+        m_plugins = new ArrayList<>(plugins);
+        m_settingConfig = settingConfig;
         m_isFromFormatterConfigFile = isFromConfigFile;
         m_isAutoEnabled = isAutoEnabled;
         m_isDetail = isDetail;
@@ -284,6 +315,7 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             rootPath,
             structureId,
             null,
+            new HashSet<String>(),
             minWidth,
             maxWidth,
             preview,
@@ -293,12 +325,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             "",
             Collections.<String> emptyList(),
             "",
+            new ArrayList<CmsTemplatePlugin>(),
             null,
             rootPath,
             Collections.<String> emptySet(),
             1000,
             null,
-            Collections.<String, CmsXmlContentProperty> emptyMap(),
+            new CmsSettingConfiguration(),
             false,
             false,
             true,
@@ -381,6 +414,7 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             jspRootPath,
             jspStructureId,
             null,
+            new HashSet<String>(),
             -1,
             Integer.MAX_VALUE,
             preview,
@@ -390,12 +424,13 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
             "",
             Collections.<String> emptyList(),
             "",
+            new ArrayList<>(),
             null,
             jspRootPath,
             Collections.<String> emptySet(),
             DEFAULT_SCHEMA_RANK,
             null,
-            Collections.<String, CmsXmlContentProperty> emptyMap(),
+            new CmsSettingConfiguration(),
             false,
             false,
             true,
@@ -431,6 +466,22 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     private static boolean isWildcardType(String containerType) {
 
         return CmsStringUtil.isEmptyOrWhitespaceOnly(containerType) || WILDCARD_TYPE.equals(containerType);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAliasKeys()
+     */
+    public Set<String> getAliasKeys() {
+
+        return Collections.unmodifiableSet(m_aliasKeys);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getAllKeys()
+     */
+    public Set<String> getAllKeys() {
+
+        return Collections.unmodifiableSet(m_allKeys);
     }
 
     /**
@@ -612,12 +663,21 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     }
 
     /**
-     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getSettings()
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getSettings(org.opencms.ade.configuration.CmsADEConfigData)
      */
     @Override
-    public Map<String, CmsXmlContentProperty> getSettings() {
+    public Map<String, CmsXmlContentProperty> getSettings(CmsADEConfigData config) {
 
-        return Collections.unmodifiableMap(m_settings);
+        ImmutableList<CmsUUID> sharedSettingOverrides = config.getSharedSettingOverrides();
+        return m_settingConfig.getSettings(sharedSettingOverrides);
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#getTemplatePlugins()
+     */
+    public List<CmsTemplatePlugin> getTemplatePlugins() {
+
+        return Collections.unmodifiableList(m_plugins);
     }
 
     /**
@@ -754,5 +814,30 @@ public class CmsFormatterBean implements I_CmsFormatterBean {
     public boolean useMetaMappingsForNormalElements() {
 
         return m_useMetaMappingsForNormalElements;
+    }
+
+    /**
+     * @see org.opencms.xml.containerpage.I_CmsFormatterBean#withKeys(java.util.Collection)
+     */
+    public Optional<I_CmsFormatterBean> withKeys(Collection<String> keys) {
+
+        if ((getKey() != null) && !getAllKeys().equals(keys)) {
+            Set<String> newAllKeys = new HashSet<>(keys);
+            newAllKeys.add(getKey());
+            Set<String> newAliases = new HashSet<>(keys);
+            newAliases.remove(getKey());
+            CmsFormatterBean clonedBean;
+            try {
+                clonedBean = (CmsFormatterBean)clone();
+                clonedBean.m_aliasKeys = newAliases;
+                clonedBean.m_allKeys = new HashSet<>(keys);
+                return Optional.of(clonedBean);
+
+            } catch (CloneNotSupportedException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+                return Optional.empty();
+            }
+        }
+        return Optional.of(this);
     }
 }

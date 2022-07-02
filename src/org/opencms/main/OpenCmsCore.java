@@ -78,6 +78,7 @@ import org.opencms.importexport.CmsImportExportManager;
 import org.opencms.json.JSONObject;
 import org.opencms.jsp.jsonpart.CmsJsonPartFilter;
 import org.opencms.jsp.userdata.CmsUserDataRequestManager;
+import org.opencms.jsp.util.CmsJspStandardContextBean;
 import org.opencms.letsencrypt.CmsLetsEncryptConfiguration;
 import org.opencms.loader.CmsResourceManager;
 import org.opencms.loader.CmsTemplateContextManager;
@@ -133,6 +134,7 @@ import org.opencms.xml.xml2json.I_CmsApiAuthorizationHandler;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -149,6 +151,7 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
@@ -164,6 +167,7 @@ import org.antlr.stringtemplate.StringTemplate;
 
 import com.google.common.base.Optional;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.gwt.user.client.rpc.core.java.util.LinkedHashMap_CustomFieldSerializer;
 
 /**
  * The internal implementation of the core OpenCms "operating system" functions.<p>
@@ -204,6 +208,13 @@ public final class OpenCmsCore {
 
     /** One instance to rule them all, one instance to find them... */
     private static OpenCmsCore m_instance;
+
+    static {
+        final String keyEntityExpansionLimit = "jdk.xml.entityExpansionLimit";
+        if (System.getProperty(keyEntityExpansionLimit) == null) {
+            System.setProperty(keyEntityExpansionLimit, "64000");
+        }
+    }
 
     /** The ADE manager instance. */
     private CmsADEManager m_adeManager;
@@ -1971,7 +1982,7 @@ public final class OpenCmsCore {
             // set the request uri to the right file
             cms.getRequestContext().setUri(cms.getSitePath(resource));
             // test if this file is only available for internal access operations
-            if (resource.isInternal()) {
+            if (resource.isInternalOrInInternalFolder()) {
                 throw new CmsException(
                     Messages.get().container(Messages.ERR_READ_INTERNAL_RESOURCE_1, cms.getRequestContext().getUri()));
             }
@@ -2161,8 +2172,9 @@ public final class OpenCmsCore {
             logInfo.put("cms_project", cms.getRequestContext().getCurrentProject().getName());
             try (CloseableThreadContext.Instance threadContext = CloseableThreadContext.putAll(logInfo)) {
                 LOG.info("Updating log context: " + logInfo);
+                String uri = cms.getRequestContext().getUri();
                 if (cms.getRequestContext().getCurrentProject().isOnlineProject()) {
-                    String uri = cms.getRequestContext().getUri();
+
                     if (uri.startsWith(CmsWorkplace.VFS_PATH_SITES)) {
                         // resources within the sites folder may only be called with their site relative path
                         // this should prevent showing pages from other sites with their root path
@@ -2179,18 +2191,29 @@ public final class OpenCmsCore {
                         return;
                     }
                 }
-                List<CmsSiteMatcher> currentSiteAliase = m_siteManager.getCurrentSite(cms).getAliases();
+                List<CmsSiteMatcher> currentSiteAliases = m_siteManager.getCurrentSite(cms).getAliases();
                 CmsSiteMatcher currentSiteMatcher = cms.getRequestContext().getRequestMatcher();
-                if (currentSiteAliase.contains(currentSiteMatcher.forDifferentScheme("http"))
-                    || currentSiteAliase.contains(currentSiteMatcher.forDifferentScheme("https"))) {
-                    int pos = currentSiteAliase.indexOf(currentSiteMatcher.forDifferentScheme("http"));
+                if (currentSiteAliases.contains(currentSiteMatcher.forDifferentScheme("http"))
+                    || currentSiteAliases.contains(currentSiteMatcher.forDifferentScheme("https"))) {
+                    int pos = currentSiteAliases.indexOf(currentSiteMatcher.forDifferentScheme("http"));
                     if (pos == -1) {
-                        pos = currentSiteAliase.indexOf(currentSiteMatcher.forDifferentScheme("https"));
+                        pos = currentSiteAliases.indexOf(currentSiteMatcher.forDifferentScheme("https"));
                     }
-                    if (currentSiteAliase.get(pos).isRedirect()) {
-                        res.sendRedirect(
-                            m_siteManager.getCurrentSite(cms).getUrl() + req.getContextPath() + req.getPathInfo());
-                        return;
+                    switch (currentSiteAliases.get(pos).getRedirectMode()) {
+                        case none:
+                            break;
+                        case temporary:
+                            res.sendRedirect(
+                                m_siteManager.getCurrentSite(cms).getUrl() + req.getContextPath() + req.getPathInfo());
+                            return;
+                        case permanent:
+                            res.setHeader(
+                                CmsRequestUtil.HEADER_LOCATION,
+                                m_siteManager.getCurrentSite(cms).getUrl() + req.getContextPath() + req.getPathInfo());
+                            res.setStatus(HttpServletResponse.SC_MOVED_PERMANENTLY);
+                            return;
+                        default:
+                            break;
                     }
                 }
 
@@ -2224,7 +2247,9 @@ public final class OpenCmsCore {
                 }
             }
 
-        } catch (Throwable t) {
+        } catch (
+
+        Throwable t) {
             errorHandling(cms, req, res, t);
         }
     }
@@ -2663,6 +2688,19 @@ public final class OpenCmsCore {
             CmsLog.INIT.error(e.getLocalizedMessage(), e);
         }
 
+        try {
+            // Workaround: The GWT serializer for LinkedHashMaps uses reflection on java.util.LinkedHashMap that is disallowed in newer Java versions that use modules.
+            // This can be bypassed by setting a private 'reflectionHasFailed' field in the serializer class. *This* reflective access is OK, because it does not access a different module.
+            // GWT should really handle that problem, but as of version 2.9.0 it does not. This workaround can be removed if a newer GWT version handles the problem correctly.
+            // (See https://github.com/gwtproject/gwt/issues/9584)
+
+            Field field = LinkedHashMap_CustomFieldSerializer.class.getDeclaredField("reflectionHasFailed");
+            field.setAccessible(true);
+            ((AtomicBoolean)field.get(null)).set(true);
+        } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {
+            CmsLog.INIT.error(e.getLocalizedMessage(), e);
+        }
+
     }
 
     /**
@@ -2706,6 +2744,7 @@ public final class OpenCmsCore {
 
         // remove the controller attribute from the request
         CmsFlexController.removeController(req);
+        req.removeAttribute(CmsJspStandardContextBean.ATTRIBUTE_NAME);
 
         boolean canWrite = (!res.isCommitted() && !res.containsHeader("Location"));
         int status = -1;

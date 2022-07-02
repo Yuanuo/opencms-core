@@ -73,7 +73,12 @@ public class CmsDirectEditButtons extends A_CmsDirectEditButtons implements I_Cm
     /**
      * @see org.opencms.gwt.client.ui.contenteditor.I_CmsContentEditorHandler#onClose(java.lang.String, org.opencms.util.CmsUUID, boolean, boolean)
      */
-    public void onClose(String sitePath, CmsUUID structureId, boolean isNew, boolean hasChangedSettings) {
+    public void onClose(
+        String sitePath,
+        CmsUUID structureId,
+        boolean isNew,
+        boolean hasChangedSettings,
+        boolean usedPublishDialog) {
 
         Window.Location.reload();
     }
@@ -119,6 +124,15 @@ public class CmsDirectEditButtons extends A_CmsDirectEditButtons implements I_Cm
         Map<Integer, CmsPushButton> result = Maps.newHashMap();
         result.put(Integer.valueOf(130), createInfoButton());
         return result;
+    }
+
+    /**
+     * @see org.opencms.gwt.client.ui.A_CmsDirectEditButtons#getUploadButtonTitle(java.lang.String)
+     */
+    @Override
+    protected String getUploadButtonTitle(String uploadFolder) {
+
+        return null;
     }
 
     /**

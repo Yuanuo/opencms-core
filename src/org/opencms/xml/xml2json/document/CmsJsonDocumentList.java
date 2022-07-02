@@ -29,12 +29,12 @@ package org.opencms.xml.xml2json.document;
 
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.json.JSONException;
 import org.opencms.json.JSONObject;
 import org.opencms.jsp.search.config.CmsSearchConfiguration;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationCommon;
 import org.opencms.jsp.search.config.parser.CmsSimpleSearchConfigurationParser;
-import org.opencms.jsp.search.config.parser.CmsSimpleSearchConfigurationParser.SortOption;
 import org.opencms.jsp.search.controller.CmsSearchController;
 import org.opencms.jsp.search.result.CmsSearchResultWrapper;
 import org.opencms.jsp.search.result.I_CmsSearchResourceBean;
@@ -48,42 +48,91 @@ import org.opencms.ui.apps.lists.CmsListManager;
 import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean;
 import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentFactory;
-import org.opencms.xml.xml2json.CmsJsonHandlerContext;
-import org.opencms.xml.xml2json.CmsJsonHandlerException;
 import org.opencms.xml.xml2json.CmsJsonRequest;
-import org.opencms.xml.xml2json.CmsXmlContentJsonHandler.PathNotFoundException;
+import org.opencms.xml.xml2json.handler.CmsJsonHandlerContext;
+import org.opencms.xml.xml2json.handler.CmsJsonHandlerException;
+import org.opencms.xml.xml2json.handler.CmsJsonHandlerXmlContent.PathNotFoundException;
+
+import java.util.Collections;
+import java.util.Locale;
 
 /**
  * Class representing a JSON document for a CMS list.
  */
-public class CmsJsonDocumentList extends A_CmsJsonDocument implements I_CmsJsonDocument {
+public class CmsJsonDocumentList extends CmsJsonDocumentXmlContent {
 
     /** The maximum number of list items to be returned. */
     private final static Integer MAX_ROWS = Integer.valueOf(600);
-
-    /** The listconfig XML content. */
-    private CmsXmlContent m_xmlContent;
 
     /**
      * Creates a new JSON document.<p>
      *
      * @param jsonRequest the JSON request
      * @param xmlContent the listconfig XML content
+     * @throws Exception if something goes wrong
      */
-    public CmsJsonDocumentList(CmsJsonRequest jsonRequest, CmsXmlContent xmlContent) {
+    public CmsJsonDocumentList(CmsJsonRequest jsonRequest, CmsXmlContent xmlContent)
+    throws Exception {
 
-        super(jsonRequest);
+        super(jsonRequest, xmlContent);
+        m_throwException = false;
     }
 
     /**
      * @see org.opencms.xml.xml2json.document.I_CmsJsonDocument#getJson()
      */
+    @Override
     public Object getJson()
     throws JSONException, CmsException, CmsJsonHandlerException, PathNotFoundException, Exception {
 
-        insertJsonListConfig();
+        super.getJson();
         insertJsonList();
         return m_json;
+    }
+
+    /**
+     * @see org.opencms.xml.xml2json.document.CmsJsonDocumentXmlContent#isLocaleAllRequest()
+     */
+    @Override
+    protected boolean isLocaleAllRequest() {
+
+        return false;
+    }
+
+    /**
+     * @see org.opencms.xml.xml2json.document.CmsJsonDocumentXmlContent#isLocalePathRequest()
+     */
+    @Override
+    protected boolean isLocalePathRequest() {
+
+        return false;
+    }
+
+    /**
+     * @see org.opencms.xml.xml2json.document.CmsJsonDocumentXmlContent#isLocaleRequest()
+     */
+    @Override
+    protected boolean isLocaleRequest() {
+
+        return true;
+    }
+
+    /**
+     * @see org.opencms.xml.xml2json.document.CmsJsonDocumentXmlContent#isShowFallbackLocaleRequest()
+     */
+    @Override
+    protected boolean isShowFallbackLocaleRequest() {
+
+        return true;
+    }
+
+    /**
+     * @see org.opencms.xml.xml2json.document.CmsJsonDocumentXmlContent#isShowWrapperRequest()
+     */
+    @Override
+    protected boolean isShowWrapperRequest() {
+
+        return false;
     }
 
     /**
@@ -104,8 +153,17 @@ public class CmsJsonDocumentList extends A_CmsJsonDocument implements I_CmsJsonD
             context.getCms(),
             listConfigurationBean,
             "{}");
-        String paramSort = m_jsonRequest.getParamSort(SortOption.DATE_DESC.toString());
-        searchConfigurationParser.setSortOption(paramSort);
+        Locale locale = CmsLocaleManager.getLocale(m_jsonRequest.getParamLocale());
+        Locale selectedLocale = OpenCms.getLocaleManager().getBestMatchingLocale(
+            locale,
+            Collections.emptyList(),
+            m_xmlContent.getLocales());
+        searchConfigurationParser.setSearchLocale(selectedLocale);
+        String paramSort = m_jsonRequest.getParamSort();
+        if (paramSort != null) {
+            searchConfigurationParser.setSortOption(paramSort);
+        }
+
         CmsSolrQuery query = searchConfigurationParser.getInitialQuery();
         Integer paramStart = m_jsonRequest.getParamStart();
         Integer paramRows = m_jsonRequest.getParamRows();
@@ -134,30 +192,19 @@ public class CmsJsonDocumentList extends A_CmsJsonDocument implements I_CmsJsonD
     }
 
     /**
-     * If the request parameter "list" is set, evaluates the list configuration and inserts the result into this JSON document.<p>
+     * If the request parameter "list" is set, evaluates the list configuration and inserts
+     * the result into this JSON document.<p>
      *
      * @throws Exception if something goes wrong
      */
     private void insertJsonList() throws Exception {
 
         Boolean paramContent = m_jsonRequest.getParamContent();
-        if (paramContent != null) {
+        if (paramContent.booleanValue()) {
             CmsSearchResultWrapper searchResult = getSearchResult(m_context);
             insertJsonListInfo(searchResult);
             insertJsonListItems(searchResult);
         }
-    }
-
-    /**
-     * Inserts a JSON representation of the listconfig content into this JSON document.<p>
-     *
-     * @throws Exception if something goes wrong
-     */
-    private void insertJsonListConfig() throws Exception {
-
-        CmsJsonDocumentXmlContent jsonDocument = new CmsJsonDocumentXmlContent(m_jsonRequest, m_context.getContent());
-        m_json = (JSONObject)jsonDocument.getJson();
-
     }
 
     /**
@@ -184,7 +231,9 @@ public class CmsJsonDocumentList extends A_CmsJsonDocument implements I_CmsJsonD
         for (I_CmsSearchResourceBean searchResourceBean : searchResult.getSearchResults()) {
             CmsFile file = searchResourceBean.getXmlContent().getFile();
             CmsXmlContent xmlContent = CmsXmlContentFactory.unmarshal(m_context.getCms(), file);
-            CmsJsonDocumentXmlContent jsonDocument = new CmsJsonDocumentXmlContent(m_jsonRequest, xmlContent);
+            CmsJsonDocumentEmbeddedXmlContent jsonDocument = new CmsJsonDocumentEmbeddedXmlContent(
+                m_jsonRequest,
+                xmlContent);
             m_json.append("list", jsonDocument.getJson());
         }
     }

@@ -191,6 +191,9 @@ public class CmsGallerySearchParameters {
         }
     }
 
+    /** If true, empty search result should be returned regardless of other settings. */
+    private boolean m_forceEmptyResult;
+
     /** The categories to search in. */
     private List<String> m_categories;
 
@@ -573,6 +576,15 @@ public class CmsGallerySearchParameters {
     }
 
     /**
+     * If this returns true, an empty search result should be returned, regardless of other settings.
+     * @return
+     */
+    public boolean isForceEmptyResult() {
+
+        return m_forceEmptyResult;
+    }
+
+    /**
      * Returns the search exclude property ignore flag.<p>
      *
      * @return the search exclude property ignore flag
@@ -651,6 +663,18 @@ public class CmsGallerySearchParameters {
     public void setFolders(List<String> folders) {
 
         m_folders = folders;
+    }
+
+    /**
+     * Enables/disables the 'force empty result' flag.
+     *
+     * If this is set to true, an empty search result should be returned regardless of the other parameters.
+     *
+     * @param forceEmptyResult if true, force an empty search result
+     */
+    public void setForceEmptyResult(boolean forceEmptyResult) {
+
+        m_forceEmptyResult = forceEmptyResult;
     }
 
     /**
@@ -848,8 +872,8 @@ public class CmsGallerySearchParameters {
     private CmsPair<String, org.apache.solr.client.solrj.SolrQuery.ORDER> getSort() {
 
         final String sortTitle = CmsSearchFieldConfiguration.getLocaleExtendedName(
-            CmsSearchField.FIELD_TITLE_UNSTORED,
-            getLocale()) + "_s";
+            CmsSearchField.FIELD_DISPTITLE,
+            getLocale()) + "_sort";
 
         switch (getSortOrder()) {
             case dateCreated_asc:

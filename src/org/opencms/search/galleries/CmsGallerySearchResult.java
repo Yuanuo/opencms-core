@@ -31,6 +31,7 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
+import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.i18n.CmsLocaleManager;
@@ -61,7 +62,7 @@ import org.apache.commons.logging.Log;
 /**
  *
  */
-public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult> {
+public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult>, Cloneable {
 
     /** The logger instance for this class. */
     public static final Log LOG = CmsLog.getLog(CmsGallerySearchResult.class);
@@ -128,13 +129,17 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
      *
      * @param cms the current CMS context
      * @param res the resource from which the data should be read
+     * @param title optional value that can be used to override the title (if null, the title is not overridden)
      */
-    public CmsGallerySearchResult(CmsObject cms, CmsResource res) {
+    public CmsGallerySearchResult(CmsObject cms, CmsResource res, String title) {
 
+        m_title = title;
         try {
             Map<String, String> props = CmsProperty.toMap(
                 cms.readPropertyObjects(res, CmsResourceTypeXmlContainerPage.isContainerPage(res)));
-            m_title = props.get(CmsPropertyDefinition.PROPERTY_TITLE);
+            if (m_title == null) {
+                m_title = props.get(CmsPropertyDefinition.PROPERTY_TITLE);
+            }
             m_description = props.get(CmsPropertyDefinition.PROPERTY_DESCRIPTION);
         } catch (CmsException e) {
             LOG.error(e.getLocalizedMessage(), e);
@@ -590,6 +595,26 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
     }
 
     /**
+     * Returns a shallow copy of this result, with a changed title.
+     *
+     * @param title the new title
+     *
+     * @return the shallow copy with the changed title
+     */
+    public CmsGallerySearchResult withTitle(String title) {
+
+        try {
+            CmsGallerySearchResult res = (CmsGallerySearchResult)clone();
+            res.m_title = title;
+            return res;
+        } catch (CloneNotSupportedException e) {
+            // shouldn't happen
+            LOG.error(e.getLocalizedMessage(), e);
+            return null;
+        }
+    }
+
+    /**
      * Initializes missing fields by reading the information from the VFS.<p>
      *
      * @param cms the current CMS context
@@ -605,13 +630,16 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
         }
 
         try {
-            CmsResource res = cms.readResource(structureId);
+            CmsResource res = cms.readResource(structureId, CmsResourceFilter.ALL);
             if (m_description == null) {
                 CmsProperty descProp = cms.readPropertyObject(
                     res,
                     CmsPropertyDefinition.PROPERTY_DESCRIPTION,
                     CmsResourceTypeXmlContainerPage.isContainerPage(res));
                 m_description = descProp.getValue();
+                if (m_description == null) {
+                    m_description = "";
+                }
             }
 
             if (m_title == null) {

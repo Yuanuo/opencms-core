@@ -250,6 +250,7 @@ implements BeforeSelectionHandler<Integer>, SelectionHandler<Integer>, I_CmsTrun
             return;
         }
         List<CmsSearchParamPanel> paramPanels = null;
+        boolean empty = searchObj.isEmpty();
         if (!searchObj.isEmpty()) {
             enableSearchTab();
             paramPanels = new ArrayList<CmsSearchParamPanel>();
@@ -321,7 +322,7 @@ implements BeforeSelectionHandler<Integer>, SelectionHandler<Integer>, I_CmsTrun
                     CmsSitemapTabHandler sitemapTabHandler = new CmsSitemapTabHandler(controller);
                     m_sitemapTab = new CmsSitemapTab(sitemapTabHandler);
                     m_sitemapTab.setTabTextAccessor(getTabTextAccessor(i));
-                    m_tabbedPanel.add(m_sitemapTab, "Sitemap");
+                    m_tabbedPanel.add(m_sitemapTab, Messages.get().key(Messages.GUI_TAB_TITLE_SITEMAP_0));
                     break;
                 case cms_tab_results:
                     m_resultsTab = new CmsResultsTab(

@@ -30,6 +30,7 @@ package org.opencms.ade.configuration;
 import org.opencms.ade.configuration.CmsConfigurationReader.DiscardPropertiesMode;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
+import org.opencms.ade.galleries.CmsAddContentRestriction;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.main.CmsLog;
@@ -63,11 +64,11 @@ public class CmsADEConfigDataInternal {
      */
     public static class AttributeValue {
 
-        /** The value of the attribute. */
-        private String m_value;
-
         /** The path of the configuration from which this attribute value originates. */
         private String m_origin;
+
+        /** The value of the attribute. */
+        private String m_value;
 
         /**
          * Creates a new instance.
@@ -124,9 +125,6 @@ public class CmsADEConfigDataInternal {
     /** Should inherited types be discarded? */
     protected boolean m_discardInheritedTypes;
 
-    /** Mode for using formatter keys / the new container page format. */
-    protected Boolean m_useFormatterKeys;
-
     /** The 'discard properties' mode. */
     protected DiscardPropertiesMode m_discardPropertiesMode;
 
@@ -142,23 +140,35 @@ public class CmsADEConfigDataInternal {
     /** The master configuration structure ids. */
     protected List<CmsUUID> m_masterConfigs;
 
-    /** The base path of this configuration. */
-    private String m_basePath;
+    /** Mode for using formatter keys / the new container page format. */
+    protected Boolean m_useFormatterKeys;
 
-    /** the dynamic functions available. */
-    private Set<CmsUUID> m_dynamicFunctions;
+    /** The restrictions for the 'add content' dialog. */
+    private CmsAddContentRestriction m_addContentRestriction = CmsAddContentRestriction.EMPTY;
 
-    /** The functions to remove. */
-    private Set<CmsUUID> m_functionsToRemove;
-
-    /** True if detail contents outside the sitemap should not be used with detail pages in the sitemap. */
-    private boolean m_excludeExternalDetailContents;
+    /** The set of ids of site plugins to add. */
+    private Set<CmsUUID> m_addedPlugins;
 
     /** The map of attributes. */
     private Map<String, AttributeValue> m_attributes = Collections.emptyMap();
 
+    /** The base path of this configuration. */
+    private String m_basePath;
+
+    /** The CMS context. */
+    private CmsObject m_cms;
+
+    /** the dynamic functions available. */
+    private Set<CmsUUID> m_dynamicFunctions;
+
+    /** True if detail contents outside the sitemap should not be used with detail pages in the sitemap. */
+    private boolean m_excludeExternalDetailContents;
+
     /** The list of configured function references. */
     private List<CmsFunctionReference> m_functionReferences = Lists.newArrayList();
+
+    /** The functions to remove. */
+    private Set<CmsUUID> m_functionsToRemove;
 
     /** The internal detail page configuration. */
     private List<CmsDetailPageInfo> m_ownDetailPages = Lists.newArrayList();
@@ -181,11 +191,20 @@ public class CmsADEConfigDataInternal {
     /** Flag indicating whether all functions should be removed. */
     private boolean m_removeAllFunctions;
 
+    /** If true, all site plugins inherited from parent sitemaps should be removed. */
+    private boolean m_removeAllPlugins;
+
+    /** The set of ids of site plugins to remove. */
+    private Set<CmsUUID> m_removedPlugins;
+
+    /** True if inherited shared setting overrides should be removed. */
+    private boolean m_removeSharedSettingOverrides;
+
     /** The resource from which the configuration data was read. */
     private CmsResource m_resource;
 
-    /** The CMS context. */
-    private CmsObject m_cms;
+    /** Shared setting override ID, may be null. */
+    private CmsUUID m_sharedSettingOverride;
 
     /** The type ordering mode. */
     private CmsTypeOrderingMode m_typeOrderingMode;
@@ -214,8 +233,14 @@ public class CmsADEConfigDataInternal {
      * @param removeAllFunctions flag indicating whether all functions should be removed
      * @param functionIds the dynamic functions available
      * @param functionsToRemove the function ids to remove
+     * @param removeAllPlugins true all site plugins should be removed
+     * @param removedPlugins the ids of site plugins to remove
+     * @param addedPlugins the ids of site plugins to add
      * @param useFormatterKeys mode for using formatter keys / the new container page format
      * @param orderingMode the mode used to order the resource types
+     * @param restriction the restrictions for the 'Add content' dialog
+     * @param sharedSettingOverride shared setting override id, may be null
+     * @param removeSharedSettingOverrides true if inherited shared setting overrides should be removed
      * @param attributes the map of attributes
      */
     public CmsADEConfigDataInternal(
@@ -240,8 +265,14 @@ public class CmsADEConfigDataInternal {
         boolean removeAllFunctions,
         Set<CmsUUID> functionIds,
         Set<CmsUUID> functionsToRemove,
+        boolean removeAllPlugins,
+        Set<CmsUUID> addedPlugins,
+        Set<CmsUUID> removedPlugins,
         Boolean useFormatterKeys,
         CmsTypeOrderingMode orderingMode,
+        CmsAddContentRestriction restriction,
+        CmsUUID sharedSettingOverride,
+        boolean removeSharedSettingOverrides,
         Map<String, String> attributes) {
 
         m_cms = cms;
@@ -271,6 +302,11 @@ public class CmsADEConfigDataInternal {
         m_excludeExternalDetailContents = excludeExternalDetailContents;
         m_includeInSiteSelector = includeInSiteSelector;
         m_useFormatterKeys = useFormatterKeys;
+        m_removeAllPlugins = removeAllPlugins;
+        m_addedPlugins = Collections.unmodifiableSet(addedPlugins);
+        m_removedPlugins = Collections.unmodifiableSet(removedPlugins);
+        m_sharedSettingOverride = sharedSettingOverride;
+        m_removeSharedSettingOverrides = removeSharedSettingOverrides;
         Map<String, AttributeValue> attributeObjects = new HashMap<>();
         String attributeOrigin = basePath;
         if (resource != null) {
@@ -282,7 +318,7 @@ public class CmsADEConfigDataInternal {
         m_attributes = Collections.unmodifiableMap(new HashMap<>(attributeObjects));
 
         m_typeOrderingMode = orderingMode;
-
+        m_addContentRestriction = restriction;
     }
 
     /**
@@ -374,6 +410,26 @@ public class CmsADEConfigDataInternal {
     public static CmsADEConfigDataInternal emptyConfiguration(String basePath) {
 
         return new CmsADEConfigDataInternal(basePath);
+    }
+
+    /**
+     * Gets the restrictions for the 'Add content' dialog.
+     *
+     * @return the restrictions for the 'Add content' dialog
+     */
+    public CmsAddContentRestriction getAddContentRestriction() {
+
+        return m_addContentRestriction;
+    }
+
+    /**
+     * Gets the set of ids of added site plugins.
+     *
+     * @return the set of ids of added site plugins
+     */
+    public Set<CmsUUID> getAddedPlugins() {
+
+        return m_addedPlugins;
     }
 
     /**
@@ -515,6 +571,16 @@ public class CmsADEConfigDataInternal {
     }
 
     /**
+     * Gets the set of ids of removed site plugins.
+     *
+     * @return the set of ids of removed site plugins
+     */
+    public Set<CmsUUID> getRemovedPlugins() {
+
+        return m_removedPlugins;
+    }
+
+    /**
      * Returns the resource.<p>
      *
      * @return the resource
@@ -522,6 +588,16 @@ public class CmsADEConfigDataInternal {
     public CmsResource getResource() {
 
         return m_resource;
+    }
+
+    /**
+     * Gets the shared setting override ID (may be null).
+     *
+     * @return the shared setting override ID
+     */
+    public CmsUUID getSharedSettingOverride() {
+
+        return m_sharedSettingOverride;
     }
 
     /**
@@ -634,6 +710,26 @@ public class CmsADEConfigDataInternal {
     public boolean isRemoveAllFunctions() {
 
         return m_removeAllFunctions;
+    }
+
+    /**
+     * Returns true if all site plugins inherited from parent sitemaps should be removed.
+     *
+     * @return true if all site plugins should be removed
+     */
+    public boolean isRemoveAllPlugins() {
+
+        return m_removeAllPlugins;
+    }
+
+    /**
+     * Returns true if shared setting overrides inherited from other sitemap configurations should be discarded.
+     *
+     * @return true if inherited shared setting overrides should be discarded
+     */
+    public boolean isRemoveSharedSettingOverrides() {
+
+        return m_removeSharedSettingOverrides;
     }
 
     /**

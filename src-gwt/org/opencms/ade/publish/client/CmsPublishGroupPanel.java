@@ -240,7 +240,6 @@ public class CmsPublishGroupPanel extends Composite {
             warningImage.addStyleName(I_CmsLayoutBundle.INSTANCE.listItemWidgetCss().permaVisible());
             fillButtonSlot(itemWidget, SLOT_WARNING, warningImage, slotMapping);
         }
-        itemWidget.setUnselectable();
         return itemWidget;
     }
 
@@ -252,7 +251,7 @@ public class CmsPublishGroupPanel extends Composite {
      * @param widget the widget which should be displayed in the slot
      * @param slotMapping array mapping logical slot ids to button indexes
      */
-    private static void fillButtonSlot(CmsListItemWidget listItemWidget, int index, Widget widget, int[] slotMapping) {
+    public static void fillButtonSlot(CmsListItemWidget listItemWidget, int index, Widget widget, int[] slotMapping) {
 
         int realIndex = slotMapping[index];
         if (realIndex >= 0) {

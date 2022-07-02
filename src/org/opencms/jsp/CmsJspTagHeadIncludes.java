@@ -522,14 +522,12 @@ public class CmsJspTagHeadIncludes extends BodyTagSupport implements I_CmsJspTag
         }
         for (String jsUri : jsIncludes) {
             pageContext.getOut().print(
-                "\n<script type=\"text/javascript\" src=\""
-                    + CmsJspTagLink.linkTagAction(addParams(jsUri.trim()), req)
-                    + "\"></script>");
+                "\n<script src=\"" + CmsJspTagLink.linkTagAction(addParams(jsUri.trim()), req) + "\"></script>");
         }
         if (!inlineJS.isEmpty()) {
             StringBuffer inline = new StringBuffer();
             for (Entry<String, String> jsEntry : inlineJS.entrySet()) {
-                inline.append("\n<script type=\"text/javascript\">\n");
+                inline.append("\n<script>\n");
                 inline.append(jsEntry.getValue());
                 inline.append("\n</script>\n");
             }
@@ -557,7 +555,7 @@ public class CmsJspTagHeadIncludes extends BodyTagSupport implements I_CmsJspTag
         Set<String> headincludes,
         Map<String, String> inline) {
 
-        CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(
+        CmsADEConfigData config = OpenCms.getADEManager().lookupConfigurationWithCache(
             cms,
             cms.getRequestContext().getRootUri());
         if ((containerPage != null) && (containerPage.getElements() != null)) {

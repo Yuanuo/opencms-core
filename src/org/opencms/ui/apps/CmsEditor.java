@@ -34,7 +34,6 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.I_CmsResourceType;
-import org.opencms.i18n.CmsEncoder;
 import org.opencms.jsp.CmsJspTagEdit;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -44,14 +43,12 @@ import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.components.CmsErrorDialog;
 import org.opencms.ui.components.I_CmsWindowCloseListener;
 import org.opencms.ui.editors.I_CmsEditor;
+import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.editors.CmsXmlContentEditor;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.util.Collections;
 import java.util.Map;
 
@@ -60,6 +57,8 @@ import org.apache.commons.logging.Log;
 import com.vaadin.event.Action;
 import com.vaadin.navigator.ViewChangeListener;
 import com.vaadin.server.Page;
+import com.vaadin.server.VaadinRequest;
+import com.vaadin.server.VaadinServletRequest;
 
 /**
  * The editor app. Will open the appropriate editor for a resource.<p>
@@ -118,11 +117,6 @@ implements I_CmsWorkplaceApp, ViewChangeListener, I_CmsWindowCloseListener, I_Cm
      */
     public static String getEditState(CmsUUID structureId, boolean plainText, String backLink) {
 
-        try {
-            backLink = URLEncoder.encode(backLink, CmsEncoder.ENCODING_UTF_8);
-        } catch (UnsupportedEncodingException e) {
-            LOG.error(e.getLocalizedMessage(), e);
-        }
         String state = "";
         state = A_CmsWorkplaceApp.addParamToState(state, CmsEditor.RESOURCE_ID_PREFIX, structureId.toString());
         state = A_CmsWorkplaceApp.addParamToState(state, CmsEditor.PLAIN_TEXT_PREFIX, String.valueOf(plainText));
@@ -166,11 +160,6 @@ implements I_CmsWorkplaceApp, ViewChangeListener, I_CmsWindowCloseListener, I_Cm
         }
         state = A_CmsWorkplaceApp.addParamToState(state, CmsEditor.RESOURCE_PATH_PREFIX, contextPath);
         state = A_CmsWorkplaceApp.addParamToState(state, CmsEditor.PLAIN_TEXT_PREFIX, String.valueOf(plainText));
-        try {
-            backLink = URLEncoder.encode(backLink, CmsEncoder.ENCODING_UTF_8);
-        } catch (UnsupportedEncodingException e) {
-            LOG.error(e.getLocalizedMessage(), e);
-        }
         state = A_CmsWorkplaceApp.addParamToState(state, CmsEditor.BACK_LINK_PREFIX, backLink);
 
         return state;
@@ -183,24 +172,22 @@ implements I_CmsWorkplaceApp, ViewChangeListener, I_CmsWindowCloseListener, I_Cm
      */
     public static void openBackLink(String backlink) {
 
-        try {
-            backlink = URLDecoder.decode(backlink, "UTF-8");
-            String current = Page.getCurrent().getLocation().toString();
-            if (current.contains("#")) {
-                current = current.substring(0, current.indexOf("#"));
-            }
-            // check if the back link targets the workplace UI
-            if (backlink.startsWith(current)) {
-                // use the navigator to open the target
-                String target = backlink.substring(backlink.indexOf("#") + 1);
-                CmsAppWorkplaceUi.get().getNavigator().navigateTo(target);
-            } else {
-                // otherwise set the new location
-                Page.getCurrent().setLocation(backlink);
-            }
-        } catch (UnsupportedEncodingException e) {
-            // only in case of malformed charset
-            LOG.error(e.getLocalizedMessage(), e);
+        if (!CmsRequestUtil.checkBacklink(backlink, ((VaadinServletRequest)VaadinRequest.getCurrent()))) {
+            backlink = CmsVaadinUtils.getWorkplaceLink();
+        }
+
+        String current = Page.getCurrent().getLocation().toString();
+        if (current.contains("#")) {
+            current = current.substring(0, current.indexOf("#"));
+        }
+        // check if the back link targets the workplace UI
+        if (backlink.startsWith(current)) {
+            // use the navigator to open the target
+            String target = backlink.substring(backlink.indexOf("#") + 1);
+            CmsAppWorkplaceUi.get().getNavigator().navigateTo(target);
+        } else {
+            // otherwise set the new location
+            Page.getCurrent().setLocation(backlink);
         }
     }
 

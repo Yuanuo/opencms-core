@@ -140,11 +140,11 @@ public class CmsXmlContainerPage extends CmsXmlContent {
                 CmsContainerElement.USE_AS_COPY_MODEL,
                 CmsContainerpageService.SOURCE_CONTAINERPAGE_ID_SETTING)));
 
-    /** The log object for this class. */
-    private static final Log LOG = CmsLog.getLog(CmsXmlContainerPage.class);
-
     /** Prefix for system element settings. */
     public static final String SYSTEM_SETTING_PREFIX = "SYSTEM::";
+
+    /** The log object for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsXmlContainerPage.class);
 
     /** The container page objects. */
     private Map<Locale, CmsContainerPageBean> m_cntPages;
@@ -643,6 +643,21 @@ public class CmsXmlContainerPage extends CmsXmlContent {
                             propertiesMap.put(CmsFormatterConfig.FORMATTER_SETTINGS_KEY + containerName, formatterKey);
                         }
 
+                        if (config != null) {
+                            // make sure alias keys are replaced with main keys in the settings
+                            String key1 = CmsFormatterConfig.FORMATTER_SETTINGS_KEY + containerName;
+                            String key2 = CmsFormatterConfig.FORMATTER_SETTINGS_KEY;
+                            for (String key : new String[] {key1, key2}) {
+                                String value = propertiesMap.get(key);
+                                if (value != null) {
+                                    I_CmsFormatterBean dynFmt = config.findFormatter(value);
+                                    if (dynFmt != null) {
+                                        propertiesMap.put(key, dynFmt.getKeyOrId());
+                                    }
+                                }
+                            }
+                        }
+
                         if (elementInstanceId != null) {
                             propertiesMap.put(CmsContainerElement.ELEMENT_INSTANCE_ID, elementInstanceId);
                         }
@@ -747,7 +762,9 @@ public class CmsXmlContainerPage extends CmsXmlContent {
     }
 
     /**
-     * Replaces formatter id prefixes for nested settings with corresponding formatter keys, if possible.
+     * Replaces formatter id prefixes for nested settings with corresponding formatter keys, if possible.<p>
+     *
+     * Also handles replacement of alias keys with main keys in nested settings.
      *
      * @param cms the CMS Context
      * @param config the sitemap configuration
@@ -762,15 +779,18 @@ public class CmsXmlContainerPage extends CmsXmlContent {
         Map<String, String> result = new HashMap<>();
         for (Map.Entry<String, String> entry : propertiesMap.entrySet()) {
             String key = entry.getKey();
-            if (key.length() > 37) {
-                String prefix = key.substring(0, 36);
-                if (CmsUUID.isValidUUID(prefix) && (key.charAt(36) == '_')) {
-                    I_CmsFormatterBean formatter = config.findFormatter(prefix);
-                    if (formatter != null) {
-                        key = formatter.getKeyOrId() + key.substring(36);
-                    }
+
+            // replace structure ids, fallback keys or alias keys with the main key if possible
+
+            int underscorePos = key.indexOf("_");
+            if (underscorePos >= 0) {
+                String prefix = key.substring(0, underscorePos);
+                I_CmsFormatterBean formatter = config.findFormatter(prefix);
+                if (formatter != null) {
+                    key = formatter.getKeyOrId() + key.substring(underscorePos);
                 }
             }
+
             result.put(key, entry.getValue());
         }
         return result;
@@ -803,7 +823,7 @@ public class CmsXmlContainerPage extends CmsXmlContent {
                     String partBeforeUnderscore = key.substring(0, underscorePos);
                     String partAfterUnderscore = key.substring(underscorePos + 1);
                     I_CmsFormatterBean dynamicFmt = config.findFormatter(partBeforeUnderscore);
-                    if ((dynamicFmt != null) && dynamicFmt.getSettings().containsKey(partAfterUnderscore)) {
+                    if ((dynamicFmt != null) && dynamicFmt.getSettings(config).containsKey(partAfterUnderscore)) {
                         String id = dynamicFmt.getId();
                         if (id != null) {
                             key = id + "_" + partAfterUnderscore;

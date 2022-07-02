@@ -1,5 +1,5 @@
 @external tox, tox-tinymce, tox-toolbar, tox-editor-container, tox-statusbar__branding, tox-edit-area, tox-statusbar, tox-fullscreen, tox-tinymce-inline,
-	gwt-TabLayoutPanelTabBar, gwt-TabLayoutPanel, gwt-TabLayoutPanelTab, html-face, cmsState, cmsState-down, cmsState-up, cmsState-up-hovering, cmsState-down-hovering, tabDescriptionPanel;
+	gwt-TabLayoutPanelTabBar, gwt-TabLayoutPanel, gwt-TabLayoutPanelTab, html-face, cmsState, cmsState-down, cmsState-up, cmsState-up-hovering, cmsState-down-hovering, tabDescriptionPanel, oc-screensize-medium, oc-touch-only, gwt-TabLayoutPanelContentContainer;
 
 @def SECOND_COLUMN_WIDTH 448;
  
@@ -14,6 +14,10 @@ div.formParent{
 	border-radius: value("constants.css.borderRadius");
 }
 
+body.oc-screensize-medium div.formParent { 
+	width: eval("org.opencms.gwt.client.CmsWidthConstants.mediumLow()");
+}
+
 div.gwt-TabLayoutPanel div.formParent{
 	padding: 0px;
 	width: auto;
@@ -21,6 +25,11 @@ div.gwt-TabLayoutPanel div.formParent{
 	background-color: transparent;
 	border: none;
 	border-radius: 0;
+}
+
+div.formParent .gwt-TabLayoutPanelContentContainer > div {
+    overflow: visible !important;
+    /* This is to ensure the help bubbles for fields remain visible, even if they clip out of the tab content. */ 
 }
 
 div.formParent div.gwt-TabLayoutPanel, div.formParent div.gwt-TabLayoutPanel div.gwt-TabLayoutPanelTabBar{
@@ -121,6 +130,10 @@ div.attributeValue.secondColumn{
 	width: 630px;
 }
 
+body.oc-touch-only .attributeValue.singleLine > .widgetHolder > div > .widget {
+	margin-right: 30px;
+}
+
 /* clear both after the widget holder */
 .attributeValue > div.widgetHolder:after{
 	content: ".";
@@ -161,8 +174,17 @@ div.attributeValue.secondColumn{
 
 .attributeValue .buttonBar{
 	top: 5px;
-	right: 2px;
+	right: 0px;
+	transform-origin: center right;
 }
+
+body.oc-touch-only .attributeValue .buttonBar { 
+	transform: scale(1.5) translateX(2px);
+	/* Need to set the Z index because otherwise the button bar's menu might show up *under* the form widgets that follow. */
+	z-index: 1;
+}
+
+
 .attributeValue div.buttonBar, div.buttonBar{
 	position: absolute;
 	border-radius: value("constants.css.borderRadius");
@@ -196,7 +218,7 @@ div.attributeValue.secondColumn{
 	border: 1px solid transparent;
 	border-radius: value("constants.css.borderRadius");
 	padding: 1px;
-	margin: -1px;
+	margin-bottom: -1px;
 	display: none;
 	position: relative;
 }
@@ -211,6 +233,10 @@ div.attributeValue.secondColumn{
 /** Editing widget styles. */
 .widgetHolder .widget{
 	margin: 0 25px 4px 2px;
+}
+
+body.oc-touch-only .widgetHolder .widget { 
+	margin-right: 30px;
 }
 
 
@@ -495,6 +521,10 @@ div.helpBubble a, div.helpBubble a:hover, div.helpBubble a:focus{
 		
 .helpBubble p:last-child {
 	margin-bottom: 0px;
+}
+
+.helpBubble ul, .helpBubble ol {
+	padding-left: 23px;
 }
 
 .entity .attributeValue > div, .dragHelper.attributeValue > div{

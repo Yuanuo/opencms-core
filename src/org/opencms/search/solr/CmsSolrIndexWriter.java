@@ -34,10 +34,14 @@ package org.opencms.search.solr;
 import org.opencms.db.CmsPublishedResource;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.search.CmsSearchUtil;
 import org.opencms.search.I_CmsSearchDocument;
 import org.opencms.search.fields.CmsSearchField;
 
 import java.io.IOException;
+import java.text.ParseException;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 import org.apache.commons.logging.Log;
@@ -177,6 +181,21 @@ public class CmsSolrIndexWriter implements I_CmsSolrIndexWriter {
     }
 
     /**
+     * Updates a search document without removing it beforehand. Use for migration purposes only.
+     * @param searchDocument the search document.
+     * @throws IOException if the update fails
+     */
+    public void updateDocument(I_CmsSearchDocument searchDocument) throws IOException {
+
+        SolrInputDocument inputDoc = (SolrInputDocument)searchDocument.getDocument();
+        try {
+            m_server.add(m_index.getCoreName(), inputDoc, m_commitMs);
+        } catch (SolrServerException e) {
+            LOG.error(e.getLocalizedMessage(), e);
+        }
+    }
+
+    /**
      * @see org.opencms.search.I_CmsIndexWriter#updateDocument(java.lang.String, org.opencms.search.I_CmsSearchDocument)
      */
     public void updateDocument(String rootPath, I_CmsSearchDocument document) throws IOException {
@@ -217,7 +236,7 @@ public class CmsSolrIndexWriter implements I_CmsSolrIndexWriter {
         SolrInputDocument inputDoc = (SolrInputDocument)document.getDocument();
         String id = inputDoc.getFieldValue(CmsSearchField.FIELD_ID).toString();
         if (null != serialDates) {
-            // NOTE: We can assume the following to arrays have the same length as serialDates.
+            // NOTE: We can assume the following two arrays have the same length as serialDates.
             List<String> serialDatesEnd = document.getMultivaluedFieldAsStringList(
                 CmsSearchField.FIELD_SERIESDATES_END);
             List<String> serialDatesCurrentTill = document.getMultivaluedFieldAsStringList(
@@ -225,9 +244,25 @@ public class CmsSolrIndexWriter implements I_CmsSolrIndexWriter {
             for (int i = 0; i < serialDates.size(); i++) {
                 String date = serialDates.get(i);
                 String endDate = serialDatesEnd.get(i);
+                String endDateRange = endDate;
+                if (!date.equals(endDate)) {
+                    try {
+                        Date parsed = CmsSearchUtil.parseDate(endDate);
+                        Calendar calendar = Calendar.getInstance();
+                        calendar.setTime(parsed);
+                        calendar.add(Calendar.SECOND, -1);
+                        endDateRange = CmsSearchUtil.getDateAsIso8601(calendar.getTime());
+                    } catch (ParseException e) {
+                        LOG.error(e.getLocalizedMessage(), e);
+                    }
+                }
+                String dateRange = "[" + date + " TO " + endDateRange + "]";
                 String currentTillDate = serialDatesCurrentTill.get(i);
                 inputDoc.setField(CmsSearchField.FIELD_INSTANCEDATE + CmsSearchField.FIELD_POSTFIX_DATE, date);
                 inputDoc.setField(CmsSearchField.FIELD_INSTANCEDATE_END + CmsSearchField.FIELD_POSTFIX_DATE, endDate);
+                inputDoc.setField(
+                    CmsSearchField.FIELD_INSTANCEDATE_RANGE + CmsSearchField.FIELD_POSTFIX_DATE_RANGE,
+                    dateRange);
                 inputDoc.setField(
                     CmsSearchField.FIELD_INSTANCEDATE_CURRENT_TILL + CmsSearchField.FIELD_POSTFIX_DATE,
                     currentTillDate);
@@ -238,6 +273,12 @@ public class CmsSolrIndexWriter implements I_CmsSolrIndexWriter {
                     inputDoc.setField(
                         CmsSearchField.FIELD_INSTANCEDATE_END + "_" + locale + CmsSearchField.FIELD_POSTFIX_DATE,
                         endDate);
+                    inputDoc.setField(
+                        CmsSearchField.FIELD_INSTANCEDATE_RANGE
+                            + "_"
+                            + locale
+                            + CmsSearchField.FIELD_POSTFIX_DATE_RANGE,
+                        dateRange);
                     inputDoc.setField(
                         CmsSearchField.FIELD_INSTANCEDATE_CURRENT_TILL
                             + "_"

@@ -29,6 +29,8 @@ package org.opencms.gwt.client.ui;
 
 import org.opencms.gwt.client.CmsCoreProvider;
 import org.opencms.gwt.client.CmsEditableDataJSO;
+import org.opencms.gwt.client.CmsPageEditorTouchHandler;
+import org.opencms.gwt.client.I_CmsElementToolbarContext;
 import org.opencms.gwt.client.Messages;
 import org.opencms.gwt.client.ui.css.I_CmsLayoutBundle;
 import org.opencms.gwt.client.ui.resourceinfo.CmsResourceInfoDialog;
@@ -69,7 +71,7 @@ import com.google.gwt.user.client.ui.RootPanel;
  * @since 8.0.0
  */
 public abstract class A_CmsDirectEditButtons extends FlowPanel
-implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
+implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem, I_CmsElementToolbarContext {
 
     /**
      * Button handler for this  class.<p>
@@ -89,15 +91,22 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
          */
         public void onClick(ClickEvent event) {
 
-            Object source = event.getSource();
-            if (source == m_delete) {
-                onClickDelete();
-            }
-            if (source == m_edit) {
-                onClickEdit();
-            }
-            if (source == m_new) {
-                onClickNew(true);
+            if (!CmsPageEditorTouchHandler.get().eatClick(A_CmsDirectEditButtons.this)) {
+                removeHighlightingAndBar();
+                Object source = event.getSource();
+                if (source == m_delete) {
+                    onClickDelete();
+                }
+                if (source == m_edit) {
+                    onClickEdit();
+                }
+                if (source == m_new) {
+                    if (m_editableData.getExtensions().isUploadEnabled()) {
+                        onClickUpload();
+                    } else {
+                        onClickNew(true);
+                    }
+                }
             }
         }
 
@@ -107,8 +116,10 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         @Override
         public void onHoverIn(MouseOverEvent event) {
 
-            CmsCoreProvider.get().getFlyoutMenuContainer().setActiveItem(A_CmsDirectEditButtons.this);
-            addHighlightingAndBar();
+            if (!CmsPageEditorTouchHandler.get().ignoreHover()) {
+                CmsCoreProvider.get().getFlyoutMenuContainer().setActiveItem(A_CmsDirectEditButtons.this);
+                addHighlightingAndBar();
+            }
         }
 
         /**
@@ -117,17 +128,19 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         @Override
         public void onHoverOut(MouseOutEvent event) {
 
-            timer = new Timer() {
+            if (!CmsPageEditorTouchHandler.get().ignoreHover()) {
+                timer = new Timer() {
 
-                @Override
-                public void run() {
+                    @Override
+                    public void run() {
 
-                    if (timer == this) {
-                        removeHighlightingAndBar();
+                        if (timer == this) {
+                            removeHighlightingAndBar();
+                        }
                     }
-                }
-            };
-            timer.schedule(750);
+                };
+                timer.schedule(750);
+            }
         }
 
     }
@@ -181,6 +194,7 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
             m_editableData = CmsEditableDataJSO.parseEditableData(jsonText);
             CmsScriptCallbackHelper callbackForElement = new CmsScriptCallbackHelper() {
 
+                @Override
                 public void run() {
 
                     A_CmsDirectEditButtons.this.onClickNew(false);
@@ -210,28 +224,45 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
             }
             if (m_editableData.hasNew()) {
                 m_new = new CmsPushButton();
-                m_new.setImageClass(I_CmsButton.ADD_SMALL);
-                m_new.setTitle(Messages.get().key(Messages.GUI_TOOLBAR_NEW_0));
+                if (m_editableData.getExtensions().isUploadEnabled()) {
+                    m_new.setImageClass(I_CmsButton.UPLOAD_SELECTION);
+                    m_new.setTitle(getUploadButtonTitle(m_editableData.getExtensions().getUploadFolder()));
+                } else {
+                    m_new.setImageClass(I_CmsButton.ADD_SMALL);
+                    m_new.setTitle(Messages.get().key(Messages.GUI_TOOLBAR_NEW_0));
+                }
+
                 m_new.setButtonStyle(I_CmsButton.ButtonStyle.FONT_ICON, null);
                 buttonMap.put(Integer.valueOf(200), m_new);
                 m_new.addClickHandler(handler);
             }
-            buttonMap.putAll(getAdditionalButtons());
+            Map<Integer, CmsPushButton> additionalButtons = getAdditionalButtons();
+            buttonMap.putAll(additionalButtons);
             if ((buttonMap.size() > 0) || m_editableData.hasEdit()) {
-                m_edit = new CmsPushButton();
-                m_edit.setImageClass(I_CmsButton.ButtonData.SELECTION.getIconClass());
-                m_edit.setButtonStyle(I_CmsButton.ButtonStyle.FONT_ICON, null);
-                buttonMap.put(Integer.valueOf(300), m_edit);
-                if (m_editableData.hasEdit()) {
-                    m_edit.setTitle(I_CmsButton.ButtonData.EDIT.getTitle());
-                    m_edit.addStyleName(I_CmsLayoutBundle.INSTANCE.directEditCss().editableElement());
-                    m_edit.addClickHandler(handler);
-                    if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_editableData.getNoEditReason())) {
-                        m_edit.disable(m_editableData.getNoEditReason());
+                if (!m_editableData.getExtensions().isUploadEnabled()) { // for the upload case, the edit button is not needed, the bullseye edit point is displayed on the upload button instead
+                    m_edit = new CmsPushButton();
+                    m_edit.setImageClass(I_CmsButton.ButtonData.SELECTION.getIconClass());
+                    m_edit.setButtonStyle(I_CmsButton.ButtonStyle.FONT_ICON, null);
+                    buttonMap.put(Integer.valueOf(300), m_edit);
+                    if (m_editableData.hasEdit()) {
+                        m_edit.setTitle(I_CmsButton.ButtonData.EDIT.getTitle());
+                        m_edit.addStyleName(I_CmsLayoutBundle.INSTANCE.directEditCss().editableElement());
+                        m_edit.addClickHandler(handler);
+                        if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_editableData.getNoEditReason())) {
+                            m_edit.disable(m_editableData.getNoEditReason());
+                        }
+                    } else if (m_editableData.hasNew()) {
+                        String message = Messages.get().key(Messages.GUI_DIRECTEDIT_ONLY_CREATE_0);
+                        m_edit.disable(message);
                     }
-                } else if (m_editableData.hasNew()) {
-                    String message = Messages.get().key(Messages.GUI_DIRECTEDIT_ONLY_CREATE_0);
-                    m_edit.disable(message);
+                }
+            }
+
+            if (CmsCoreProvider.isTouchOnly()) {
+                for (CmsPushButton button : additionalButtons.values()) {
+                    button.addClickHandler(e -> {
+                        removeHighlightingAndBar();
+                    });
                 }
             }
 
@@ -257,6 +288,15 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
         } catch (Exception e) {
             throw new UnsupportedOperationException("Error while parsing editable tag information: " + e.getMessage());
         }
+    }
+
+    /**
+     * @see org.opencms.gwt.client.I_CmsElementToolbarContext#activateToolbarContext()
+     */
+    public void activateToolbarContext() {
+
+        addHighlightingAndBar();
+
     }
 
     /**
@@ -296,6 +336,15 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
             }
         });
         return infoButton;
+    }
+
+    /**
+     * @see org.opencms.gwt.client.I_CmsElementToolbarContext#deactivateToolbarContext()
+     */
+    public void deactivateToolbarContext() {
+
+        removeHighlightingAndBar();
+
     }
 
     /**
@@ -417,6 +466,14 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
     }
 
     /**
+     * Gets the upload button title.
+     *
+     * @param uploadFolder the upload folder
+     * @return the upload button title
+     */
+    protected abstract String getUploadButtonTitle(String uploadFolder);
+
+    /**
      * This method should be executed when the "delete" direct edit button is clicked.<p>
      */
     protected abstract void onClickDelete();
@@ -432,6 +489,14 @@ implements HasMouseOverHandlers, HasMouseOutHandlers, I_CmsUniqueActiveItem {
      * @param askCreateMode true if the user should be asked for the 'content create mode'
      */
     protected abstract void onClickNew(boolean askCreateMode);
+
+    /**
+     * Method to be executed when the "new" direct edit button is clicked, and the corresponding file has a type for which the upload dialog should be triggered.
+     */
+    protected void onClickUpload() {
+
+        // empty
+    }
 
     /**
      * Removes the highlighting and option bar.<p>

@@ -28,6 +28,7 @@
 package org.opencms.ade.configuration;
 
 import org.opencms.ade.configuration.CmsADEConfigData.DetailInfo;
+import org.opencms.ade.configuration.plugins.CmsSitePlugin;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
@@ -98,6 +99,9 @@ public class CmsADEConfigCacheState {
     /** Memoized supplier for the cached detail page ids. */
     private Supplier<Set<CmsUUID>> m_detailPageIdCache;
 
+    /** Site plugins. */
+    private Map<CmsUUID, CmsSitePlugin> m_sitePlugins;
+
     /**
      * Creates a new configuration cache state.<p>
      *
@@ -105,17 +109,20 @@ public class CmsADEConfigCacheState {
      * @param siteConfigurations the map of sitemap configuration beans by structure id
      * @param moduleConfigs the complete list of module configurations
      * @param elementViews the available element views
+     * @param sitePlugins the map of sitemap plugins
      */
     public CmsADEConfigCacheState(
         CmsObject cms,
         Map<CmsUUID, CmsADEConfigDataInternal> siteConfigurations,
         List<CmsADEConfigDataInternal> moduleConfigs,
-        Map<CmsUUID, CmsElementView> elementViews) {
+        Map<CmsUUID, CmsElementView> elementViews,
+        Map<CmsUUID, CmsSitePlugin> sitePlugins) {
 
         m_cms = cms;
         m_siteConfigurations = siteConfigurations;
         m_moduleConfigurations = moduleConfigs;
         m_elementViews = elementViews;
+        m_sitePlugins = sitePlugins;
         for (CmsADEConfigDataInternal data : siteConfigurations.values()) {
             if (data.getBasePath() != null) {
                 // In theory, the base path should never be null
@@ -151,7 +158,8 @@ public class CmsADEConfigCacheState {
             cms,
             Collections.<CmsUUID, CmsADEConfigDataInternal> emptyMap(),
             Collections.<CmsADEConfigDataInternal> emptyList(),
-            Collections.<CmsUUID, CmsElementView> emptyMap());
+            Collections.<CmsUUID, CmsElementView> emptyMap(),
+            Collections.emptyMap());
     }
 
     /**
@@ -184,13 +192,15 @@ public class CmsADEConfigCacheState {
      * @param sitemapUpdates a map containing changed sitemap configurations indexed by structure id (the map values are null if the corresponding sitemap configuration is not valid or could not be found)
      * @param moduleUpdates the list of *all* module configurations, or null if no module configuration update is needed
      * @param elementViewUpdates the updated element views, or null if no update needed
+     * @param sitePluginUpdates the new map of site plugins, or null if no update needed
      *
      * @return the new configuration state
      */
     public CmsADEConfigCacheState createUpdatedCopy(
         Map<CmsUUID, CmsADEConfigDataInternal> sitemapUpdates,
         List<CmsADEConfigDataInternal> moduleUpdates,
-        Map<CmsUUID, CmsElementView> elementViewUpdates) {
+        Map<CmsUUID, CmsElementView> elementViewUpdates,
+        Map<CmsUUID, CmsSitePlugin> sitePluginUpdates) {
 
         Map<CmsUUID, CmsADEConfigDataInternal> newSitemapConfigs = Maps.newHashMap(m_siteConfigurations);
         if (sitemapUpdates != null) {
@@ -213,7 +223,12 @@ public class CmsADEConfigCacheState {
             newElementViews = elementViewUpdates;
         }
 
-        return new CmsADEConfigCacheState(m_cms, newSitemapConfigs, newModuleConfigs, newElementViews);
+        Map<CmsUUID, CmsSitePlugin> newSitePlugins = m_sitePlugins;
+        if (sitePluginUpdates != null) {
+            newSitePlugins = sitePluginUpdates;
+        }
+
+        return new CmsADEConfigCacheState(m_cms, newSitemapConfigs, newModuleConfigs, newElementViews, newSitePlugins);
     }
 
     /**
@@ -315,6 +330,16 @@ public class CmsADEConfigCacheState {
     public Set<String> getSiteConfigurationPaths() {
 
         return m_siteConfigurationsByPath.keySet();
+    }
+
+    /**
+     * The map of site plugins, by structure id.
+     *
+     * @return the map of site plugins
+     */
+    public Map<CmsUUID, CmsSitePlugin> getSitePlugins() {
+
+        return m_sitePlugins;
     }
 
     /**
@@ -569,8 +594,12 @@ public class CmsADEConfigCacheState {
         while (!stack.isEmpty()) {
             CmsADEConfigDataInternal current = stack.remove(stack.size() - 1);
             if (alreadySeen.contains(current.getResource().getStructureId())) {
+
                 LOG.error(
-                    "Circular master configuration references detected for " + current.getResource().getRootPath());
+                    "The same master configuration is referenced multiple times from "
+                        + startMasterConfig.getResource()
+                        + ": "
+                        + current.getResource().getRootPath());
             } else {
                 alreadySeen.add(current.getResource().getStructureId());
                 result.add(current);

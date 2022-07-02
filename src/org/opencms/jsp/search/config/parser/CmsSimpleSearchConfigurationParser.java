@@ -43,9 +43,11 @@ import org.opencms.main.CmsException;
 import org.opencms.relations.CmsCategoryService;
 import org.opencms.search.fields.CmsSearchField;
 import org.opencms.search.solr.CmsSolrQuery;
+import org.opencms.search.solr.CmsSolrQueryUtil;
 import org.opencms.ui.apps.lists.CmsListManager;
 import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean;
 import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean.ListCategoryFolderRestrictionBean;
+import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean.ListGeoFilterBean;
 import org.opencms.ui.apps.lists.daterestrictions.I_CmsListDateRestriction;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -284,8 +286,12 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
             return super.parseRangeFacets();
         } else {
             Map<String, I_CmsSearchConfigurationFacetRange> rangeFacets = new HashMap<String, I_CmsSearchConfigurationFacetRange>();
+            String indexField = CmsListManager.FIELD_DATE;
+            if (Boolean.parseBoolean(m_config.getParameterValue(CmsListManager.N_FILTER_MULTI_DAY))) {
+                indexField = CmsListManager.FIELD_DATE_RANGE;
+            }
             I_CmsSearchConfigurationFacetRange rangeFacet = new CmsSearchConfigurationFacetRange(
-                String.format(CmsListManager.FIELD_DATE, getSearchLocale().toString()),
+                String.format(indexField, getSearchLocale().toString()),
                 "NOW/YEAR-20YEARS",
                 "NOW/MONTH+5YEARS",
                 "+1MONTHS",
@@ -379,7 +385,11 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
 
         String params = super.getExtraSolrParams();
         if (CmsStringUtil.isEmptyOrWhitespaceOnly(params)) {
-            params = getCategoryFolderFilter() + getResourceTypeFilter() + getFilterQuery() + getBlacklistFilter();
+            params = getCategoryFolderFilter()
+                + getResourceTypeFilter()
+                + getFilterQuery()
+                + getBlacklistFilter()
+                + getGeoFilterQuery();
         }
         return params;
     }
@@ -574,13 +584,20 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         StringBuffer fields = new StringBuffer("");
         fields.append(CmsSearchField.FIELD_PATH);
         fields.append(',');
-        fields.append(CmsSearchField.FIELD_INSTANCEDATE).append('_').append(getSearchLocale().toString()).append("_dt");
+        fields.append(CmsSearchField.FIELD_INSTANCEDATE).append(CmsSearchField.FIELD_POSTFIX_DATE);
+        fields.append(',');
+        fields.append(CmsSearchField.FIELD_INSTANCEDATE_END).append(CmsSearchField.FIELD_POSTFIX_DATE);
+        fields.append(',');
+        fields.append(CmsSearchField.FIELD_INSTANCEDATE_CURRENT_TILL).append(CmsSearchField.FIELD_POSTFIX_DATE);
+        fields.append(',');
+        fields.append(CmsSearchField.FIELD_INSTANCEDATE).append('_').append(getSearchLocale().toString()).append(
+            CmsSearchField.FIELD_POSTFIX_DATE);
         fields.append(',');
         fields.append(CmsSearchField.FIELD_INSTANCEDATE_END).append('_').append(getSearchLocale().toString()).append(
-            "_dt");
+            CmsSearchField.FIELD_POSTFIX_DATE);
         fields.append(',');
         fields.append(CmsSearchField.FIELD_INSTANCEDATE_CURRENT_TILL).append('_').append(
-            getSearchLocale().toString()).append("_dt");
+            getSearchLocale().toString()).append(CmsSearchField.FIELD_POSTFIX_DATE);
         fields.append(',');
         fields.append(CmsSearchField.FIELD_ID);
         fields.append(',');
@@ -589,6 +606,8 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         fields.append(CmsSearchField.FIELD_DISPTITLE).append('_').append(getSearchLocale().toString()).append("_sort");
         fields.append(',');
         fields.append(CmsSearchField.FIELD_LINK);
+        fields.append(',');
+        fields.append(CmsSearchField.FIELD_GEOCOORDS);
         return fields.toString();
     }
 
@@ -620,6 +639,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
                         + dateRestriction.getRange());
 
         }
+        result += "&fq=con_locales:" + getSearchLocale().toString();
         return result;
     }
 
@@ -641,6 +661,26 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
             result = "parent-folders:(\"/\")";
         } else {
             result = "parent-folders:(" + CmsStringUtil.listAsString(parentFolderVals, " OR ") + ")";
+        }
+        return result;
+    }
+
+    /**
+     * Returns the Geo filter query string.<p>
+     *
+     * @return the Geo filter query string
+     */
+    String getGeoFilterQuery() {
+
+        String result = "";
+        ListGeoFilterBean geoFilterBean = m_config.getGeoFilter();
+        if (geoFilterBean != null) {
+            String fq = CmsSolrQueryUtil.composeGeoFilterQuery(
+                CmsSearchField.FIELD_GEOCOORDS,
+                geoFilterBean.getCoordinates(),
+                geoFilterBean.getRadius(),
+                "km");
+            result = "&fq=" + fq;
         }
         return result;
     }

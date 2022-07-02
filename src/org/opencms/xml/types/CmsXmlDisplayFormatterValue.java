@@ -32,7 +32,6 @@ import org.opencms.file.CmsObject;
 import org.opencms.main.CmsRuntimeException;
 import org.opencms.main.OpenCms;
 import org.opencms.util.CmsStringUtil;
-import org.opencms.util.CmsUUID;
 import org.opencms.xml.I_CmsXmlDocument;
 import org.opencms.xml.containerpage.I_CmsFormatterBean;
 import org.opencms.xml.content.CmsXmlContent;
@@ -161,11 +160,9 @@ public class CmsXmlDisplayFormatterValue extends A_CmsXmlValueTextBase {
                     return internalValue;
                 }
                 String keyOrId = internalValue.substring(colonPos + 1);
-                if (CmsUUID.isValidUUID(keyOrId)) {
-                    I_CmsFormatterBean formatter = config.findFormatter(new CmsUUID(keyOrId));
-                    if (formatter != null) {
-                        return internalValue.substring(0, colonPos + 1) + formatter.getKeyOrId();
-                    }
+                I_CmsFormatterBean formatter = config.findFormatter(keyOrId);
+                if (formatter != null) {
+                    return internalValue.substring(0, colonPos + 1) + formatter.getKeyOrId();
                 }
             }
         }

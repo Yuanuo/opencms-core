@@ -88,6 +88,9 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     /** The base URI. */
     private String m_baseUri;
 
+    /** True if the display formatter include should go through the flex cache. */
+    private Boolean m_cacheable;
+
     /** Flag, indicating if the create option should be displayed. */
     private boolean m_canCreate;
 
@@ -118,6 +121,9 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     /** The element settings to be used. */
     private Map<String, String> m_settings;
 
+    /** The upload folder. */
+    private String m_uploadFolder;
+
     /** The site path to the resource to display. */
     private String m_value;
 
@@ -136,11 +142,13 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
      *
      * @param element the element
      * @param formatter the formatter configuration bean
+     * @param cacheable true if the flex cache should be used for calling the display formatter
      * @param editable if editable
      * @param canCreate if new resources may be created
      * @param canDelete if the resource may be deleted
      * @param creationSiteMap the create location sub site
      * @param postCreateHandler the post create handler
+     * @param uploadFolder the upload folder to use
      * @param context the page context
      * @param request the request
      * @param response the response
@@ -148,11 +156,13 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     public static void displayAction(
         CmsContainerElementBean element,
         I_CmsFormatterBean formatter,
+        boolean cacheable,
         boolean editable,
         boolean canCreate,
         boolean canDelete,
         String creationSiteMap,
         String postCreateHandler,
+        String uploadFolder,
         PageContext context,
         ServletRequest request,
         ServletResponse response) {
@@ -190,7 +200,8 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
                             canDelete,
                             null,
                             creationSiteMap,
-                            postCreateHandler);
+                            postCreateHandler,
+                            uploadFolder);
                     }
                     if (contextBean.getIsEditMode()) {
                         CmsADESessionCache.getCache(
@@ -204,7 +215,7 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
                             null,
                             locale,
                             false,
-                            isOnline,
+                            isOnline && cacheable,
                             CmsRequestUtil.createParameterMap(element.getSettings()),
                             CmsRequestUtil.getAtrributeMap(request),
                             request,
@@ -240,7 +251,7 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
         ServletRequest request,
         ServletResponse response) {
 
-        displayAction(element, formatter, false, false, false, null, null, context, request, response);
+        displayAction(element, formatter, true, false, false, false, null, null, null, context, request, response);
     }
 
     /**
@@ -249,11 +260,13 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
      * @param elementResource the element resource
      * @param formatter the formatter configuration bean
      * @param settings the element settings
+     * @param cacheable true if the flex cache should be used for calling the display formatter
      * @param editable if editable
      * @param canCreate if new resources may be created
      * @param canDelete if the resource may be deleted
      * @param creationSiteMap the create location sub site
      * @param postCreateHandler the post create handler
+     * @param uploadFolder the upload folder
      * @param context the page context
      * @param request the request
      * @param response the response
@@ -262,11 +275,13 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
         CmsResource elementResource,
         I_CmsFormatterBean formatter,
         Map<String, String> settings,
+        boolean cacheable,
         boolean editable,
         boolean canCreate,
         boolean canDelete,
         String creationSiteMap,
         String postCreateHandler,
+        String uploadFolder,
         PageContext context,
         ServletRequest request,
         ServletResponse response) {
@@ -279,11 +294,13 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
         displayAction(
             element,
             formatter,
+            cacheable,
             editable,
             canCreate,
             canDelete,
             creationSiteMap,
             postCreateHandler,
+            uploadFolder,
             context,
             request,
             response);
@@ -322,7 +339,7 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
         if (!keyMatch && !idMatch) {
             return null;
         }
-        if (!dynamicFmt.getSettings().containsKey(suffix)) {
+        if (!dynamicFmt.getSettings(config).containsKey(suffix)) {
             return null;
         }
         return suffix;
@@ -395,32 +412,20 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
                     }
                     throw new JspException(error);
                 }
-                Map<String, String> settings = new HashMap<String, String>();
 
-                for (Entry<String, String> entry : m_parameterMap.entrySet()) {
-                    if (CmsContainerElement.ELEMENT_INSTANCE_ID.equals(entry.getKey())) {
-                        // remove any instance id to make sure to generate a unique one
-                        continue;
-                    }
-                    String fmtSetting = getSettingKeyForMatchingFormatterPrefix(config, formatter, entry.getKey());
-                    if (entry.getKey().startsWith(CmsFormatterConfig.FORMATTER_SETTINGS_KEY)) {
-                        settings.put(entry.getKey(), formatter.getId());
-                    } else if (fmtSetting != null) {
-                        settings.put(fmtSetting, entry.getValue());
-                    } else if (!settings.containsKey(entry.getKey())) {
-                        settings.put(entry.getKey(), entry.getValue());
-                    }
-                }
+                Map<String, String> settings = prepareSettings(config, formatter);
 
                 displayAction(
                     res,
                     formatter,
                     settings,
+                    isCacheable(),
                     m_editable,
                     m_canCreate,
                     m_canDelete,
                     m_creationSiteMap,
                     m_postCreateHandler,
+                    m_uploadFolder,
                     pageContext,
                     request,
                     response);
@@ -518,6 +523,16 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
         m_baseUri = uri;
     }
 
+    /**
+     * Enables/disables the use of the flex cache for the display formatter include.
+     *
+     * @param cacheable true if the flex cache should be used for the display formatter include
+     */
+    public void setCacheable(boolean cacheable) {
+
+        m_cacheable = Boolean.valueOf(cacheable);
+    }
+
     /** Setter for the "create" attribute of the tag.
      * @param canCreate value of the tag's attribute "create".
      */
@@ -606,9 +621,19 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
      *
      * @param passSettings the passSettings to set
      */
-    public void setPassSettings(Boolean passSettings) {
+    public void setPassSettings(boolean passSettings) {
 
-        m_passSettings = passSettings.booleanValue();
+        m_passSettings = passSettings;
+    }
+
+    /**
+     * Sets the passSettings.<p>
+     *
+     * @param passSettings the passSettings to set
+     */
+    public void setPassSettings(String passSettings) {
+
+        m_passSettings = Boolean.valueOf(passSettings).booleanValue();
     }
 
     /** Setter for the "postCreateHandler" attribute of the tag.
@@ -627,6 +652,16 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     public void setSettings(Map<String, String> settings) {
 
         m_settings = settings;
+    }
+
+    /**
+     * Sets the upload folder.
+     *
+     * @param uploadFolder the upload folder
+     */
+    public void setUploadFolder(String uploadFolder) {
+
+        m_uploadFolder = uploadFolder;
     }
 
     /**
@@ -692,5 +727,43 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
             }
         }
         return result;
+    }
+
+    /**
+     * Checks if this tag instance should use the flex cache for including the formatter.
+     *
+     * @return true if this tag instance should use the flex cache for including the formatter
+     */
+    private boolean isCacheable() {
+
+        return (m_cacheable == null) || m_cacheable.booleanValue();
+    }
+
+    /**
+     * Prepares the settings before the call to displayAction().
+     *
+     * @param config the sitemap configuration
+     * @param formatter the display formatter
+     *
+     * @return the settings to use
+     */
+    private Map<String, String> prepareSettings(CmsADEConfigData config, I_CmsFormatterBean formatter) {
+
+        Map<String, String> settings = new HashMap<String, String>();
+        for (Entry<String, String> entry : m_parameterMap.entrySet()) {
+            if (CmsContainerElement.ELEMENT_INSTANCE_ID.equals(entry.getKey())) {
+                // remove any instance id to make sure to generate a unique one
+                continue;
+            }
+            String fmtSetting = getSettingKeyForMatchingFormatterPrefix(config, formatter, entry.getKey());
+            if (entry.getKey().startsWith(CmsFormatterConfig.FORMATTER_SETTINGS_KEY)) {
+                settings.put(entry.getKey(), formatter.getId());
+            } else if (fmtSetting != null) {
+                settings.put(fmtSetting, entry.getValue());
+            } else if (!settings.containsKey(entry.getKey())) {
+                settings.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return settings;
     }
 }

@@ -45,6 +45,7 @@ import org.opencms.util.CmsUUID;
 import org.opencms.xml.content.CmsXmlContentProperty;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -971,7 +972,8 @@ public class TestConfig extends OpenCmsTestCase {
                 cms,
                 new HashMap<CmsUUID, CmsADEConfigDataInternal>(),
                 new ArrayList<CmsADEConfigDataInternal>(),
-                new HashMap<CmsUUID, CmsElementView>()),
+                new HashMap<CmsUUID, CmsElementView>(),
+                new HashMap<>()),
             new CmsADEConfigurationSequence(Collections.singletonList(configDataInternal)));
         assertFalse(configData.isModuleConfiguration());
         assertEquals(1, configData.getResourceTypes().size());
@@ -1018,7 +1020,8 @@ public class TestConfig extends OpenCmsTestCase {
                 cms,
                 new HashMap<CmsUUID, CmsADEConfigDataInternal>(),
                 new ArrayList<CmsADEConfigDataInternal>(),
-                new HashMap<CmsUUID, CmsElementView>()),
+                new HashMap<CmsUUID, CmsElementView>(),
+                new HashMap<>()),
             new CmsADEConfigurationSequence(Collections.singletonList(configDataInternal)));
         assertTrue(configData.isModuleConfiguration());
         assertEquals(1, configData.getResourceTypes().size());
@@ -1045,6 +1048,42 @@ public class TestConfig extends OpenCmsTestCase {
         assertEquals("ruletype1", prop1.getPropertyData().getRuleType());
         assertEquals("error1", prop1.getPropertyData().getError());
         assertEquals(true, prop1.getPropertyData().isPreferFolder());
+    }
+
+    /**
+     * Tests site plugin inheritance in the sitemap configuration.
+     *
+     * @throws Exception if something goes wrong
+     */
+    public void testPluginInheritance() throws Exception {
+
+        CmsUUID a = new CmsUUID(CmsUUID.getNullUUID().toString().replaceAll("0", "a"));
+        CmsUUID b = new CmsUUID(CmsUUID.getNullUUID().toString().replaceAll("0", "b"));
+        CmsUUID c = new CmsUUID(CmsUUID.getNullUUID().toString().replaceAll("0", "c"));
+        CmsUUID d = new CmsUUID(CmsUUID.getNullUUID().toString().replaceAll("0", "d"));
+        CmsTestConfigData c0 = CmsTestConfigData.buildTestDataForPlugins(
+            getCmsObject(),
+            "/",
+            false,
+            new HashSet<>(Arrays.asList(d)),
+            new HashSet<>());
+        CmsTestConfigData c1 = CmsTestConfigData.buildTestDataForPlugins(
+            getCmsObject(),
+            "/foo",
+            true,
+            new HashSet<>(Arrays.asList(a, b)),
+            new HashSet<>());
+        CmsTestConfigData c2 = CmsTestConfigData.buildTestDataForPlugins(
+            getCmsObject(),
+            "/foo/bar",
+            false,
+            new HashSet<>(Arrays.asList(c)),
+            new HashSet<>(Arrays.asList(b)));
+        c1.setParent(c0);
+        c2.setParent(c1);
+        Set<CmsUUID> c2Plugins = c2.getSitePluginIds();
+        assertEquals(new HashSet<>(Arrays.asList(a, c)), c2Plugins);
+
     }
 
     /**
