@@ -28,7 +28,7 @@
 package org.opencms.jsp.search.controller;
 
 import org.opencms.file.CmsObject;
-import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.i18n.CmsEncoder;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationCommon;
 import org.opencms.jsp.search.state.CmsSearchStateCommon;

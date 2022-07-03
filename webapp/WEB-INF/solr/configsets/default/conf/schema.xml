@@ -251,41 +251,25 @@
     </analyzer>
   </fieldType>
 
-    <!-- text_zh字段类型: 指定使用HanLP分词器，同时开启索引模式。通过solr自带的停用词过滤器，使用"stopwords.txt"（默认空白）过滤。
-	 在搜索的时候，还支持solr自带的同义词词典。-->
+
+    <!-- CJK bigram (see text_ja for a Japanese configuration using morphological analysis) -->
     <fieldType name="text_zh" class="solr.TextField" positionIncrementGap="100">
       <analyzer type="index">
-        <tokenizer class="com.hankcs.lucene.HanLPTokenizerFactory" enableIndexMode="true"
-        	enableNameRecognize="true" enableTranslatedNameRecognize="true" enableJapaneseNameRecognize="true"
-        	enableOrganizationRecognize="true" enablePlaceRecognize="true" />
-        <!-- -->
-        <filter class="solr.SynonymGraphFilterFactory" ignoreCase="true" synonyms="lang/synonyms_zh.txt"/>
-        <filter class="solr.FlattenGraphFilterFactory"/> <!-- required on index analyzers after graph filters -->
-        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_zh.txt" />
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <!-- normalize width before bigram, as e.g. half-width dakuten combine  -->
+        <filter class="solr.CJKWidthFilterFactory"/>
+        <!-- for any non-CJK -->
         <filter class="solr.LowerCaseFilterFactory"/>
+        <filter class="solr.CJKBigramFilterFactory"/>
       </analyzer>
       <analyzer type="query">
-        <tokenizer class="com.hankcs.lucene.HanLPTokenizerFactory" enableIndexMode="false"
-            enableNameRecognize="true" enableTranslatedNameRecognize="true" enableJapaneseNameRecognize="true"
-            enableOrganizationRecognize="true" enablePlaceRecognize="true" />
-        <!-- -->
-        <filter class="solr.SynonymGraphFilterFactory" ignoreCase="true" synonyms="lang/synonyms_zh.txt" expand="true"/>
-        <filter class="solr.StopFilterFactory" ignoreCase="true" words="lang/stopwords_zh.txt" />
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <!-- normalize width before bigram, as e.g. half-width dakuten combine  -->
+        <filter class="solr.CJKWidthFilterFactory"/>
+        <!-- for any non-CJK -->
         <filter class="solr.LowerCaseFilterFactory"/>
-      </analyzer>
-    </fieldType>
-
-    <!-- Tibetan -->
-    <fieldType name="text_bo" class="solr.TextField" positionIncrementGap="100">
-      <analyzer>
-        <tokenizer class="io.bdrc.lucene.bo.TibWordTokenizerFactory"/>
-      </analyzer>
-    </fieldType>
-
-    <!-- Sanskrit -->
-    <fieldType name="text_sa" class="solr.TextField" positionIncrementGap="100">
-      <analyzer>
-        <tokenizer class="io.bdrc.lucene.sa.SkrtWordTokenizerFactory"/>
+        <filter class="solr.CJKBigramFilterFactory"/>
+        <filter class="solr.SynonymGraphFilterFactory" synonyms="synonyms.txt" expand="true" ignoreCase="true"/>
       </analyzer>
     </fieldType>
 
@@ -371,8 +355,6 @@
     <field name="text_hu"             type="text_hu"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Hungarian text fields -->
     <field name="text_it"             type="text_it"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Italian text fields -->
     <field name="text_zh"             type="text_zh"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Chinese text fields -->
-    <field name="text_bo"             type="text_bo"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Tibetan text fields -->
-    <field name="text_sa"             type="text_sa"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Sanskrit text fields -->
     <field name="serial-date"         type="date"         indexed="true"  stored="true" />
     <field name="serial-date-dates"   type="date"         indexed="true"  stored="true"  multiValued="true"/>
 
@@ -406,8 +388,6 @@
     <dynamicField name="*_hu"         type="text_hu"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_it"         type="text_it"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_zh"         type="text_zh"      indexed="true"  stored="true" multiValued="true"/>
-    <dynamicField name="*_bo"         type="text_bo"      indexed="true"  stored="true" multiValued="true"/>
-    <dynamicField name="*_sa"         type="text_sa"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_b"          type="boolean"      indexed="true"  stored="true"/>
     <dynamicField name="*_coordinate" type="pdouble"      indexed="true"  stored="false"/>
     <dynamicField name="*_loc"        type="location"     indexed="true"  stored="true"/>
@@ -428,8 +408,6 @@
     <copyField source="*_hu"      dest="text_hu"/>
     <copyField source="*_it"      dest="text_it"/>
     <copyField source="*_zh"      dest="text_zh"/>
-    <copyField source="*_bo"      dest="text_bo"/>
-    <copyField source="*_sa"      dest="text_sa"/>
     <copyField source="text_*"    dest="text"/>
     <copyField source="*_prop"    dest="text" />
     <copyField source="content"   dest="text" />

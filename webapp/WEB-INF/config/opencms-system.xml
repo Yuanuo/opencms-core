@@ -8,15 +8,11 @@
             <localesconfigured>
                 <locale>en</locale>
                 <locale>zh</locale>
-                <locale>bo</locale>
-                <locale>sa</locale>
                 <locale>de</locale>
             </localesconfigured>
             <localesdefault>
                 <locale>en</locale>
                 <locale>zh</locale>
-                <locale>bo</locale>
-                <locale>sa</locale>
                 <locale>de</locale>
             </localesdefault>
             <timezone>GMT+08:00</timezone>
@@ -41,7 +37,6 @@
             <requesthandler class="org.opencms.main.CmsStaticResourceHandler" />
             <requesthandler class="org.opencms.main.OpenCmsSolrHandler" />
             <requesthandler class="org.opencms.main.OpenCmsSpellcheckHandler" />
-            <requesthandler class="org.opencms.main.OpenCmsApiHandler" />
         </requesthandlers>
         <passwordhandler class="org.opencms.security.CmsDefaultPasswordHandler">
             <encoding>UTF-8</encoding>
