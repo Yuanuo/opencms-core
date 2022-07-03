@@ -262,7 +262,11 @@ public class CmsSolrFieldConfiguration extends CmsSearchFieldConfiguration {
                             propertiesSearched);
                     }
                     if (text.length() > 0 && mapResult != null && !mapResult.isEmpty()) {
-                        text.append(mapping.getJoinby() != null ? mapping.getJoinby() : "\n");
+                        if (mapping instanceof CmsSearchFieldMapping) {
+                            text.append(((CmsSearchFieldMapping) mapping).joinBy != null ? ((CmsSearchFieldMapping) mapping).joinBy : "\n");
+                        } else {
+                            text.append("\n");
+                        }
                     }
                     if (mapResult != null) {
                         text.append(mapResult);

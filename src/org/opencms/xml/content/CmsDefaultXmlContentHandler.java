@@ -398,9 +398,6 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** Constant for the "invalidate" appinfo attribute name. */
     public static final String APPINFO_ATTR_INVALIDATE = "invalidate";
 
-    /** Constant for the "joinby" appinfo attribute name. */
-    public static final String APPINFO_ATTR_JOINBY = "joinby";
-
     /** Constant for the "key" appinfo attribute name. */
     public static final String APPINFO_ATTR_KEY = "key";
 
@@ -2145,7 +2142,6 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
      */
     public CmsFile prepareForWrite(CmsObject cms, CmsXmlContent content, CmsFile file) throws CmsException {
 
-        System.out.println("version = " + content.getSchemaVersion());
         if (!content.isAutoCorrectionEnabled()) {
             // check if the XML should be corrected automatically (if not already set)
             Object attribute = cms.getRequestContext().getAttribute(CmsXmlContent.AUTO_CORRECTION_ATTRIBUTE);
@@ -4504,7 +4500,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         }
         if (fieldMapping != null) {
             fieldMapping.setDefaultValue(element.attributeValue(APPINFO_ATTR_DEFAULT));
-            fieldMapping.setJoinby(element.attributeValue(APPINFO_ATTR_JOINBY, "\n"));
+            if (fieldMapping instanceof CmsSearchFieldMapping) {
+                ((CmsSearchFieldMapping) fieldMapping).joinBy = element.attributeValue("joinby", "\n");
+            }
         }
         return fieldMapping;
     }
