@@ -824,13 +824,21 @@ public class CmsModuleUpdater {
             for (CmsRelation newRel : newRelations) {
                 try {
                     CmsResource targetResource;
-                    if (newRel.getTargetId() != null) {
+                    if (newRel.getTargetId() != null && !newRel.getTargetId().isNullUUID()) {
                         targetResource = cms.readResource(newRel.getTargetId(), CmsResourceFilter.IGNORE_EXPIRATION);
                     } else {
                         try (AutoCloseable ac = cms.tempChangeSiteRoot("")) {
                             targetResource = cms.readResource(
                                 newRel.getTargetPath(),
                                 CmsResourceFilter.IGNORE_EXPIRATION);
+                        } catch (CmsVfsResourceNotFoundException e) {
+                            try {
+                                targetResource = cms.readResource(
+                                        newRel.getTargetPath(),
+                                        CmsResourceFilter.IGNORE_EXPIRATION);
+                            } catch (CmsVfsResourceNotFoundException e1) {
+                                targetResource = null;
+                            }
                         }
                     }
                     if (targetResource != null) {

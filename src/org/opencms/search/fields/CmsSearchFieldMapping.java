@@ -91,6 +91,9 @@ public class CmsSearchFieldMapping implements I_CmsSearchFieldMapping {
     /** Flag, indicating if the mapping applies to a lucene index. */
     private boolean m_isLucene;
 
+    /** sep for multi mappings, default is \n (means newline) */
+    private String m_joinby = "\n";
+
     /**
      * Public constructor for a new search field mapping.<p>
      */
@@ -176,6 +179,14 @@ public class CmsSearchFieldMapping implements I_CmsSearchFieldMapping {
     public String getDefaultValue() {
 
         return m_defaultValue;
+    }
+
+    /**
+     * @see org.opencms.search.fields.I_CmsSearchFieldMapping#getJoinby()
+     */
+    public String getJoinby() {
+    
+        return this.m_joinby;
     }
 
     /**
@@ -384,6 +395,14 @@ public class CmsSearchFieldMapping implements I_CmsSearchFieldMapping {
         } else {
             m_defaultValue = null;
         }
+    }
+
+    /**
+     * @see org.opencms.search.fields.I_CmsSearchFieldMapping#setJoinby(java.lang.String)
+     */
+    public void setJoinby(String joinby) {
+
+        m_joinby = joinby;
     }
 
     /**

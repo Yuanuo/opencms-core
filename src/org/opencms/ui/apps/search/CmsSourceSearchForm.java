@@ -439,7 +439,12 @@ public class CmsSourceSearchForm extends VerticalLayout {
             } else if (SearchType.renameContainer.equals(m_searchType.getValue())) {
                 settings.setReplacepattern(m_oldName.getValue() + ";" + m_newName.getValue());
             } else {
-                settings.setReplacepattern(m_replacePattern.getValue());
+                String replacePatternValue = m_replacePattern.getValue();
+                if ("!force!empty!".equalsIgnoreCase(replacePatternValue)) {
+                    settings.setForceReplace(true);
+                    replacePatternValue = "";
+                }
+                settings.setReplacepattern(replacePatternValue);
             }
         }
         settings.setForceReplace(m_replace.getValue().booleanValue());

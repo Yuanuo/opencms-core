@@ -330,6 +330,10 @@ public class CmsSolrDocumentXmlContent extends A_CmsVfsDocument {
         for (I_CmsXmlSchemaType nestedType : nestedTypes) {
             String subPath = path + "/" + nestedType.getName();
             if (nestedType instanceof CmsXmlNestedContentDefinition) {
+                CmsXmlNestedContentDefinition nested = (CmsXmlNestedContentDefinition)nestedType;
+                if (CmsXmlUtils.isMaxRecursionDepthExceeded(def, path, nested)) {
+                    continue;
+                }
                 CmsXmlContentDefinition nestedDef = ((CmsXmlNestedContentDefinition)nestedType).getNestedContentDefinition();
                 collectSchemaXpathsForSimpleValues(cms, nestedDef, subPath, result);
             } else {

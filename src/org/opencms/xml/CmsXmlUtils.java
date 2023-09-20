@@ -59,6 +59,7 @@ import org.dom4j.io.DOMWriter;
 import org.dom4j.io.OutputFormat;
 import org.dom4j.io.SAXReader;
 import org.dom4j.io.XMLWriter;
+import org.opencms.xml.types.CmsXmlNestedContentDefinition;
 import org.xml.sax.EntityResolver;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -104,6 +105,9 @@ public final class CmsXmlUtils {
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsXmlUtils.class);
+
+    /** The max depths allowed for recursive. */
+    public static final int MAX_RECURSIVE_DEPTH = 10;
 
     /** Key of the SAX parser configuration system property. */
     private static final String SAX_PARSER_CONFIG_KEY = "org.apache.xerces.xni.parser.XMLParserConfiguration";
@@ -1010,6 +1014,29 @@ public final class CmsXmlUtils {
             }
             // generate String from XML for display of document in error message
             throw new CmsXmlException(Messages.get().container(Messages.ERR_XML_VALIDATION_1, out.toString()));
+        }
+    }
+
+    public static boolean isMaxRecursionDepthExceeded(CmsXmlContentDefinition parent, String path, CmsXmlNestedContentDefinition nested) {
+        return parent.getSchemaLocation().equals(nested.getNestedContentDefinition().getSchemaLocation())
+                && CmsStringUtil.countChar(path, '/') >= MAX_RECURSIVE_DEPTH;
+    }
+
+    public static org.w3c.dom.Document unmarshalHelper(final InputStream inputStream,
+                                                       final boolean validate) throws Exception {
+        try {
+            if (inputStream == null)
+                return null;
+            final javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            factory.setValidating(validate);
+            factory.setFeature("http://xml.org/sax/features/namespaces", false);
+            factory.setFeature("http://xml.org/sax/features/validation", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-dtd-grammar", false);
+            factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+            return factory.newDocumentBuilder().parse(inputStream);
+        } finally {
+            if (null != inputStream)
+                inputStream.close();
         }
     }
 }

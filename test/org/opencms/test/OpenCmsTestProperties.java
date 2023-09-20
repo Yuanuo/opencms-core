@@ -138,7 +138,7 @@ public final class OpenCmsTestProperties {
         URL inputUrl = Thread.currentThread().getContextClassLoader().getResource(fileName);
         if (inputUrl != null) {
             // decode name here to avoid url encodings in path name
-            result = CmsFileUtil.normalizePath(inputUrl);
+            result = CmsFileUtil.normalizePath(inputUrl, '/');
             if (isFolder && !CmsResource.isFolder(result)) {
                 result = result + '/';
             }

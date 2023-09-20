@@ -651,7 +651,8 @@ public class CmsLinkManager {
      */
     public String substituteLink(CmsObject cms, CmsResource resource) {
 
-        return substituteLinkForRootPath(cms, resource.getRootPath());
+        String targetDetailPage = OpenCms.getResourceManager().getResourceType(resource).getTypeName();
+        return substituteLinkForRootPath(cms, resource.getRootPath(), targetDetailPage);
     }
 
     /**
@@ -828,6 +829,9 @@ public class CmsLinkManager {
      *      <i>to</i> the VFS resource indicated by the given root path
      */
     public String substituteLinkForRootPath(CmsObject cms, String rootPath) {
+        return substituteLinkForRootPath(cms, rootPath, null);
+    }
+    public String substituteLinkForRootPath(CmsObject cms, String rootPath, String targetDetailPage) {
 
         String siteRoot = OpenCms.getSiteManager().getSiteRoot(rootPath);
         if (siteRoot == null) {
@@ -842,7 +846,7 @@ public class CmsLinkManager {
         } else {
             sitePath = rootPath;
         }
-        return substituteLink(cms, sitePath, siteRoot, false);
+        return substituteLink(cms, sitePath, siteRoot, targetDetailPage, false);
     }
 
     /**
