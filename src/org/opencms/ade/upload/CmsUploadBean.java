@@ -39,6 +39,7 @@ import org.opencms.file.collectors.A_CmsResourceCollector;
 import org.opencms.file.collectors.I_CmsCollectorPostCreateHandler;
 import org.opencms.file.types.CmsResourceTypeFolder;
 import org.opencms.file.types.CmsResourceTypePlain;
+import org.opencms.gwt.shared.CmsUploadRestrictionInfo;
 import org.opencms.gwt.shared.I_CmsUploadConstants;
 import org.opencms.i18n.CmsMessages;
 import org.opencms.json.JSONArray;
@@ -122,6 +123,8 @@ public class CmsUploadBean extends CmsJspBean {
     /** The upload hook URI. */
     private String m_uploadHook;
 
+    private CmsUploadRestrictionInfo m_uploadRestrictionInfo;
+
     /**
      * Constructor, with parameters.<p>
      *
@@ -139,6 +142,8 @@ public class CmsUploadBean extends CmsJspBean {
 
         m_rootCms = OpenCms.initCmsObject(getCmsObject());
         m_rootCms.getRequestContext().setSiteRoot("");
+        m_uploadRestrictionInfo = OpenCms.getWorkplaceManager().getUploadRestriction().getUploadRestrictionInfo(
+            m_rootCms);
     }
 
     /**
@@ -159,13 +164,16 @@ public class CmsUploadBean extends CmsJspBean {
      * @param cms the cms object
      * @param fileName the filename to combine with the folder
      * @param folder the folder to combine with the filename
+     * @param keepFileNames skip file name translation if true
      *
      * @return the VFS path for the given filename and folder
      */
-    public static String getNewResourceName(CmsObject cms, String fileName, String folder) {
+    public static String getNewResourceName(CmsObject cms, String fileName, String folder, boolean keepFileNames) {
 
         String newResname = CmsResource.getName(fileName.replace('\\', '/'));
-        newResname = cms.getRequestContext().getFileTranslator().translateResource(newResname);
+        if (!keepFileNames) {
+            newResname = cms.getRequestContext().getFileTranslator().translateResource(newResname);
+        }
         newResname = folder + newResname;
         return newResname;
     }
@@ -282,8 +290,10 @@ public class CmsUploadBean extends CmsJspBean {
                 } else {
                     // create the resource
                     CmsResource importedResource = createSingleResource(cms, fileName, targetFolder, content);
-                    // add the name of the created resource to the list of successful created resources
-                    m_resourcesCreated.put(importedResource.getStructureId(), importedResource.getName());
+                    if (importedResource != null) {
+                        // add the name of the created resource to the list of successful created resources
+                        m_resourcesCreated.put(importedResource.getStructureId(), importedResource.getName());
+                    }
                 }
 
                 if (listener.isCanceled()) {
@@ -336,7 +346,13 @@ public class CmsUploadBean extends CmsJspBean {
     private CmsResource createSingleResource(CmsObject cms, String fileName, String targetFolder, byte[] content)
     throws CmsException, CmsLoaderException, CmsDbSqlException {
 
-        String newResname = getNewResourceName(cms, fileName, targetFolder);
+        String folderRootPath = cms.getRequestContext().addSiteRoot(targetFolder);
+        if (!m_uploadRestrictionInfo.isUploadEnabled(folderRootPath)) {
+            LOG.error("Upload not enabled for folder " + targetFolder);
+            return null;
+        }
+
+        String newResname = getNewResourceName(cms, fileName, targetFolder, isKeepFileNames());
         CmsResource createdResource = null;
 
         // determine Title property value to set on new resource
@@ -600,6 +616,20 @@ public class CmsUploadBean extends CmsJspBean {
             targetFolder += "/";
         }
         return targetFolder;
+    }
+
+    /**
+     * Returns true if file name translation should be skipped for the upload.
+     *
+     * <p>This is mainly used for the file replacement dialog.
+     *
+     * @return true if file name translation should be skipped
+     */
+    private boolean isKeepFileNames() {
+
+        String[] values = m_parameterMap.get(I_CmsUploadConstants.KEEP_FILE_NAMES);
+        boolean result = (values != null) && (values.length > 0) && Boolean.parseBoolean(values[0]);
+        return result;
     }
 
     /**

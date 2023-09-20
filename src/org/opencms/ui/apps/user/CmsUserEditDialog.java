@@ -47,6 +47,7 @@ import org.opencms.security.CmsUserLog;
 import org.opencms.security.I_CmsPasswordHandler;
 import org.opencms.security.I_CmsPasswordSecurityEvaluator;
 import org.opencms.security.I_CmsPasswordSecurityEvaluator.SecurityLevel;
+import org.opencms.security.twofactor.CmsTwoFactorAuthenticationHandler;
 import org.opencms.site.CmsSite;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
@@ -65,7 +66,6 @@ import org.opencms.ui.login.CmsLoginController;
 import org.opencms.ui.login.CmsPasswordForm;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
-import org.opencms.workplace.CmsWorkplaceLoginHandler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -85,6 +85,7 @@ import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
 import com.vaadin.ui.Component;
+import com.vaadin.ui.FormLayout;
 import com.vaadin.ui.TabSheet;
 import com.vaadin.ui.TabSheet.SelectedTabChangeEvent;
 import com.vaadin.ui.TabSheet.SelectedTabChangeListener;
@@ -93,9 +94,8 @@ import com.vaadin.v7.data.Item;
 import com.vaadin.v7.data.Property.ValueChangeEvent;
 import com.vaadin.v7.data.Property.ValueChangeListener;
 import com.vaadin.v7.data.Validator;
+import com.vaadin.v7.data.Validator.InvalidValueException;
 import com.vaadin.v7.data.util.IndexedContainer;
-import com.vaadin.v7.event.FieldEvents.TextChangeEvent;
-import com.vaadin.v7.event.FieldEvents.TextChangeListener;
 import com.vaadin.v7.ui.CheckBox;
 import com.vaadin.v7.ui.ComboBox;
 import com.vaadin.v7.ui.Label;
@@ -331,6 +331,9 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
     /**vaadin component.*/
     CmsPathSelectField m_startfolder;
 
+    /** The app instance. */ 
+    private CmsAccountsApp m_app;
+
     /**vaadin component.*/
     private Button m_cancel;
 
@@ -376,8 +379,13 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
     /**vaadin component.*/
     private Label m_ou;
 
+    private PasswordValidator m_passwordValidator = new PasswordValidator();
+
     /**vaadin component.*/
     private ComboBox m_project;
+
+    /** Check box for resetting 2FA information. */
+    private CheckBox m_resetTwoFactorAuthentication;
 
     /**vaadin component. */
     private ComboBox m_role;
@@ -393,6 +401,10 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
 
     /**vaadin component.*/
     private TabSheet m_tab;
+
+    private com.vaadin.ui.Label m_twoFactorAuthState;
+
+    private FormLayout m_twoFactorBox;
 
     /**vaadin component.*/
     private CmsUser m_user;
@@ -414,6 +426,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         setPasswordFields();
         try {
             m_cms = OpenCms.initCmsObject(cms);
+            m_app = app;
             m_startfolder.disableSiteSwitch();
             m_user = m_cms.readUser(userId);
             m_editParams = app.getUserEditParameters(m_user);
@@ -443,9 +456,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             init(window, app, settings, m_editParams.isEditEnabled());
             m_sendEmail.setEnabled(false);
             m_forceResetPassword.setValue(
-                CmsUserTable.USER_PASSWORD_STATUS.get(m_user.getId()) == null
-                ? Boolean.FALSE
-                : CmsUserTable.USER_PASSWORD_STATUS.get(m_user.getId()));
+                m_user.getAdditionalInfo().get(CmsUserSettings.ADDITIONAL_INFO_PASSWORD_RESET) != null);
             m_next.setVisible(false);
             setupStartFolder(settings.getStartFolder());
 
@@ -459,6 +470,22 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                 m_forceResetPassword.setVisible(false);
                 m_sendEmail.setVisible(false);
                 m_generateButton.setVisible(false);
+            }
+
+            CmsTwoFactorAuthenticationHandler twoFactorHandler = OpenCms.getTwoFactorAuthenticationHandler();
+            if (twoFactorHandler.needsTwoFactorAuthentication(m_user)) {
+                m_twoFactorBox.setVisible(true);
+                if (!twoFactorHandler.hasSecondFactor(m_user)) {
+                    m_resetTwoFactorAuthentication.setEnabled(false);
+                    m_twoFactorAuthState.setValue(
+                        CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_2FA_NOT_SET_UP_0));
+                } else {
+                    m_twoFactorAuthState.setValue(
+                        CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_2FA_USED_0));
+                    m_resetTwoFactorAuthentication.setEnabled(true);
+                }
+            } else {
+                m_twoFactorBox.setVisible(false);
             }
 
         } catch (CmsException e) {
@@ -479,6 +506,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         CmsVaadinUtils.readAndLocalizeDesign(this, CmsVaadinUtils.getWpMessagesForCurrentLocale(), null);
         CmsOrganizationalUnit myOu = null;
         try {
+            m_app = app;
             m_cms = OpenCms.initCmsObject(cms);
             myOu = OpenCms.getOrgUnitManager().readOrganizationalUnit(m_cms, ou);
 
@@ -519,6 +547,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         } catch (CmsException e) {
             //
         }
+        m_twoFactorBox.setVisible(false);
 
         m_enabled.setValue(Boolean.TRUE);
 
@@ -671,7 +700,6 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
             user,
             ou,
             cms.getRequestContext().getCurrentUser(),
-            OpenCms.getLinkManager().getWorkplaceLink(cms, CmsWorkplaceLoginHandler.LOGIN_HANDLER, false),
             newUser,
             changePassword);
         try {
@@ -807,7 +835,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         ret[2] = m_isWebOU
         ? true
         : m_site.isValid() & m_startview.isValid() & m_startfolder.isValid() & m_project.isValid();
-        ret[3] = m_pw.getPassword1Field().isValid();
+        ret[3] = validatePasswordField1(m_pw.getPassword1Field().getValue());
 
         for (int i = 0; i < ret.length; i++) {
 
@@ -915,7 +943,9 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
 
         if (m_loginname.getValidators().size() == 0) {
             m_loginname.addValidator(new LoginNameValidator());
-            m_pw.getPassword1Field().addValidator(new PasswordValidator());
+            m_pw.getPassword1Field().addValueChangeListener(event -> {
+                validatePasswordField1(event.getValue());
+            });
             m_site.addValidator(new StartSiteValidator());
             m_startview.addValidator(new StartViewValidator());
             m_startfolder.addValidator(new StartPathValidator());
@@ -1444,6 +1474,17 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         });
     }
 
+    private boolean isPasswordField1Valid() {
+
+        String value = m_pw.getPassword1Field().getValue();
+        try {
+            m_passwordValidator.validate(value);
+            return true;
+        } catch (InvalidValueException e) {
+            return false;
+        }
+    }
+
     /**
      * Saves changes to an existing user.<p>
      *
@@ -1503,29 +1544,17 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                     A_CmsUI.get().getLocale()));
         }
         m_pw.getOldPasswordField().setImmediate(true);
-        m_pw.getPassword1Field().setImmediate(true);
-        m_pw.getPassword2Field().setImmediate(true);
 
-        m_pw.getPassword1Field().addTextChangeListener(new TextChangeListener() {
-
-            private static final long serialVersionUID = 1L;
-
-            public void textChange(TextChangeEvent event) {
-
-                checkSecurity(event.getText());
-                setEmailBox();
-            }
+        m_pw.getPassword1Field().addValueChangeListener(event -> {
+            checkSecurity(event.getValue());
+            setEmailBox();
         });
-        m_pw.getPassword2Field().addTextChangeListener(new TextChangeListener() {
+        m_pw.getPassword2Field().addValueChangeListener(event -> {
 
-            private static final long serialVersionUID = 1L;
+            checkSecurity(m_pw.getPassword1());
+            checkPasswordMatch(event.getValue());
+            setEmailBox();
 
-            public void textChange(TextChangeEvent event) {
-
-                checkSecurity(m_pw.getPassword1());
-                checkPasswordMatch(event.getText());
-                setEmailBox();
-            }
         });
 
     }
@@ -1543,7 +1572,7 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         } else {
             user.deleteAdditionalInfo(CmsUserSettings.ADDITIONAL_INFO_PASSWORD_RESET);
         }
-        CmsUserTable.USER_PASSWORD_STATUS.put(user.getId(), new Boolean(reset));
+        m_app.getPasswordResetStateCache().put(user.getId(), new Boolean(reset));
     }
 
     /**
@@ -1557,6 +1586,9 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
         CmsUserLog.logSetForceResetPassword(A_CmsUI.getCmsObject(), user.getName());
         user.setDescription(m_description.getValue());
         user.setManaged(!m_selfmanagement.getValue().booleanValue());
+        if (m_resetTwoFactorAuthentication.getValue().booleanValue()) {
+            OpenCms.getTwoFactorAuthenticationHandler().resetTwoFactorAuthentication(user);
+        }
         boolean enabled = m_enabled.getValue().booleanValue();
         user.setEnabled(enabled);
         if (enabled) {
@@ -1569,5 +1601,18 @@ public class CmsUserEditDialog extends CmsBasicDialog implements I_CmsPasswordFe
                 //
             }
         }, true);
+    }
+
+    private boolean validatePasswordField1(String value) {
+
+        try {
+            m_passwordValidator.validate(value);
+            m_pw.getPassword1Field().setComponentError(null);
+            return true;
+        } catch (InvalidValueException e) {
+            m_pw.getPassword1Field().setComponentError(e.getErrorMessage());
+            return false;
+        }
+
     }
 }

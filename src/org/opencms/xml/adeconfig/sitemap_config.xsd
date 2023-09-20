@@ -29,6 +29,7 @@
             <xsd:element name="ExcludeExternalDetailContents" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
             <xsd:element name="IncludeInSiteSelector" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
             <xsd:element name="TypeOrderingMode" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
+            <xsd:element name="DisabledTypesMode" type="OpenCmsString" minOccurs="0" maxOccurs="1" />
             <xsd:element name="ResourceType" type="OpenCmsADEType" minOccurs="0" maxOccurs="unbounded" />
 			<xsd:element name="UseFormatterKeys" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
 			<xsd:element name="SharedSettingOverride" type="OpenCmsVfsFile" minOccurs="0" maxOccurs="1" />
@@ -36,6 +37,7 @@
             <xsd:element name="RemoveAllFormatters" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
             <xsd:element name="RemoveFormatters" type="OpenCmsRemoveFormattersBlock" minOccurs="0"/>
             <xsd:element name="AddFormatters"    type="OpenCmsAddFormattersBlock" minOccurs="0"/>
+            <xsd:element name="DisabledFunctionsMode" type="OpenCmsString" minOccurs="0" maxOccurs="1" />
             <xsd:element name="RemoveAllFunctions" type="OpenCmsBoolean" minOccurs="0" maxOccurs="1" />
             <xsd:element name="RemoveFunctions" type="OpenCmsFunctionList" minOccurs="0" maxOccurs="1" />
             <xsd:element name="Function" type="OpenCmsVfsFile" minOccurs="0" maxOccurs="unbounded" />
@@ -59,6 +61,9 @@
                 <layout element="Function" widget="VfsFileWidget" configuration="searchtypes=function,function_config"  />
                 <layout element="Attribute/Value" widget="TextareaWidget" />
                 <layout element="DiscardProperties" widget="SelectorWidget" configuration="false:%(key.discardprops.false)|true:%(key.discardprops.true)|top:%(key.discardprops.top)" />
+                <layout element="DisabledTypesMode" widget="SelectorWidget" configuration="mark:%(key.disabledtypesmode.mark)|hide:%(key.disabledtypesmode.hide)" display="singleline"/>
+                <layout element="DisabledFunctionsMode" widget="SelectorWidget" configuration="mark:%(key.disabledfunctionsmode.mark)|hide*:%(key.disabledfunctionsmode.hide)" display="singleline"/>
+                
             </layouts>
             <relations>
                 <relation element="AddFormatters/AddFormatter" invalidate="false" />
@@ -74,7 +79,7 @@
             <tabs>
                 <tab element="MasterConfig" name="TabResourceTypes" collapse="false" />
                 <tab element="UseFormatterKeys" name="TabFormatters" collapse="false" />
-                <tab element="RemoveAllFunctions" name="TabFunctions" collapse="false" />
+                <tab element="DisabledFunctionsMode" name="TabFunctions" collapse="false" />
                 <tab element="DiscardProperties" name="TabPropertyConfiguration" collapse="false" />
                 <tab element="DiscardModelPages" name="TabPageModels" collapse="false" />
                 <tab element="DetailPage" name="TabDetailPages" collapse="false" />

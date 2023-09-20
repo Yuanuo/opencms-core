@@ -62,6 +62,7 @@ import org.opencms.security.CmsPermissionSet;
 import org.opencms.security.CmsPermissionSetCustom;
 import org.opencms.security.I_CmsPrincipal;
 import org.opencms.setup.CmsSetupDb;
+import org.opencms.ui.apps.git.CmsGitCheckin;
 import org.opencms.util.CmsDateUtil;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
@@ -70,6 +71,7 @@ import org.opencms.util.CmsUUID;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -89,6 +91,7 @@ import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.io.filefilter.FileFilterUtils;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.logging.log4j.core.appender.OpenCmsTestLogAppender;
 
 import org.dom4j.Document;
@@ -299,6 +302,28 @@ public class OpenCmsTestCase extends TestCase {
             // set "OpenCmsLog" system property to enable the logger
             OpenCmsTestLogAppender.setBreakOnError(true);
         }
+    }
+
+    /**
+     * Creates a module ZIP file with the resources from modules/org.opencms.base/resources.
+     *
+     * @return the created file
+     * @throws Exception if something goes wrong
+     */
+    public static File createBaseModuleZip() throws Exception {
+
+        File base = new File("modules/org.opencms.base/resources");
+        File tempZip = File.createTempFile("module_", ".zip");
+        CmsGitCheckin.zipRfsFolder(base, new FileOutputStream(tempZip));
+        File renamedFile = new File(
+            tempZip.getParentFile(),
+            RandomStringUtils.randomNumeric(6) + "_org.opencms.base.zip");
+        boolean renameOk = tempZip.renameTo(renamedFile);
+        if (!renameOk) {
+            throw new RuntimeException("renaming temp file failed in generateBaseModule()");
+        }
+        renamedFile.deleteOnExit();
+        return renamedFile;
     }
 
     /**
@@ -755,8 +780,8 @@ public class OpenCmsTestCase extends TestCase {
      */
     public static void importCoreModule(CmsObject cms, String coreModule) throws CmsException {
 
+        CmsUUID pauseId = OpenCms.getSearchManager().pauseOfflineIndexing();
         try {
-            OpenCms.getSearchManager().pauseOfflineIndexing();
             CmsShellReport report = new CmsShellReport(cms.getRequestContext().getLocale());
             OpenCms.getModuleManager().replaceModule(
                 cms,
@@ -767,7 +792,7 @@ public class OpenCmsTestCase extends TestCase {
                     "resources"),
                 report);
         } finally {
-            OpenCms.getSearchManager().resumeOfflineIndexing();
+            OpenCms.getSearchManager().resumeOfflineIndexing(pauseId);
         }
     }
 
@@ -889,12 +914,12 @@ public class OpenCmsTestCase extends TestCase {
                 + moduleName
                 + suffix;
         }
+        CmsUUID pauseId = OpenCms.getSearchManager().pauseOfflineIndexing();
         try {
-            OpenCms.getSearchManager().pauseOfflineIndexing();
             CmsShellReport report = new CmsShellReport(cms.getRequestContext().getLocale());
             OpenCms.getModuleManager().replaceModule(cms, path, report);
         } finally {
-            OpenCms.getSearchManager().resumeOfflineIndexing();
+            OpenCms.getSearchManager().resumeOfflineIndexing(pauseId);
         }
     }
 

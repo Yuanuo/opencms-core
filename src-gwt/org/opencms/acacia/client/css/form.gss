@@ -76,6 +76,11 @@ div.formParent div.gwt-TabLayoutPanel, div.formParent div.gwt-TabLayoutPanel div
 	margin: 0px 0px 0px 20px;
 }
 
+.formTabTerminator {
+	display: block;
+	clear: both; 
+}
+
 /** Attribute value view styles. */
 .attributeValue .label{
 	margin:0px 25px 0px 3px;
@@ -423,6 +428,61 @@ div.helpBubble a, div.helpBubble a:hover, div.helpBubble a:focus{
 	color: value("constants.css.textColorImportant");
 }
 
+div.helpBubble * {
+    margin: 0;
+    font-weight: 400;
+    font-family: "Open Sans",sans-serif;
+    font-style: normal;
+    font-size: 14px;
+    line-height: 1.25;
+    color: #474747;
+    text-align: left;
+}
+
+div.helpBubble h1, 
+div.helpBubble h2, 
+div.helpBubble h3 {
+    font-weight: 700;
+    margin-bottom: 3px;
+    color: #222;
+}
+
+div.helpBubble h1 {
+    font-size: 20px;
+}
+
+div.helpBubble h2 {
+    font-size: 18px;
+}
+
+div.helpBubble strong {
+    font-weight: 700;
+}
+
+div.helpBubble em {
+    font-style: italic;
+}
+
+div.helpBubble a {
+    font-size: inherit;
+    line-height: inherit;
+    color: #b31b34;
+    text-decoration: underline;
+}
+
+div.helpBubble small {
+    font-size: 11px;
+    display: block;
+    line-height: 1.125;
+    margin-bottom: 5px;
+}
+
+div.helpBubble ul,
+div.helpBubble ol {
+    padding-left: 14px;
+    margin-bottom: 5px;
+}
+
 .hasError .helpMessage, .hasWarning .helpMessage{
 	display: block;
 	margin-top: 3px;
@@ -523,9 +583,61 @@ div.helpBubble a, div.helpBubble a:hover, div.helpBubble a:focus{
 	margin-bottom: 0px;
 }
 
-.helpBubble ul, .helpBubble ol {
-	padding-left: 23px;
+.helpBubble * {
+    margin: 0;
+    font-weight: 400;
+    font-family: "Open Sans",sans-serif;
+    font-style: normal;
+    font-size: 14px;
+    line-height: 1.25;
+    color: #474747;
+    text-align: left;
 }
+
+.helpBubble h1, 
+.helpBubble h2, 
+.helpBubble h3 {
+    font-weight: 700;
+    margin-bottom: 3px;
+    color: #222;
+}
+
+.helpBubble h1 {
+    font-size: 20px;
+}
+
+.helpBubble h2 {
+    font-size: 18px;
+}
+
+.helpBubble strong {
+    font-weight: 700;
+}
+
+.helpBubble em {
+    font-style: italic;
+}
+
+.helpBubble a {
+    font-size: inherit;
+    line-height: inherit;
+    color: #b31b34;
+    text-decoration: underline;
+}
+
+.helpBubble small {
+    font-size: 11px;
+    display: block;
+    line-height: 1.125;
+    margin-bottom: 5px;
+}
+
+.helpBubble ul,
+.helpBubble ol {
+    padding-left: 14px;
+    margin-bottom: 5px;
+}
+
 
 .entity .attributeValue > div, .dragHelper.attributeValue > div{
 	border-radius: value("constants.css.borderRadius");
@@ -598,6 +710,8 @@ div.helpBubble a, div.helpBubble a:hover, div.helpBubble a:focus{
 	width: 100%;
 	background: transparent;
 }
+
+html.fullWindowDrag {}
 
 div.inlineEditOverlay {
 	position:absolute;
@@ -693,3 +807,4 @@ div.overlayButtonPanel > div{
 .tabDescription.tabDescription .tabDescriptionPanel strong, .tabDescription.tabDescription.tabDescriptionPanel strong{
 	font-weight: 700;
 }
+

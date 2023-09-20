@@ -28,6 +28,7 @@
 package org.opencms.configuration;
 
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
+import org.opencms.ade.upload.I_CmsUploadRestriction;
 import org.opencms.configuration.preferences.I_CmsPreference;
 import org.opencms.db.CmsExportPoint;
 import org.opencms.file.types.CmsResourceTypeSubsitemapContentFolder;
@@ -536,6 +537,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
     /** The node name of the type column node. */
     public static final String N_TYPE = "show-type";
 
+    /** The node name for the upload restriction configuration. */
+    public static final String N_UPLOAD_RESTRICTION = "upload-restriction";
+
     /** The node name of the uploadapplet node. */
     public static final String N_UPLOADAPPLET = "uploadapplet";
 
@@ -586,8 +590,11 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
 
     /** The requiredOnUpload attribute. */
     private static final String A_REQUIRED_ON_UPLOAD = "requiredOnUpload";
-     
-    /** Configuration node name for setting the default value for the 'use formatter keys' in sitemap configurations created with new subsitemap folders. */ 
+
+    /** Configuration node name for the role required to edit the sitemap configuration. */
+    private static final String N_SITEMAP_CONFIG_EDIT_ROLE = "sitemap-config-edit-role";
+
+    /** Configuration node name for setting the default value for the 'use formatter keys' in sitemap configurations created with new subsitemap folders. */
     private static final String N_USE_FORMATTER_KEYS_FOR_NEW_SITES = "use-formatter-keys-for-new-sites";
 
     /** The configured workplace manager. */
@@ -1008,6 +1015,27 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
         // Cms specific rule similar to SetNextRule with implicit first CmsObject argument (remains null).
         digester.addRule(xPathPrefix, new CmsSetNextRule("setFileViewSettings", CmsRfsFileViewer.class));
 
+        digester.addRule("*/" + N_WORKPLACE + "/" + N_UPLOAD_RESTRICTION, new Rule() {
+
+            @Override
+            public void begin(String namespace, String name, Attributes attributes) throws Exception {
+
+                String className = attributes.getValue(A_CLASS);
+                Class<? extends I_CmsUploadRestriction> cls = Class.forName(
+                    className,
+                    false,
+                    getClass().getClassLoader()).asSubclass(I_CmsUploadRestriction.class);
+                digester.push(cls.newInstance());
+            }
+
+            @Override
+            public void end(String namespace, String name) throws Exception {
+
+                I_CmsUploadRestriction restriction = (I_CmsUploadRestriction)digester.pop();
+                ((CmsWorkplaceManager)digester.peek()).setUploadRestriction(restriction);
+            }
+        });
+
         // add explorer type rules
         addExplorerTypeXmlRules(digester);
         addDefaultAccessControlRules(digester);
@@ -1029,6 +1057,17 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
                 CmsResourceTypeSubsitemapContentFolder.setEnableNewPageFormatByDefault(Boolean.parseBoolean(text));
             }
         });
+
+        digester.addRule("*/" + N_WORKPLACE + "/" + N_SITEMAP_CONFIG_EDIT_ROLE, new Rule() {
+
+            @Override
+            public void body(String namespace, String name, String text) throws Exception {
+
+                CmsWorkplaceManager wpManager = (CmsWorkplaceManager)(digester.peek());
+                wpManager.setSitemapConfigEditRole(text);
+            }
+        });
+
     }
 
     /**
@@ -1334,6 +1373,16 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
 
         boolean useKeysForNewSites = CmsResourceTypeSubsitemapContentFolder.isEnableNewPageFormatByDefault();
         workplaceElement.addElement(N_USE_FORMATTER_KEYS_FOR_NEW_SITES).setText("" + useKeysForNewSites);
+
+        I_CmsUploadRestriction restriction = m_workplaceManager.getUploadRestriction();
+        Element uploadRestrictionElem = workplaceElement.addElement(N_UPLOAD_RESTRICTION);
+        uploadRestrictionElem.addAttribute(A_CLASS, restriction.getClass().getName());
+        restriction.getConfiguration().appendToXml(uploadRestrictionElem);
+
+        String sitemapConfigEditRole = m_workplaceManager.getSitemapConfigEditRole();
+        if (sitemapConfigEditRole != null) {
+            workplaceElement.addElement(N_SITEMAP_CONFIG_EDIT_ROLE).addText(sitemapConfigEditRole);
+        }
 
         // return the configured node
         return workplaceElement;

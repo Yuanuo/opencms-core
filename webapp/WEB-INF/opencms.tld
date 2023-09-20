@@ -326,6 +326,32 @@
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
         </attribute>
+        <attribute>
+             <description><![CDATA[
+                The type of link to generate. One of default, perma, online, server (uses default if not set).
+            ]]></description>
+            <name>type</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+             <description><![CDATA[
+                The type of link to generate. One of default, perma, online, server (uses default if not set).
+            ]]></description>
+            <name>var</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+             <description><![CDATA[
+                The scope to use for the variable if the var attribute is used. One of (page|request|session|application).
+            ]]></description>
+            <name>scope</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        
+        
     </tag>
 
     <tag>
@@ -2218,6 +2244,15 @@
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
         </attribute>
+        <attribute>
+            <description><![CDATA[
+              Flag to indicate if the used formatters should be included in 'cacheable' mode (see the cms:include tag). If this parameter is false, the formatters will be never included in cacheable mode,
+              otherwise they will only included in cacheable mode in the Online project. 
+            ]]></description>
+            <name>cacheable</name>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        
     </tag>
 
     <tag>
@@ -2990,9 +3025,27 @@
             URI of the AntiSamy policy file.
         ]]></description>
             <name>policy</name>
+            <required>false</required> 
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+        <description><![CDATA[
+            Special dummy value to replace parameters which would otherwise be XML-escaped. 
+        ]]></description>
+            <name>replaceInvalid</name>
             <required>false</required>
             <rtexprvalue>true</rtexprvalue>
         </attribute>
+        <attribute>
+            <description><![CDATA[
+            Comma-separated list of parameters which should be XML-escaped even if replaceInvalid is set. 
+        ]]></description>
+            <name>escapeInvalid</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        
+        
     </tag>
 
     <tag>
@@ -3128,7 +3181,7 @@
             <rtexprvalue>true</rtexprvalue>
         </attribute>
     </tag>
-
+    
     <tag>
         <description><![CDATA[
             Takes a JSON value from the 'value' attribute and adds it to the surrounding JSON context or
@@ -3184,6 +3237,31 @@
         	<name>errorVar</name>
         	<required>false</required>
         	<rtexprvalue>true</rtexprvalue>
+        </attribute>
+    </tag>
+    
+    <tag>
+        <description>Enables the option for creating a new content in the ADE menu of a container page element when used in the element's formatter.</description>
+        <name>enable-list-add</name>
+        <tag-class>org.opencms.jsp.CmsJspTagEnableListAdd</tag-class>
+        <body-content>empty</body-content>
+        <attribute>
+            <description>The types to show in the list element creation dialog. This should be either a string containing type names separated by commas, or a collection of objects whose toString() methods return the resource type names to use.</description>
+            <name>types</name>
+            <required>true</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>The post-create handler configuration to use when creating new elements.</description>
+            <name>postCreateHandler</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
+        </attribute>
+        <attribute>
+            <description>The upload folder to use for binary files.</description>
+            <name>uploadFolder</name>
+            <required>false</required>
+            <rtexprvalue>true</rtexprvalue>
         </attribute>
     </tag>
 

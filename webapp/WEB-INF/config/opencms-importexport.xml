@@ -93,6 +93,7 @@
             <suffix key=".otf" />
             <suffix key=".ttc" />
             <suffix key=".ttf" />
+            <suffix key=".pkpass" />
         </defaultsuffixes>
         <rendersettings>
             <rfs-prefix>${CONTEXT_NAME}/export</rfs-prefix>
@@ -132,9 +133,10 @@
                 <param name="project">Offline</param>
                 <param name="wrapper">org.opencms.file.wrapper.CmsResourceWrapperModulesNonLazy</param>
                 <param name="wrapper">org.opencms.file.wrapper.CmsResourceWrapperPreventCreateNameRegex:(?i)^(thumbs\.db|\.thumbnails|\.xvpics|\.DS_Store|\._.*)$</param>
+                <param name="failOnRangeHeader">true</param>
             </params>
             <filter type="include">
-                <regex>.*</regex>
+                <regex>(?!/modules/export/\._).*</regex>
             </filter>
         </repository>
         <repository name="standard" class="org.opencms.repository.CmsRepository">

@@ -60,6 +60,7 @@ public final class AllTests {
         //$JUnit-BEGIN$
         suite.addTest(TestJSONSearchConfigurationParser.suite());
         suite.addTest(TestPlainQuerySearchConfigurationParser.suite());
+        suite.addTest(TestSimpleSearchConfigurationParser.suite());
         //$JUnit-END$
         return suite;
     }

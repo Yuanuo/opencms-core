@@ -100,6 +100,9 @@ public final class CmsGwtConstants {
     public static final String ACTION_TEMPLATECONTEXTS = "templatecontexts";
 
     /** Context menu action id. */
+    public static final String ACTION_TEMPLATECONTEXTS_ADVANCED = "templatecontexts_advanced";
+
+    /** Context menu action id. */
     public static final String ACTION_VIEW_ONLINE = "viewonline";
 
     /** Attribute for container id. */
@@ -122,6 +125,8 @@ public final class CmsGwtConstants {
 
     /** Entity id data attribute name. */
     public static final String ATTR_DATA_ID = "data-oc-id";
+
+    public static final String ATTR_DATA_LISTADD = "data-oc-listadd";
 
     /** Key for the element id attribute. */
     public static final String ATTR_ELEMENT_ID = "ATTR_ELEMENT_ID";
@@ -199,11 +204,19 @@ public final class CmsGwtConstants {
     /** Id of the element ussed to  display the sitemap header from Vaadin code. */
     public static final String ID_LOCALE_HEADER_CONTAINER = "locale-header-container";
 
+    /**
+     * Session storage key for memorizing the last opened container page.
+     */
+    public static final String LAST_CONTAINER_PAGE_ID = "lastContainerPageId";
+
     /** Name of the Javascript callback used to open the locale comparison view. */
     public static final String LOCALECOMPARE_EDIT_PROPERTIES = "cmsLocaleCompareEditProperties";
 
     /** The maximum DND placeholder height. */
     public static final int MAX_PLACEHOLDER_HEIGHT = 300;
+
+    /** Name of the meta tag used to set the editor stylesheet. */
+    public static final String META_EDITOR_STYLESHEET = "cms-editor-stylesheet";
 
     /** Parameter for the button left position. */
     public static final String PARAM_BUTTON_LEFT = "__buttonLeft";
@@ -217,6 +230,9 @@ public final class CmsGwtConstants {
     /** Parameter to force a specific template context. */
     public static final String PARAM_TEMPLATE_CONTEXT = "__templateContext";
 
+    /** Marker for the 'prefill' context menu action. */
+    public static final String PREFILL_MENU_PLACEHOLDER = "PREFILL_MENU_PLACEHOLDER";
+
     /** Name of property containing focal point for images. */
     public static final String PROPERTY_IMAGE_FOCALPOINT = "image.focalpoint";
 
@@ -228,6 +244,9 @@ public final class CmsGwtConstants {
 
     /** Tab id for the preference dialog. */
     public static final String TAB_HIDDEN = "hidden";
+
+    /** Action placeholder for the template contexts menu option. */
+    public static final String TEMPLATECONTEXT_MENU_PLACEHOLDER = "templatecontexts";
 
     /** Type name for container pages. */
     public static final String TYPE_CONTAINERPAGE = "containerpage";
@@ -252,6 +271,9 @@ public final class CmsGwtConstants {
 
     /** Name for the pseudo-type 'navlevel'. */
     public static final String TYPE_NAVLEVEL = "navlevel";
+
+    /** Part of the URL used to unlock files. */
+    public static final String UNLOCK_FILE_PREFIX = "/unlockFile/";
 
     /** Name of Javascript variable used to hold the structure id of the currently selected locale's root folder in the sitemap editor's locale comparison mode. */
     public static final String VAR_LOCALE_ROOT = "cmsLocaleCompareRoot";

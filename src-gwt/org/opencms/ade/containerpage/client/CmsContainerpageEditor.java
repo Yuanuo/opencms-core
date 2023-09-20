@@ -35,6 +35,7 @@ import org.opencms.ade.containerpage.client.ui.CmsToolbarElementInfoButton;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarFavLocationButton;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarGalleryMenu;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarInfoButton;
+import org.opencms.ade.containerpage.client.ui.CmsToolbarListAddButton;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarListManagerButton;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarMoveButton;
 import org.opencms.ade.containerpage.client.ui.CmsToolbarPublishButton;
@@ -58,6 +59,7 @@ import org.opencms.gwt.client.ui.I_CmsToolbarButton;
 import org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuCommand;
 import org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuCommandInitializer;
 import org.opencms.gwt.client.util.CmsDomUtil;
+import org.opencms.gwt.client.util.CmsEmbeddedDialogFrame;
 import org.opencms.gwt.client.util.CmsStyleVariable;
 import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.CmsGwtConstants.QuickLaunch;
@@ -101,7 +103,8 @@ public class CmsContainerpageEditor extends A_CmsEntryPoint {
                 CmsCoreProvider.get().getStructureId(),
                 CmsContainerpageController.get().getData().getDetailId(),
                 null,
-                CmsCoreProvider.get().getUri());
+                CmsCoreProvider.get().getUri(),
+                CmsCoreProvider.get().getLastPageId());
         }
 
     }
@@ -300,8 +303,10 @@ public class CmsContainerpageEditor extends A_CmsEntryPoint {
 
         I_CmsLayoutBundle.INSTANCE.containerpageCss().ensureInjected();
         I_CmsLayoutBundle.INSTANCE.dragdropCss().ensureInjected();
+
         I_CmsLayoutBundle.INSTANCE.groupcontainerCss().ensureInjected();
         org.opencms.gwt.client.ui.css.I_CmsLayoutBundle.INSTANCE.elementSettingsDialogCss().ensureInjected();
+        org.opencms.gwt.client.ui.css.I_CmsLayoutBundle.INSTANCE.listAddCss().ensureInjected();
 
         final CmsContainerpageController controller = new CmsContainerpageController();
         final CmsContainerpageHandler containerpageHandler = new CmsContainerpageHandler(controller, this);
@@ -398,11 +403,13 @@ public class CmsContainerpageEditor extends A_CmsEntryPoint {
             controller,
             m_edit,
             m_move,
+            new CmsToolbarListAddButton(containerpageHandler),
             new CmsToolbarListManagerButton(containerpageHandler),
             m_info,
             m_properties,
             m_addToFavorites,
             m_remove);
+        CmsEmbeddedDialogFrame.get().preload();
         controller.init(containerpageHandler, dndHandler, contentEditorHandler, containerpageUtil);
 
         // export open stack trace dialog function

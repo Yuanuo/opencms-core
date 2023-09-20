@@ -28,22 +28,49 @@
 package org.opencms.ui.actions;
 
 import org.opencms.file.CmsObject;
+import org.opencms.file.CmsProperty;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.gwt.shared.CmsCoreData.AdeContext;
+import org.opencms.gwt.shared.CmsGwtConstants;
+import org.opencms.loader.CmsTemplateContextManager;
+import org.opencms.loader.I_CmsTemplateContextProvider;
+import org.opencms.main.CmsLog;
+import org.opencms.main.OpenCms;
 import org.opencms.ui.I_CmsDialogContext;
 import org.opencms.ui.contextmenu.CmsMenuItemVisibilityMode;
 
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.logging.Log;
+
 /**
- * Action to logout.<p>
- * Used within the ADE context only.<p>
+ * Template context selection action.
+ *
+ * <p>This is handled specially by the client side code.
  */
 public class CmsTemplateContextsAction extends A_CmsWorkplaceAction implements I_CmsADEAction {
 
-    /** The action id. */
-    public static final String ACTION_ID = "templatecontexts";
+    /** Logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsTemplateContextsAction.class);
+
+    /** Special integer that indicates one of several positions in the context menu. Currently can only be 0 or 1. */
+    private int m_menuPosition;
+
+    /**
+     * Creates a new instance.
+     *
+     * @param menuPosition the position in the context menu
+     */
+    public CmsTemplateContextsAction(int menuPosition) {
+
+        if ((menuPosition != 0) && (menuPosition != 1)) {
+            throw new IllegalArgumentException("Menu position must be 0 or 1");
+        }
+        m_menuPosition = menuPosition;
+
+    }
 
     /**
      * @see org.opencms.ui.actions.I_CmsWorkplaceAction#executeAction(org.opencms.ui.I_CmsDialogContext)
@@ -58,7 +85,7 @@ public class CmsTemplateContextsAction extends A_CmsWorkplaceAction implements I
      */
     public String getCommandClassName() {
 
-        return ACTION_ID;
+        return CmsGwtConstants.TEMPLATECONTEXT_MENU_PLACEHOLDER;
     }
 
     /**
@@ -66,7 +93,7 @@ public class CmsTemplateContextsAction extends A_CmsWorkplaceAction implements I
      */
     public String getId() {
 
-        return ACTION_ID;
+        return CmsGwtConstants.ACTION_TEMPLATECONTEXTS + "_" + m_menuPosition;
     }
 
     /**
@@ -99,8 +126,42 @@ public class CmsTemplateContextsAction extends A_CmsWorkplaceAction implements I
     @Override
     public CmsMenuItemVisibilityMode getVisibility(I_CmsDialogContext context) {
 
-        boolean visible = AdeContext.pageeditor.name().equals(context.getAppId());
-        return visible ? CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE : CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+        if (!AdeContext.pageeditor.name().equals(context.getAppId())) {
+            return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+        }
+        List<CmsResource> resources = context.getResources();
+        if (resources.size() != 1) {
+            return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+        }
+        CmsObject cms = context.getCms();
+        CmsResource resource = resources.get(0);
+
+        try {
+            List<CmsProperty> properties = cms.readPropertyObjects(resource, true);
+            // this menu entry is only available in the container page editor, so we know we have to use the template property,
+            // not template-elements
+            CmsProperty templateProp = CmsProperty.get(CmsPropertyDefinition.PROPERTY_TEMPLATE, properties);
+            if ((templateProp != null) && !templateProp.isNullProperty()) {
+                String propertyValue = templateProp.getValue();
+                if (CmsTemplateContextManager.hasPropertyPrefix(propertyValue)) {
+                    I_CmsTemplateContextProvider provider = OpenCms.getTemplateContextManager().getTemplateContextProvider(
+                        CmsTemplateContextManager.removePropertyPrefix(propertyValue));
+                    if (provider != null) {
+                        if (provider.getMenuPosition() != m_menuPosition) {
+                            return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+                        }
+                        if (!provider.shouldShowContextMenuOption(cms)) {
+                            return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+
+        }
+        return CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE;
+
     }
 
     /**

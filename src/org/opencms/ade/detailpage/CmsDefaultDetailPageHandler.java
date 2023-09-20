@@ -33,6 +33,7 @@ import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.configuration.CmsParameterConfiguration;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
+import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -236,55 +237,67 @@ public class CmsDefaultDetailPageHandler implements I_CmsDetailPageHandler {
 
         boolean online = cms.getRequestContext().getCurrentProject().isOnlineProject();
         String resType = manager.getParentFolderType(online, contentRootPath);
+        // resType may not actually be the resource type of the resource at contentRootPath. We determine
+        // the actual resource type further below, but if getParentFolderType() returns null here, we can stop
+        // without reading any resources.
         if (resType == null) {
             return null;
         }
 
-        // above detect type from parent folder is necessary, the data isn't in '.content', must skip it
-        String correctType = null;
-        // always correct real resource-type from detail resource in request context,
-        // to support data of any type place in another type's folder
-        CmsResource resource = cms.getRequestContext().getDetailResource();
-        if (null != resource && CmsStringUtil.isEqual(resource.getRootPath(), contentRootPath)) {
-            correctType = OpenCms.getResourceManager().getResourceType(resource).getTypeName();
-        }
-        // detect specified resource-type from customized target-detail-page
-        if (null != targetDetailPage && !targetDetailPage.startsWith("/")) {
-            // this rule support "type|detailPage" as parameter
-            String[] arr = targetDetailPage.split("\\|", 2);
-            String customType = arr[0].isEmpty() ? null : arr[0];
-            if (null == correctType && CmsStringUtil.isNotEmptyOrWhitespaceOnly(customType))
-                correctType = customType;
-            String customDetailPage = arr.length == 1 ? null : arr[1];
-            if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(customDetailPage))
-                targetDetailPage = customDetailPage; // customized and not empty, use it
-            else targetDetailPage = null; // customized but not matched, reset it
-        }
-        resType = null != correctType ? correctType : resType;
-
-        if ((targetDetailPage != null) && manager.getDetailPages(cms, resType).contains(targetDetailPage)) {
-            return targetDetailPage;
+        if (targetDetailPage != null) {
+            try {
+                CmsSite site = OpenCms.getSiteManager().getSiteForRootPath(targetDetailPage);
+                CmsResource targetDetailPageRes = null;
+                if (site != null) {
+                    CmsObject rootCms = OpenCms.initCmsObject(cms);
+                    rootCms.getRequestContext().setSiteRoot("");
+                    targetDetailPageRes = rootCms.readResource(targetDetailPage);
+                } else {
+                    targetDetailPageRes = cms.readResource(targetDetailPage);
+                }
+                if (manager.isDetailPage(cms, targetDetailPageRes)) {
+                    return targetDetailPageRes.getRootPath();
+                }
+            } catch (CmsVfsResourceNotFoundException e) {
+                LOG.debug(e.getLocalizedMessage(), e);
+            } catch (Exception e) {
+                LOG.warn(e.getLocalizedMessage(), e);
+            }
         }
 
+        try {
+            CmsObject rootCms = OpenCms.initCmsObject(cms);
+            rootCms.getRequestContext().setSiteRoot("");
+            CmsResource detailResource = rootCms.readResource(contentRootPath);
+            resType = OpenCms.getResourceManager().getResourceType(detailResource).getTypeName();
+        } catch (CmsVfsResourceNotFoundException e) {
+            LOG.info(e.getLocalizedMessage(), e);
+        } catch (Exception e) {
+            LOG.warn(e.getLocalizedMessage(), e);
+        }
         DetailPageConfigData context = lookupDetailPageConfigData(manager, cms, contentRootPath, originPath, resType);
         List<CmsDetailPageInfo> relevantPages = context.getDetailPages();
         if (context.getConfigForDetailPages() == null) {
             return null;
         }
+        LOG.info(
+            "Trying to determine detail page for '"
+                + contentRootPath
+                + "' in context '"
+                + context.getConfigForDetailPages().getBasePath()
+                + "'");
         if (!CmsStringUtil.isPrefixPath(
             context.getConfigForDetailPages().getExternalDetailContentExclusionFolder(),
             contentRootPath)) {
             return null;
         }
-        if (relevantPages.size() > 0) {
-            return relevantPages.get(0).getUri();
-        }
-        return null;
-
+        String result = new CmsDetailPageFilter(cms, contentRootPath).filterDetailPages(relevantPages).map(
+            info -> info.getUri()).findFirst().orElse(null);
+        return result;
     }
 
     /**
-     * Gets the detail page.
+     * Gets the detail page to use for a detail resource.
      *
      * @param cms the cms
      * @param rootPath the root path
@@ -375,7 +388,8 @@ public class CmsDefaultDetailPageHandler implements I_CmsDetailPageHandler {
             cms.getSitePath(page),
             typeName);
         String pageFolder = CmsFileUtil.removeTrailingSeparator(CmsResource.getParentFolder(page.getRootPath()));
-        boolean foundDetailPage = context.getDetailPages().stream().anyMatch(
+        CmsDetailPageFilter detailPageFilter = new CmsDetailPageFilter(cms, detailRes);
+        boolean foundDetailPage = detailPageFilter.filterDetailPages(context.getDetailPages()).anyMatch(
             info -> pageFolder.equals(CmsFileUtil.removeTrailingSeparator(info.getUri())));
         CmsADEConfigData configForPage = context.getConfigForDetailPages();
         if (configForPage == null) {

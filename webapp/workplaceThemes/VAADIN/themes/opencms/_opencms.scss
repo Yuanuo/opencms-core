@@ -764,6 +764,14 @@
 		.o-resourceinfo-toolbar * {
 			font-size: 24px !important;
 		}
+		
+		.o-toolbar-button .v-menubar-menuitem {
+			padding: 2px !important;
+		}
+
+		.o-resourceinfo-toolbar .v-icon.opencms-font {
+			font-size: 20px !important; 
+		}
 
 		&:hover .o-resourceinfo-toolbar {
 			visibility: visible !important;
@@ -981,6 +989,10 @@
 	.cmslogin-form {
 		height: 100%;
 	}
+	
+	.o-login-qr-code {
+        border: 1px solid #d9d9d9; 
+    }
 
 	.o-login-form .o-login-logo{
 		text-align: center;
@@ -1153,7 +1165,10 @@
 	.o-quicklaunch > .v-slot {
 		margin-bottom: 10px;
 	}
-
+	
+        .o-quicklaunch-editor .v-button-wrap > img {
+            pointer-events: none; /* Fix for weird Chrome Drag/Drop bug with buttons that use images instead of font icons) */
+        }
 
 	.o-sitemap-tree-node {
 		display: flex;
@@ -1513,6 +1528,13 @@
 		visibility: visible;
 	}
 
+    .o-label-wrap { 
+        white-space: normal !important;
+    }
+    
+    .o-userdata-or {
+        font-style: italic;
+    }
 	
 }
 

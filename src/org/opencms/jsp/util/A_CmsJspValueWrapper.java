@@ -35,6 +35,8 @@ import org.opencms.main.OpenCms;
 import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.util.CmsCollectionsGenericWrapper;
 import org.opencms.util.CmsStringUtil;
+import org.opencms.xml.containerpage.CmsXmlContainerPage;
+import org.opencms.xml.containerpage.CmsXmlContainerPageFactory;
 
 import java.util.AbstractCollection;
 import java.util.Date;
@@ -42,6 +44,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.commons.collections.Transformer;
 import org.apache.commons.logging.Log;
@@ -120,14 +123,17 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(A_CmsJspValueWrapper.class);
 
-    /** Date information as instance date bean. */
-    private CmsJspInstanceDateBean m_instanceDate;
-
     /** The wrapped OpenCms user context. */
     protected CmsObject m_cms;
 
     /** Boolean representation of the wrapped value. */
     private Boolean m_boolean;
+
+    /** Cached container page wrapper. */
+    private CmsJspContainerPageWrapper m_containerPageWrapper;
+
+    /** The lazy initialized Map that checks if the String representation of this wrapper contains specific words. */
+    private Map<Object, Boolean> m_contains;
 
     /** Date created from the wrapped value. */
     private Date m_date;
@@ -138,20 +144,20 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
     /** Image bean instance created from the wrapped value. */
     private CmsJspImageBean m_imageBean;
 
-    /** Resource created from the wrapped value. */
-    private CmsJspResourceWrapper m_resource;
+    /** Date information as instance date bean. */
+    private CmsJspInstanceDateBean m_instanceDate;
 
     /** The lazy initialized Map that checks if a Object is equal. */
     private Map<Object, Boolean> m_isEqual;
-
-    /** The lazy initialized Map that checks if the String representation of this wrapper contains specific words. */
-    private Map<Object, Boolean> m_contains;
 
     /** Link created from the wrapped value. */
     private String m_link;
 
     /** Long created from the wrapped value. */
     private Long m_long;
+
+    /** Resource created from the wrapped value. */
+    private CmsJspResourceWrapper m_resource;
 
     /** String representation of the wrapped value. */
     private String m_string;
@@ -162,6 +168,9 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
     /** The lazy initialized trim to size map. */
     private Map<Object, String> m_trimToSize;
 
+    /** Cached link wrapper - use Optional to distinguish 'uncached' state from 'does not exist'. */
+    protected Optional<CmsJspLinkWrapper> m_linkObj;
+
     /**
      * Returns the substituted link to the given target.<p>
      *
@@ -170,7 +179,7 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
      *
      * @return the substituted link
      */
-    protected static String substituteLink(CmsObject cms, String target) {
+    public static String substituteLink(CmsObject cms, String target) {
 
         if (cms != null) {
             return OpenCms.getLinkManager().substituteLinkForUnknownTarget(
@@ -240,7 +249,7 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
 
     /**
      * Returns <code>true</code> in case the wrapped value is empty or whitespace only,
-     * that is either <code>null</code> or String that contains only whitespace chars.<p>
+     * that is either <code>null</code> or a String that contains only whitespace chars.<p>
      *
      * @return <code>true</code> in case the wrapped value is empty or whitespace only
      */
@@ -374,6 +383,34 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
     }
 
     /**
+     * Tries to create a container page wrapper from the wrapped value.
+     *
+     * @return the container page wrapper or null if none could be created
+     */
+    public CmsJspContainerPageWrapper getToContainerPage() {
+
+        if (m_containerPageWrapper != null) {
+            return m_containerPageWrapper;
+        }
+        CmsJspResourceWrapper res = getToResource();
+        if (res == null) {
+            return null;
+        }
+        try {
+            CmsXmlContainerPage page = CmsXmlContainerPageFactory.unmarshal(
+                m_cms,
+                m_cms.readFile(res),
+                true,
+                /*nocache=*/true); // container page caching causes problems with the EL container rendering feature, don't use it here
+            m_containerPageWrapper = new CmsJspContainerPageWrapper(page.getContainerPage(m_cms));
+            return m_containerPageWrapper;
+        } catch (Exception e) {
+            LOG.debug(e.getLocalizedMessage(), e);
+            return null;
+        }
+    }
+
+    /**
      * Converts the wrapped value to a date.<p>
      *
      * @return the date
@@ -472,13 +509,31 @@ abstract class A_CmsJspValueWrapper extends AbstractCollection<String> {
     }
 
     /**
+     * Converts the value to a link wrapper.
+     *
+     * @return the link wrapper
+     */
+    public CmsJspLinkWrapper getToLink() {
+
+        if (m_linkObj == null) {
+            String target = toString();
+            if (target != null) {
+                m_linkObj = Optional.of(new CmsJspLinkWrapper(getCmsObject(), target));
+            } else {
+                m_linkObj = Optional.empty();
+            }
+        }
+        return m_linkObj.orElse(null);
+    }
+
+    /**
      * Returns the substituted link to the wrapped value.<p>
      *
      * In case no link can be substituted from the wrapped value, an empty String <code>""</code> is returned.
      *
      * @return the substituted link
      */
-    public String getToLink() {
+    public String getToLinkStr() {
 
         if (m_link == null) {
             String target = toString();

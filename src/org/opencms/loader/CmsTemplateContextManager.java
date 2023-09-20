@@ -46,11 +46,11 @@ import org.opencms.xml.content.CmsXmlContentProperty;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import javax.servlet.http.HttpServletRequest;
@@ -61,6 +61,9 @@ import org.apache.commons.logging.Log;
  * Manager class for template context providers.<p>
  */
 public class CmsTemplateContextManager {
+
+    /** Request attribute used to set the template context during RPC calls. */
+    public static final String ATTR_RPC_CONTEXT_OVERRIDE = "ATTR_RPC_CONTEXT_OVERRIDE";
 
     /** A bean containing information about the selected template. */
     public static final String ATTR_TEMPLATE_BEAN = "ATTR_TEMPLATE_BEAN";
@@ -83,17 +86,14 @@ public class CmsTemplateContextManager {
     /** The logger instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsTemplateContextManager.class);
 
-    /** Request attribute used to set the template context during RPC calls. */
-    public static final String ATTR_RPC_CONTEXT_OVERRIDE = "ATTR_RPC_CONTEXT_OVERRIDE";
+    /** Cached allowed context map. */
+    private volatile Map<String, CmsDefaultSet<String>> m_cachedContextMap = null;
 
     /** The CMS context. */
     private CmsObject m_cms;
 
     /** A cache in which the template context provider instances are stored, with their class name as the key. */
-    private Map<String, I_CmsTemplateContextProvider> m_providerInstances = new HashMap<String, I_CmsTemplateContextProvider>();
-
-    /** Cached allowed context map. */
-    private volatile Map<String, CmsDefaultSet<String>> m_cachedContextMap = null;
+    private Map<String, I_CmsTemplateContextProvider> m_providerInstances = new ConcurrentHashMap<String, I_CmsTemplateContextProvider>();
 
     /**
      * Creates a new instance.<p>
@@ -176,6 +176,10 @@ public class CmsTemplateContextManager {
 
             I_CmsTemplateContextProvider provider = context.getProvider();
             Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
+            result.setMenuLabel(provider.getMenuLabel(locale));
+            result.setDefaultLabel(provider.getDefaultLabel(locale));
+            result.setShouldShowElementTemplateContextSelection(
+                provider.shouldShowElementTemplateContextSelection(cms));
             CmsXmlContentProperty settingDefinition = createTemplateContextsPropertyDefinition(provider, locale);
             result.setSettingDefinition(settingDefinition);
             String cookieName = context.getProvider().getOverrideCookieName();
@@ -187,6 +191,9 @@ public class CmsTemplateContextManager {
             Map<String, String> niceNames = new LinkedHashMap<String, String>();
             for (Map.Entry<String, CmsTemplateContext> entry : provider.getAllContexts().entrySet()) {
                 CmsTemplateContext otherContext = entry.getValue();
+                if (provider.isHiddenContext(otherContext.getKey())) {
+                    continue;
+                }
                 String niceName = otherContext.getLocalizedName(locale);
                 niceNames.put(otherContext.getKey(), niceName);
                 for (CmsClientVariant variant : otherContext.getClientVariants().values()) {
@@ -200,11 +207,34 @@ public class CmsTemplateContextManager {
                 }
             }
             result.setContextLabels(niceNames);
-            result.setContextProvider(provider.getClass().getName());
+            String providerKey = OpenCms.getTemplateContextManager().getProviderKey(provider);
+            result.setContextProvider(providerKey);
         }
         Map<String, CmsDefaultSet<String>> allowedContextMap = safeGetAllowedContextMap();
         result.setAllowedContexts(allowedContextMap);
         return result;
+    }
+
+    /**
+     * Gets the key of a cached template provider (consisting of class name and parameters)
+     * that can later be used as an argument to getTemplateContextProvider.
+     *
+     * <p>If the provider is not already cached, returns null.
+     *
+     * @param provider the template provider
+     *
+     * @return the cache key
+     */
+    public String getProviderKey(I_CmsTemplateContextProvider provider) {
+
+        // Just do a linear search over the map entries. There should only be a small number of different configured template providers,
+        // so this is not a problem for performance.
+        for (Map.Entry<String, I_CmsTemplateContextProvider> entry : m_providerInstances.entrySet()) {
+            if (entry.getValue() == provider) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     /**
@@ -293,6 +323,9 @@ public class CmsTemplateContextManager {
      */
     public I_CmsTemplateContextProvider getTemplateContextProvider(String providerName) {
 
+        if (providerName == null) {
+            return null;
+        }
         providerName = providerName.trim();
         providerName = removePropertyPrefix(providerName);
         String providerClassName = providerName;
@@ -308,7 +341,7 @@ public class CmsTemplateContextManager {
         I_CmsTemplateContextProvider result = m_providerInstances.get(providerName);
         if (result == null) {
             try {
-                Class<?> providerClass = Class.forName(providerClassName);
+                Class<?> providerClass = Class.forName(providerClassName, false, getClass().getClassLoader());
                 if (I_CmsTemplateContextProvider.class.isAssignableFrom(providerClass)) {
                     result = (I_CmsTemplateContextProvider)providerClass.newInstance();
                     result.initialize(m_cms, providerConfig);

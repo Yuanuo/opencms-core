@@ -27,6 +27,8 @@
 
 package org.opencms.gwt;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.CmsGalleryDisabledTypesMode;
 import org.opencms.db.CmsResourceState;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
@@ -46,6 +48,7 @@ import org.opencms.gwt.shared.CmsLockInfo;
 import org.opencms.gwt.shared.CmsResourceCategoryInfo;
 import org.opencms.gwt.shared.CmsReturnLinkInfo;
 import org.opencms.gwt.shared.CmsTinyMCEData;
+import org.opencms.gwt.shared.CmsUploadRestrictionInfo;
 import org.opencms.gwt.shared.CmsUserSettingsBean;
 import org.opencms.gwt.shared.CmsValidationQuery;
 import org.opencms.gwt.shared.CmsValidationResult;
@@ -235,6 +238,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             // in case of sitemap editor check visibility with empty list
             if (context.equals(AdeContext.sitemapeditor)) {
                 resources = Collections.emptyList();
+                cms.getRequestContext().setAttribute(I_CmsDialogContext.ATTR_SITEMAP_CONFIG_RESOURCE, resource);
             } else {
                 resources = Collections.singletonList(resource);
             }
@@ -1155,6 +1159,9 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
 
         CmsObject cms = getCmsObject();
         String navigationUri = cms.getRequestContext().getUri();
+        CmsADEConfigData sitemapConfig = OpenCms.getADEManager().lookupConfigurationWithCache(
+            cms,
+            cms.getRequestContext().getRootUri());
         boolean toolbarVisible = CmsADESessionCache.getCache(getRequest(), getCmsObject()).isToolbarVisible();
         boolean isShowHelp = OpenCms.getADEManager().isShowEditorHelp(cms);
 
@@ -1187,6 +1194,12 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             "/system/workplace/commons/about.jsp");
         String tinyMCE = CmsWorkplace.getStaticResourceUri("/editors/tinymce/jscripts/tinymce/tinymce.min.js");
         boolean uploadDisabled = !OpenCms.getRoleManager().hasRole(cms, CmsRole.EDITOR);
+        CmsUploadRestrictionInfo uploadRestrictionInfo = OpenCms.getWorkplaceManager().getUploadRestriction().getUploadRestrictionInfo(
+            cms);
+        String categoryBaseFolder = CmsCategoryService.getInstance().getRepositoryBaseFolderName(cms);
+        CmsGalleryDisabledTypesMode disabledTypesMode = sitemapConfig.getDisabledTypeMode(
+            CmsGalleryDisabledTypesMode.mark);
+        boolean hideDisabledTypes = disabledTypesMode == CmsGalleryDisabledTypesMode.hide;
 
         CmsCoreData data = new CmsCoreData(
             EDITOR_URI,
@@ -1197,6 +1210,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             OpenCms.getSystemInfo().getStaticResourceContext(),
             CmsEmbeddedDialogsUI.getEmbeddedDialogsContextPath(),
             cms.getRequestContext().getSiteRoot(),
+            OpenCms.getSiteManager().getSharedFolder(),
             cms.getRequestContext().getCurrentProject().getId(),
             cms.getRequestContext().getLocale().toString(),
             wpLocale.toString(),
@@ -1214,7 +1228,10 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             OpenCms.getWorkplaceManager().getFileBytesMaxUploadSize(getCmsObject()),
             OpenCms.getWorkplaceManager().isKeepAlive(),
             uploadDisabled,
-            OpenCms.getADEManager().getParameters(getCmsObject()));
+            OpenCms.getADEManager().getParameters(getCmsObject()),
+            uploadRestrictionInfo,
+            categoryBaseFolder,
+            hideDisabledTypes);
         CmsTinyMCEData tinyMCEData = new CmsTinyMCEData();
         tinyMCEData.setLink(tinyMCE);
         data.setTinymce(tinyMCEData);
@@ -1259,7 +1276,9 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
                 }
             }
             for (String path : categories) {
-                catService.addResourceToCategory(cms, sitePath, path);
+                if (!path.isEmpty()) { // Prevent adding category repositories itself.
+                    catService.addResourceToCategory(cms, sitePath, path);
+                }
             }
             tryUnlock(resource);
         } catch (Throwable t) {

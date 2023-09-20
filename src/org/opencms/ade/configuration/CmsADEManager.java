@@ -39,6 +39,7 @@ import org.opencms.ade.containerpage.inherited.CmsInheritedContainerState;
 import org.opencms.ade.detailpage.CmsDetailPageConfigurationWriter;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.ade.detailpage.I_CmsDetailPageHandler;
+import org.opencms.ade.upload.CmsUploadWarningTable;
 import org.opencms.configuration.CmsSystemConfiguration;
 import org.opencms.db.I_CmsProjectDriver;
 import org.opencms.file.CmsFile;
@@ -48,6 +49,7 @@ import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
+import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
@@ -71,6 +73,7 @@ import org.opencms.main.OpenCms;
 import org.opencms.main.OpenCmsServlet;
 import org.opencms.monitor.CmsMemoryMonitor;
 import org.opencms.security.CmsPermissionSet;
+import org.opencms.security.CmsRole;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -251,6 +254,9 @@ public class CmsADEManager {
     /** ADE parameters. */
     private Map<String, String> m_parameters;
 
+    /** The table of upload warnings. */
+    private CmsUploadWarningTable m_uploadWarningTable = new CmsUploadWarningTable();
+
     /**
      * Creates a new ADE manager.<p>
      *
@@ -288,6 +294,23 @@ public class CmsADEManager {
         CmsFormatterConfigurationCache cache = online ? m_onlineFormatterCache : m_offlineFormatterCache;
         cache.addWaitHandle(handle);
         return handle;
+    }
+
+    /**
+     * Checks if the sitemap config can be edited by the user in the given CMS context.
+     *
+     * <p>Note: Even if this returns true, there may be other reasons preventing the sitemap configuration from being edited by the user.
+     *
+     * @param cms the CMS context to check
+     * @return false if the user should not be able to edit the sitemap configuration
+     */
+    public boolean canEditSitemapConfiguration(CmsObject cms) {
+
+        CmsRole role = getRoleForSitemapConfigEditing();
+        if (role == null) {
+            return true;
+        }
+        return OpenCms.getRoleManager().hasRole(cms, role);
     }
 
     /**
@@ -614,7 +637,7 @@ public class CmsADEManager {
         if (mainFormatter != null) {
             for (Entry<String, CmsXmlContentProperty> entry : mainFormatter.getSettings(config).entrySet()) {
                 Visibility visibility = entry.getValue().getVisibility(defaultVisibility);
-                if (!(visibility.equals(Visibility.parentShared) || visibility.equals(Visibility.parentIndividual))) {
+                if (visibility.isVisibleOnElement()) {
                     result.put(entry.getKey(), entry.getValue());
                 }
             }
@@ -849,23 +872,26 @@ public class CmsADEManager {
             }
         }
 
+        if (hasWrite && isEditorRestricted(cms, resource)) {
+            hasWrite = false;
+        }
+
         String noEdit = new CmsResourceUtil(cms, resource).getNoEditReason(
             OpenCms.getWorkplaceManager().getWorkplaceLocale(cms),
             true);
-        if (CmsStringUtil.isEmptyOrWhitespaceOnly(noEdit)) {
-            boolean isFunction = false;
-            for (String type : new String[] {"function", "function_config"}) {
-                if (OpenCms.getResourceManager().matchResourceType(type, resource.getTypeId())) {
-                    isFunction = true;
-                    break;
-                }
-            }
-            if (isFunction) {
-                Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
-                noEdit = Messages.get().getBundle(locale).key(Messages.GUI_CANT_EDIT_FUNCTIONS_0);
-            }
 
+        boolean isFunction = false;
+        for (String type : new String[] {"function", CmsResourceTypeFunctionConfig.TYPE_NAME}) {
+            if (OpenCms.getResourceManager().matchResourceType(type, resource.getTypeId())) {
+                isFunction = true;
+                break;
+            }
         }
+        if (isFunction) {
+            Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
+            noEdit = Messages.get().getBundle(locale).key(Messages.GUI_CANT_EDIT_FUNCTIONS_0);
+        }
+
         return new CmsPermissionInfo(hasView, hasWrite, noEdit);
     }
 
@@ -1014,6 +1040,16 @@ public class CmsADEManager {
     }
 
     /**
+     * Gets the table of upload warnings.
+     *
+     * @return the table of upload warnings
+     */
+    public CmsUploadWarningTable getUploadWarningTable() {
+
+        return m_uploadWarningTable;
+    }
+
+    /**
      * Processes a HTML redirect content.<p>
      *
      * This needs to be in the ADE manager because the user for whom the HTML redirect is being loaded
@@ -1088,6 +1124,13 @@ public class CmsADEManager {
             } else {
                 // send error 404 if no link value is set
                 errorCode = Integer.valueOf(HttpServletResponse.SC_NOT_FOUND);
+            }
+        }
+        if (!currentContext.getCurrentProject().isOnlineProject()) {
+            // permanent redirects are confusing and not useful in the Offline project because they are stored
+            // by the browser based on the host name, not the site the user is working in.
+            if (errorCode.intValue() == HttpServletResponse.SC_MOVED_PERMANENTLY) {
+                errorCode = Integer.valueOf(HttpServletResponse.SC_MOVED_TEMPORARILY);
             }
         }
         request.setAttribute(CmsRequestUtil.ATTRIBUTE_ERRORCODE, errorCode);
@@ -1181,6 +1224,26 @@ public class CmsADEManager {
     public boolean isDetailPage(CmsObject cms, CmsResource resource) {
 
         return getCache(isOnline(cms)).isDetailPage(cms, resource);
+    }
+
+    /**
+     * Checks if the user should be prevented from editing a file.
+     *
+     * <p>This is not a permission check, but an additional mechanism to prevent users from editing configuration files even if they technically need or have write permissions for these files.
+     *
+     * @param cms the CMS context
+     * @param res the resource to check
+     * @return true if the user should be prevented from editing the file
+     */
+    public boolean isEditorRestricted(CmsObject cms, CmsResource res) {
+
+        if (OpenCms.getResourceManager().matchResourceType(CONFIG_TYPE, res.getTypeId())) {
+            CmsRole role = getRoleForSitemapConfigEditing();
+            if ((role != null) && !OpenCms.getRoleManager().hasRoleForResource(cms, role, res)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1502,6 +1565,25 @@ public class CmsADEManager {
     protected CmsConfigurationCache getOnlineCache() {
 
         return m_onlineCache;
+    }
+
+    /**
+     * Gets the role necessary to edit sitemap configuration files.
+     *
+     * @return the role needed for editing sitemap configurations
+     */
+    protected CmsRole getRoleForSitemapConfigEditing() {
+
+        String roleName = OpenCms.getWorkplaceManager().getSitemapConfigEditRole();
+        if (roleName == null) {
+            return null;
+        } else {
+            if (roleName.indexOf("/") == -1) {
+                return CmsRole.valueOfRoleName(roleName).forOrgUnit(null);
+            } else {
+                return CmsRole.valueOfRoleName(roleName);
+            }
+        }
     }
 
     /**

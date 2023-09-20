@@ -30,6 +30,8 @@ package org.opencms.workplace;
 import org.opencms.ade.configuration.CmsElementView;
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
 import org.opencms.ade.galleries.shared.CmsGallerySearchScope;
+import org.opencms.ade.upload.CmsDefaultUploadRestriction;
+import org.opencms.ade.upload.I_CmsUploadRestriction;
 import org.opencms.configuration.CmsAdditionalLogFolderConfig;
 import org.opencms.configuration.CmsDefaultUserSettings;
 import org.opencms.db.CmsExportPoint;
@@ -189,7 +191,7 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     static ViewRules m_defaultViewRules = new ViewRules(
         "folder,plain,jsp,htmlredirect,containerpage:view_basic",
         "imagegallery,downloadgallery,linkgallery,subsitemap,content_folder:view_folders",
-        "formatter_config,xmlvfsbundle,propertyvfsbundle,bundledescriptor,sitemap_config,sitemap_master_config,site_plugin,module_config,elementview,seo_file,containerpage_template,inheritance_config,macro_formatter,flex_formatter,settings_config:view_configs",
+        "formatter_config,xmlvfsbundle,propertyvfsbundle,bundledescriptor,sitemap_config,sitemap_master_config,site_plugin,attr_editor_config,module_config,elementview,seo_file,containerpage_template,inheritance_config,macro_formatter,flex_formatter,settings_config:view_configs",
         "xmlcontent,pointer:view_other");
 
     /** The default account infos. */
@@ -234,6 +236,12 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
 
     /** The configured direct edit provider. */
     private I_CmsDirectEditProvider m_directEditProvider;
+
+    /** A flag, indicating if the categories should be displayed separated by repository in the category selection dialog. */
+    private boolean m_displayCategoriesByRepository;
+
+    /** A flag, indicating if the categories should be displayed separated by repository in the category selection dialog. */
+    private boolean m_displayCategorySelectionCollapsed;
 
     /** The edit action handler. */
     private I_CmsEditorActionHandler m_editorAction;
@@ -307,6 +315,9 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The configured list of localized workplace folders. */
     private List<String> m_localizedFolders;
 
+    /** The additional log folder configuration. */
+    private CmsAdditionalLogFolderConfig m_logFolderConfig = new CmsAdditionalLogFolderConfig();
+
     /** The workplace localized messages (mapped to the locales). */
     private Map<Locale, CmsWorkplaceMessages> m_messages;
 
@@ -331,6 +342,12 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The tool manager. */
     private CmsToolManager m_toolManager;
 
+    /** The upload restriction. */
+    private I_CmsUploadRestriction m_uploadRestriction = CmsDefaultUploadRestriction.unrestricted();
+
+    /** Keeps track of whether the upload restriction has been set. */
+    private boolean m_uploadRestrictionSet;
+
     /** The user additional information configuration. */
     private CmsWorkplaceUserInfoManager m_userInfoManager;
 
@@ -346,14 +363,8 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The XML content auto correction flag. */
     private boolean m_xmlContentAutoCorrect;
 
-    /** The additional log folder configuration. */
-    private CmsAdditionalLogFolderConfig m_logFolderConfig = new CmsAdditionalLogFolderConfig();
-
-    /** A flag, indicating if the categories should be displayed separated by repository in the category selection dialog. */
-    private boolean m_displayCategoriesByRepository;
-
-    /** A flag, indicating if the categories should be displayed separated by repository in the category selection dialog. */
-    private boolean m_displayCategorySelectionCollapsed;
+    /** The role required for editing the sitemap configuration. */
+    private String m_sitemapConfigEditRole;
 
     /**
      * Creates a new instance for the workplace manager, will be called by the workplace configuration manager.<p>
@@ -1069,8 +1080,8 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
                 }
             } else if (CmsResourceTypeFolder.getStaticTypeName().equals(explorerType.getName())
                 && "view_folders|view_basic".contains(viewName)) {
-                    result.add(explorerType);
-                }
+                result.add(explorerType);
+            }
 
         }
         return result;
@@ -1421,6 +1432,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Gets the name of the role necessary for editing the sitemap configuration.
+     *
+     * @return the name of the role necessary for editing the sitemap configuration
+     */
+    public String getSitemapConfigEditRole() {
+
+        return m_sitemapConfigEditRole;
+    }
+
+    /**
      * Returns Regex patterns that should be excluded from synchronization.<p>
      *
      * @return the exclude patterns
@@ -1486,6 +1507,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
         } else {
             return null;
         }
+    }
+
+    /**
+     * Gets the upload restriction.
+     *
+     * @return the upload restriction
+     */
+    public I_CmsUploadRestriction getUploadRestriction() {
+
+        return m_uploadRestriction;
     }
 
     /**
@@ -1704,6 +1735,7 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
             getToolManager().configure(cms);
 
             flushMessageCache();
+            getUploadRestriction().setAdminCmsObject(cms);
 
             // register this object as event listener
             OpenCms.addCmsEventListener(this, new int[] {I_CmsEventListener.EVENT_CLEAR_CACHES});
@@ -2162,6 +2194,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Sets the name of the role necessary for editing the sitemap configuration.
+     *
+     * @param roleName the name of the role necessary for editing the sitemap configuration
+     */
+    public void setSitemapConfigEditRole(String roleName) {
+
+        m_sitemapConfigEditRole = roleName;
+    }
+
+    /**
      * Sets the tool Manager object.<p>
      *
      * @param toolManager the tool Manager object to set
@@ -2169,6 +2211,20 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     public void setToolManager(CmsToolManager toolManager) {
 
         m_toolManager = toolManager;
+    }
+
+    /**
+     * Sets the upload restriciton.
+     *
+     * @param uploadRestriction the upload restriction
+     */
+    public void setUploadRestriction(I_CmsUploadRestriction uploadRestriction) {
+
+        if (m_uploadRestrictionSet) {
+            throw new IllegalStateException("Upload restriction has already been set.");
+        }
+        m_uploadRestriction = uploadRestriction;
+        m_uploadRestrictionSet = true;
     }
 
     /**

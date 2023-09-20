@@ -72,11 +72,12 @@ import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsContextMenuEntryBean;
 import org.opencms.gwt.shared.CmsCoreData.AdeContext;
+import org.opencms.gwt.shared.CmsGalleryContainerInfo;
 import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.gwt.shared.CmsTemplateContextInfo;
+import org.opencms.gwt.shared.I_CmsAutoBeanFactory;
 import org.opencms.gwt.shared.I_CmsUnlockData;
-import org.opencms.gwt.shared.I_CmsUnlockDataFactory;
 import org.opencms.gwt.shared.rpc.I_CmsCoreServiceAsync;
 import org.opencms.util.CmsDefaultSet;
 import org.opencms.util.CmsStringUtil;
@@ -117,6 +118,9 @@ import com.google.gwt.user.client.ui.RootPanel;
 import com.google.gwt.user.client.ui.Widget;
 import com.google.web.bindery.autobean.shared.AutoBean;
 import com.google.web.bindery.autobean.shared.AutoBeanCodex;
+
+import elemental2.dom.DomGlobal;
+import elemental2.webstorage.WebStorageWindow;
 
 /**
  * Data provider for the container-page editor. All data concerning the container-page is requested and maintained by this provider.<p>
@@ -773,6 +777,14 @@ public final class CmsContainerpageController {
             m_elementView = m_data.getElementView();
             m_modelGroupElementId = m_data.getModelGroupElementId();
             m_loadTime = m_data.getLoadTime();
+            try {
+                WebStorageWindow window = WebStorageWindow.of(DomGlobal.window);
+                for (Map.Entry<String, String> entry : m_data.getSessionStorageData().entrySet()) {
+                    window.sessionStorage.setItem(entry.getKey(), entry.getValue());
+                }
+            } catch (Exception e) {
+                DomGlobal.console.log("can't use webstorage API");
+            }
         } catch (SerializationException e) {
             CmsErrorDialog.handleException(
                 new Exception(
@@ -782,6 +794,7 @@ public final class CmsContainerpageController {
         m_smallElementsHandler = new CmsSmallElementsHandler(getContainerpageService());
         if (m_data != null) {
             m_smallElementsHandler.setEditSmallElements(m_data.isEditSmallElementsInitially(), false);
+
             m_data.setRpcContext(
                 new CmsContainerPageRpcContext(
                     CmsCoreProvider.get().getStructureId(),
@@ -1027,6 +1040,7 @@ public final class CmsContainerpageController {
 
                 getContainerpageService().checkCreateNewElement(
                     CmsCoreProvider.get().getStructureId(),
+                    getData().getDetailId(),
                     element.getId(),
                     element.getNewType(),
                     container,
@@ -1068,6 +1082,7 @@ public final class CmsContainerpageController {
 
                 getContainerpageService().createNewElement(
                     CmsCoreProvider.get().getStructureId(),
+                    getData().getDetailId(),
                     element.getId(),
                     element.getNewType(),
                     modelResourceStructureId,
@@ -1103,6 +1118,7 @@ public final class CmsContainerpageController {
 
                 getContainerpageService().createNewElement(
                     CmsCoreProvider.get().getStructureId(),
+                    getData().getDetailId(),
                     element.getId(),
                     element.getNewType(),
                     null,
@@ -1334,6 +1350,23 @@ public final class CmsContainerpageController {
         } else {
             return Optional.fromNullable(result.get(0));
         }
+    }
+
+    /**
+     * Gets the container info to send to the gallery service.
+     *
+     * @return the container info to send to the gallery service
+     */
+    public CmsGalleryContainerInfo getContainerInfoForGalleries() {
+
+        if (m_targetContainers != null) {
+            HashSet<CmsGalleryContainerInfo.Item> items = new HashSet<>();
+            for (CmsContainerPageContainer cont : m_targetContainers.values()) {
+                items.add(new CmsGalleryContainerInfo.Item(cont.getContainerType(), cont.getConfiguredWidth()));
+            }
+            return new CmsGalleryContainerInfo(items);
+        }
+        return null;
     }
 
     /**
@@ -2662,20 +2695,9 @@ public final class CmsContainerpageController {
         Timer timer = new Timer() {
 
             @Override
-            @SuppressWarnings("synthetic-access")
             public void run() {
 
-                Window.Location.assign(m_originalUrl);
-                Timer timer2 = new Timer() {
-
-                    @Override
-                    public void run() {
-
-                        Window.Location.reload();
-                    }
-
-                };
-                timer2.schedule(100);
+                Window.Location.reload();
             }
         };
 
@@ -3473,6 +3495,36 @@ public final class CmsContainerpageController {
     }
 
     /**
+     * Updates the formatter in the server-side element bean.
+     *
+     * @param clientId the client element bean
+     * @param containerId the container id
+     * @param settings the settings
+     */
+    public void updateServerElementFormatter(String clientId, String containerId, Map<String, String> settings) {
+
+        CmsRpcAction<Void> action = new CmsRpcAction<Void>() {
+
+            @Override
+            public void execute() {
+
+                start(0, false);
+                getContainerpageService().updateServerElementFormatter(clientId, containerId, settings, this);
+
+            }
+
+            @Override
+            protected void onResponse(Void result) {
+
+                stop(false);
+
+            }
+
+        };
+        action.execute();
+    }
+
+    /**
      * Adds the given element data to the element cache.<p>
      *
      * @param elements the element data
@@ -3873,7 +3925,7 @@ public final class CmsContainerpageController {
      */
     protected void unlockContainerpage() {
 
-        I_CmsUnlockDataFactory factory = GWT.create(I_CmsUnlockDataFactory.class);
+        I_CmsAutoBeanFactory factory = CmsCoreProvider.AUTO_BEAN_FACTORY;
         AutoBean<I_CmsUnlockData> unlockParams = factory.unlockData();
         unlockParams.as().setPageId("" + CmsCoreProvider.get().getStructureId());
         if (getData().getDetailId() != null) {
@@ -3958,7 +4010,9 @@ public final class CmsContainerpageController {
                     getEditableContainers(),
                     getElementView().getElementViewId(),
                     CmsCoreProvider.get().getUri(),
+                    getData().getDetailId(),
                     getData().getLocale(),
+                    CmsContainerpageController.get().getData().getTemplateContextInfo(),
                     this);
             }
 

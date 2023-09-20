@@ -33,6 +33,7 @@ import org.opencms.ade.containerpage.client.ui.CmsContainerPageElementPanel;
 import org.opencms.ade.containerpage.client.ui.CmsElementSettingsDialog;
 import org.opencms.ade.containerpage.client.ui.CmsElementSettingsDialog.NoFormatterException;
 import org.opencms.ade.containerpage.client.ui.CmsGroupContainerElementPanel;
+import org.opencms.ade.containerpage.client.ui.CmsListAddDialog;
 import org.opencms.ade.containerpage.client.ui.CmsSmallElementsHandler;
 import org.opencms.ade.containerpage.client.ui.I_CmsDropContainer;
 import org.opencms.ade.containerpage.shared.CmsContainerElement;
@@ -42,7 +43,10 @@ import org.opencms.ade.containerpage.shared.CmsElementViewInfo;
 import org.opencms.ade.containerpage.shared.CmsLocaleLinkBean;
 import org.opencms.ade.publish.client.CmsPublishDialog;
 import org.opencms.ade.publish.shared.CmsPublishOptions;
+import org.opencms.ade.upload.client.I_CmsUploadContext;
+import org.opencms.ade.upload.client.lists.CmsUploadPopup;
 import org.opencms.gwt.client.CmsCoreProvider;
+import org.opencms.gwt.client.I_CmsEditableData;
 import org.opencms.gwt.client.dnd.I_CmsDNDController;
 import org.opencms.gwt.client.rpc.CmsRpcAction;
 import org.opencms.gwt.client.ui.A_CmsToolbarHandler;
@@ -79,13 +83,17 @@ import org.opencms.gwt.shared.CmsContextMenuEntryBean;
 import org.opencms.gwt.shared.CmsCoreData;
 import org.opencms.gwt.shared.CmsCoreData.AdeContext;
 import org.opencms.gwt.shared.CmsGwtConstants;
+import org.opencms.gwt.shared.CmsListElementCreationDialogData;
+import org.opencms.gwt.shared.CmsListElementCreationOption;
 import org.opencms.gwt.shared.CmsLockInfo;
 import org.opencms.gwt.shared.CmsModelResourceInfo;
 import org.opencms.gwt.shared.CmsTemplateContextInfo;
+import org.opencms.gwt.shared.I_CmsEditableDataExtensions;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -184,6 +192,9 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
 
     /** Overlay to prevent user actions while shown. */
     private SimplePanel m_overlay;
+
+    /** Field to store the 'prefill' context menu entry that gets manually moved to a different location later by the context menu code. */
+    private CmsContextMenuEntryBean m_prefill;
 
     /**
      * Constructor.<p>
@@ -420,12 +431,14 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                                 cname = cpc.getContainerId();
                             }
                         } catch (Exception e2) {
-                            /*ignore*/ }
+                            /*ignore*/
+                        }
                         String path = "???";
                         try {
                             path = elementBean.getSitePath();
                         } catch (Exception e2) {
-                            /*ignore*/ }
+                            /*ignore*/
+                        }
                         CmsAlertDialog alert = new CmsAlertDialog(
                             org.opencms.gwt.client.Messages.get().key(org.opencms.gwt.client.Messages.GUI_ERROR_0),
                             Messages.get().key(Messages.GUI_NO_FORMATTER_4, path, cname, ctype, schema));
@@ -789,6 +802,110 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
     }
 
     /**
+     * Triggers creation/editing of a new content after an option has been selected.
+     *
+     * @param option the type option selected by the user
+     * @param reloadId the id of the element to be reloaded after editing
+     * @param postCreateHandler the post-create handler  (for assigning categories or similar)
+     */
+    public void openEditorForNewListContent(
+        CmsListElementCreationOption option,
+        String reloadId,
+        String postCreateHandler) {
+
+        I_CmsEditableData editableData = new I_CmsEditableData() {
+
+            public String getContextId() {
+
+                return null;
+            }
+
+            public String getEditId() {
+
+                return null;
+            }
+
+            public String getElementId() {
+
+                return null;
+            }
+
+            public String getElementLanguage() {
+
+                return null;
+            }
+
+            public String getElementName() {
+
+                return null;
+            }
+
+            public I_CmsEditableDataExtensions getExtensions() {
+
+                return null;
+            }
+
+            public String getNewLink() {
+
+                return option.getNewLink();
+            }
+
+            public String getNewTitle() {
+
+                return null;
+            }
+
+            public String getNoEditReason() {
+
+                return null;
+            }
+
+            public String getPostCreateHandler() {
+
+                return postCreateHandler;
+            }
+
+            public String getSitePath() {
+
+                return null;
+            }
+
+            public CmsUUID getStructureId() {
+
+                return CmsCoreProvider.get().getStructureId();
+            }
+
+            public boolean hasEditHandler() {
+
+                return false;
+            }
+
+            public boolean hasResource() {
+
+                return false;
+            }
+
+            public boolean isUnreleasedOrExpired() {
+
+                return false;
+            }
+
+            public void setSitePath(String sitePath) {
+
+                // no-op
+
+            }
+        };
+
+        CmsContainerpageController.get().getContentEditorHandler().openDialog(
+            editableData,
+            true/*isNew*/,
+            reloadId /*dependingElementId*/,
+            null /*mode*/,
+            null /*handlerData*/);
+    }
+
+    /**
      * Opens the elements info dialog.<p>
      */
     public void openElementsInfo() {
@@ -807,6 +924,70 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                 }
 
             });
+    }
+
+    /**
+     * Opens the dialog for adding a new list content.
+     *
+     * @param structureId the structure id of the container element
+     * @param listAddMetadata the list-add metadata read from the container element
+     */
+    public void openListAddDialog(CmsUUID structureId, String listAddMetadata) {
+
+        CmsRpcAction<CmsListElementCreationDialogData> action = new CmsRpcAction<CmsListElementCreationDialogData>() {
+
+            @Override
+            public void execute() {
+
+                start(0, false);
+                CmsContainerpageHandler.this.m_controller.getContainerpageService().getListElementCreationOptions(
+                    structureId,
+                    listAddMetadata,
+                    this);
+
+            }
+
+            @Override
+            protected void onResponse(CmsListElementCreationDialogData result) {
+
+                stop(false);
+                final CmsUploadPopup[] popupArray = {null};
+                if (result.isUpload()) {
+                    I_CmsUploadContext context = new I_CmsUploadContext() {
+
+                        public void onUploadFinished(List<String> uploadedFiles) {
+
+                            popupArray[0].hide();
+                            CmsContainerpageController.get().reloadElements(
+                                Arrays.asList("" + structureId),
+                                DO_NOTHING);
+                        }
+                    };
+                    CmsUploadPopup popup = new CmsUploadPopup(
+                        result.getUploadFolder(),
+                        result.getPostCreateHandler(),
+                        context,
+                        result.getListInfo());
+                    popupArray[0] = popup;
+                    popup.center();
+                } else if (result.getOptions().size() == 1) {
+                    // skip the selection dialog, immediately create and edit the content
+                    openEditorForNewListContent(
+                        result.getOptions().get(0),
+                        "" + structureId,
+                        result.getPostCreateHandler());
+                } else {
+                    // "0 options" case is handled by the dialog
+                    CmsListAddDialog dialog = new CmsListAddDialog(
+                        structureId,
+                        result,
+                        option -> openEditorForNewListContent(option, "" + structureId, result.getPostCreateHandler()));
+                    dialog.center();
+                }
+            }
+        };
+        action.execute();
+
     }
 
     /**
@@ -1023,7 +1204,8 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
             m_editButtonVibility.setValue(
                 org.opencms.ade.containerpage.client.ui.css.I_CmsLayoutBundle.INSTANCE.containerpageCss().editButtonsVisible());
         } else {
-            m_editButtonVibility.setValue(null);
+            m_editButtonVibility.setValue(
+                org.opencms.ade.containerpage.client.ui.css.I_CmsLayoutBundle.INSTANCE.containerpageCss().editButtonsInvisible());
         }
     }
 
@@ -1184,8 +1366,13 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
         if (name == null) {
             return super.transformSingleEntry(structureId, menuEntryBean);
         }
-        if (name.equals(CmsGwtConstants.ACTION_TEMPLATECONTEXTS)) {
+        if (name.equals(CmsGwtConstants.TEMPLATECONTEXT_MENU_PLACEHOLDER)) {
             return createTemplateContextSelectionMenuEntry(structureId);
+        } else if ((menuEntryBean.getParams() != null)
+            && menuEntryBean.getParams().containsKey(CmsGwtConstants.PREFILL_MENU_PLACEHOLDER)) {
+            // hack: this comes before the template contexts option in the context menu order, so we have it ready when we get there
+            m_prefill = menuEntryBean;
+            return null;
         } else if (name.equals(CmsGwtConstants.ACTION_EDITSMALLELEMENTS)) {
             return createToggleEditSmallElementsMenuEntry();
         } else if (name.equals(CmsGwtConstants.ACTION_SELECTELEMENTVIEW)) {
@@ -1362,9 +1549,12 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
             });
             CmsContextMenuEntryBean parentBean = new CmsContextMenuEntryBean();
 
-            parentBean.setLabel(
-                org.opencms.gwt.client.Messages.get().key(
-                    org.opencms.gwt.client.Messages.GUI_TEMPLATE_CONTEXT_PARENT_0));
+            String parentLabel = info.getMenuLabel();
+            if (parentLabel == null) {
+                parentLabel = org.opencms.gwt.client.Messages.get().key(
+                    org.opencms.gwt.client.Messages.GUI_TEMPLATE_CONTEXT_PARENT_0);
+            }
+            parentBean.setLabel(parentLabel);
             parentBean.setActive(true);
             parentBean.setVisible(true);
             parentEntry.setBean(parentBean);
@@ -1412,15 +1602,29 @@ public class CmsContainerpageHandler extends A_CmsToolbarHandler {
                     templateContextEntries.add(menuEntry);
                 }
             }
+            String autoLabel = org.opencms.gwt.client.Messages.get().key(
+                org.opencms.gwt.client.Messages.GUI_TEMPLATE_CONTEXT_NONE_0);
+            if (info.getDefaultLabel() != null) {
+                autoLabel = info.getDefaultLabel();
+            }
             templateContextEntries.add(
                 createMenuEntryForTemplateContext(
                     info.getCookieName(),
                     null,
-                    org.opencms.gwt.client.Messages.get().key(
-                        org.opencms.gwt.client.Messages.GUI_TEMPLATE_CONTEXT_NONE_0),
+                    autoLabel,
                     Objects.equal(null, info.getSelectedContext()),
                     this,
                     structureId));
+            if ((m_prefill != null) && (info.getSelectedContext() != null)) {
+                String name = m_prefill.getName();
+                I_CmsContextMenuCommand command = null;
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(name)) {
+                    command = getContextMenuCommands().get(name);
+                }
+                CmsContextMenuEntry entry = new CmsContextMenuEntry(this, structureId, command);
+                entry.setBean(m_prefill);
+                templateContextEntries.add(entry);
+            }
             parentEntry.setSubMenu(templateContextEntries);
 
             return parentEntry;

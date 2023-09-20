@@ -30,6 +30,7 @@ package org.opencms.jsp.util;
 import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.ade.configuration.CmsFunctionReference;
+import org.opencms.ade.configuration.CmsResourceTypeConfig;
 import org.opencms.ade.configuration.plugins.CmsTemplatePlugin;
 import org.opencms.ade.configuration.plugins.CmsTemplatePluginFinder;
 import org.opencms.ade.containerpage.CmsContainerpageService;
@@ -49,27 +50,39 @@ import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.history.CmsHistoryResourceHandler;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
+import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.flex.CmsFlexController;
 import org.opencms.flex.CmsFlexRequest;
 import org.opencms.gwt.shared.CmsGwtConstants;
+import org.opencms.i18n.CmsEncoder;
 import org.opencms.i18n.CmsLocaleGroupService;
+import org.opencms.i18n.CmsMessageToBundleIndex;
+import org.opencms.i18n.CmsResourceBundleLoader;
+import org.opencms.i18n.CmsVfsResourceBundle;
 import org.opencms.jsp.CmsJspBean;
 import org.opencms.jsp.CmsJspResourceWrapper;
 import org.opencms.jsp.CmsJspTagContainer;
 import org.opencms.jsp.CmsJspTagEditable;
 import org.opencms.jsp.Messages;
 import org.opencms.jsp.jsonpart.CmsJsonPartFilter;
+import org.opencms.jsp.search.config.parser.simplesearch.CmsConfigParserUtils;
+import org.opencms.loader.CmsLoaderException;
 import org.opencms.loader.CmsTemplateContextManager;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.CmsRuntimeException;
 import org.opencms.main.CmsSystemInfo;
 import org.opencms.main.OpenCms;
+import org.opencms.main.OpenCmsServlet;
 import org.opencms.relations.CmsCategory;
 import org.opencms.relations.CmsCategoryService;
 import org.opencms.search.galleries.CmsGalleryNameMacroResolver;
 import org.opencms.site.CmsSite;
-import org.opencms.ui.apps.lists.CmsListManager;
+import org.opencms.ui.CmsVaadinUtils;
+import org.opencms.ui.apps.A_CmsWorkplaceApp;
+import org.opencms.ui.apps.CmsEditor;
+import org.opencms.ui.apps.CmsEditorConfiguration;
+import org.opencms.ui.editors.messagebundle.CmsMessageBundleEditor;
 import org.opencms.util.CmsCollectionsGenericWrapper;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsMacroResolver;
@@ -98,13 +111,17 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletRequest;
@@ -113,6 +130,7 @@ import org.apache.commons.collections.Transformer;
 import org.apache.commons.lang3.LocaleUtils;
 import org.apache.commons.logging.Log;
 
+import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Multimap;
 
 /**
@@ -395,15 +413,6 @@ public final class CmsJspStandardContextBean {
         public boolean isTemporaryContent() {
 
             return m_wrappedElement.isTemporaryContent();
-        }
-
-        /**
-         * @see org.opencms.xml.containerpage.CmsContainerElementBean#removeInstanceId()
-         */
-        @Override
-        public void removeInstanceId() {
-
-            m_wrappedElement.removeInstanceId();
         }
 
         /**
@@ -751,6 +760,9 @@ public final class CmsJspStandardContextBean {
     /** The elements of the current page. */
     private Map<String, CmsContainerElementBean> m_elementInstances;
 
+    /** Flag to force edit mode to be disabled. */
+    private boolean m_forceDisableEditMode;
+
     /** The lazy initialized map which allows access to the dynamic function beans. */
     private Map<String, CmsDynamicFunctionBeanWrapper> m_function;
 
@@ -950,6 +962,7 @@ public final class CmsJspStandardContextBean {
             result.m_detailContentResource = m_detailContentResource.getCopy();
         }
         result.m_element = m_element;
+        result.m_forceDisableEditMode = m_forceDisableEditMode;
         result.setPage(m_page);
         return result;
     }
@@ -1008,6 +1021,19 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Checks if the resource with the given path exists.
+     *
+     * @param path a path
+     * @return true if the resource exists
+     */
+    public boolean exists(String path) {
+
+        Boolean exists = getVfs().getExists().get(path);
+        return exists != null ? exists.booleanValue() : false;
+
+    }
+
+    /**
      * Returns the locales available for the currently requested URI.
      *
      * @return the locales available for the currently requested URI.
@@ -1057,9 +1083,10 @@ public final class CmsJspStandardContextBean {
         String keyToFind = CmsADEConfigData.ATTR_BINARY_UPLOAD_TARGET;
         String baseValue = null;
         if (content != null) {
-            for (CmsJspContentAccessValueWrapper wrapper : content.getValueList().get(CmsListManager.N_PARAMETER)) {
-                String paramKey = wrapper.getValue().get(CmsListManager.N_KEY).getToString();
-                String paramValue = wrapper.getValue().get(CmsListManager.N_VALUE).getToString();
+            for (CmsJspContentAccessValueWrapper wrapper : content.getValueList().get(
+                CmsConfigParserUtils.N_PARAMETER)) {
+                String paramKey = wrapper.getValue().get(CmsConfigParserUtils.N_KEY).getToString();
+                String paramValue = wrapper.getValue().get(CmsConfigParserUtils.N_VALUE).getToString();
                 if (paramKey.equals(keyToFind)) {
                     LOG.debug("Found upload folder in configuration: " + paramValue);
                     baseValue = paramValue;
@@ -1069,7 +1096,7 @@ public final class CmsJspStandardContextBean {
 
             if (baseValue == null) {
                 List<CmsJspContentAccessValueWrapper> folderEntries = content.getValueList().get(
-                    CmsListManager.N_SEARCH_FOLDER);
+                    CmsConfigParserUtils.N_SEARCH_FOLDER);
                 if (folderEntries.size() == 1) {
                     CmsResource resource = folderEntries.get(0).getToResource();
                     List<String> galleryTypes = Arrays.asList(
@@ -1109,13 +1136,184 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Generates a link to the bundle editor to edit the provided message key.
+     * The back link for the editor is the current uri.
+     *
+     * If the bundle for the key could not be found, <code>null</code> is returned.
+     *
+     * @param messageKey the message key to open the bundle editor for.
+     *
+     * @return a link to the bundle editor for editing the provided key, or <code>null</code> if the bundle for the key could not be found.
+     */
+    public String getBundleEditorLink(String messageKey) {
+
+        return getBundleEditorLink(messageKey, null);
+    }
+
+    /**
+     * Generates a link to the bundle editor to edit the provided message key.
+     * The back link for the editor is the current uri with the provided backLinkAnchor added as anchor..
+     *
+     * If the bundle for the key could not be found, <code>null</code> is returned.
+     *
+     * @param messageKey the message key to open the bundle editor for.
+     * @param backLinkAnchor the anchor id to add to the backlink to the page. If <code>null</code> no anchor is added to the backlink.
+     *
+     * @return a link to the bundle editor for editing the provided key, or <code>null</code> if the bundle for the key could not be found.
+     */
+    public String getBundleEditorLink(String messageKey, String backLinkAnchor) {
+
+        return getBundleEditorLink(messageKey, backLinkAnchor, null);
+    }
+
+    /**
+     * Generates a link to the bundle editor to edit the provided message key.
+     * The back link for the editor is the current uri with the provided backLinkAnchor added as anchor.
+     *
+     * If the bundle resource for the key could not be found, <code>null</code> is returned.
+     *
+     * @param messageKey the message key to open the bundle editor for.
+     * @param backLinkAnchor the anchor id to add to the backlink to the page. If <code>null</code> no anchor is added to the backlink.
+     * @param backLinkParams request parameters to add to the backlink without leading '?', e.g. "param1=a&param2=b".
+     *
+     * @return a link to the bundle editor for editing the provided key, or <code>null</code> if the bundle for the key could not be found.
+     */
+    public String getBundleEditorLink(String messageKey, String backLinkAnchor, String backLinkParams) {
+
+        return getBundleEditorLink(messageKey, backLinkAnchor, backLinkParams, null);
+    }
+
+    /**
+     * Generates a link to the bundle editor to edit the provided message key.
+     * The back link for the editor is the current uri with the provided backLinkAnchor added as anchor.
+     *
+     * If the bundle resource for the key could not be found, <code>null</code> is returned.
+     *
+     * @param messageKey the message key to open the bundle editor for.
+     * @param backLinkAnchor the anchor id to add to the backlink to the page. If <code>null</code> no anchor is added to the backlink.
+     * @param backLinkParams request parameters to add to the backlink without leading '?', e.g. "param1=a&param2=b".
+     * @param bundleName the name of the bundle to search the key in. If <code>null</code> the bundle is detected automatically.
+     *
+     * @return a link to the bundle editor for editing the provided key, or <code>null</code> if the bundle for the key could not be found.
+     */
+    public String getBundleEditorLink(
+        String messageKey,
+        String backLinkAnchor,
+        String backLinkParams,
+        String bundleName) {
+
+        if (!m_cms.getRequestContext().getCurrentProject().isOnlineProject()) {
+            String filePath = null;
+            if (null == bundleName) {
+                filePath = getBundleRootPath(messageKey);
+            } else {
+                ResourceBundle bundle = CmsResourceBundleLoader.getBundle(
+                    bundleName,
+                    m_cms.getRequestContext().getLocale());
+                if (bundle instanceof CmsVfsResourceBundle) {
+                    CmsVfsResourceBundle vfsBundle = (CmsVfsResourceBundle)bundle;
+                    filePath = vfsBundle.getParameters().getBasePath();
+                }
+            }
+            try {
+                if (null == filePath) {
+                    throw new Exception("Could not determine the VFS root path of the bundle.");
+                }
+                CmsUUID structureId = m_cms.readResource(filePath).getStructureId();
+                String backLink = OpenCms.getLinkManager().getServerLink(m_cms, m_cms.getRequestContext().getUri());
+                if (!((null == backLinkParams) || backLinkParams.isEmpty())) {
+                    backLink = backLink + "?" + backLinkParams;
+                }
+                if (!((null == backLinkAnchor) || backLinkAnchor.isEmpty())) {
+                    backLink = backLink + "#" + backLinkAnchor;
+                }
+                String appState = CmsEditor.getEditState(structureId, false, backLink);
+                if (null != messageKey) {
+                    appState = A_CmsWorkplaceApp.addParamToState(
+                        appState,
+                        CmsMessageBundleEditor.PARAM_KEYFILTER,
+                        messageKey);
+                }
+                String link = CmsVaadinUtils.getWorkplaceLink(CmsEditorConfiguration.APP_ID, appState);
+                return link;
+            } catch (Throwable t) {
+                if (LOG.isWarnEnabled()) {
+                    String message = "Failed to open bundle editor for key '"
+                        + messageKey
+                        + "' and bundle with name '"
+                        + bundleName
+                        + "'.";
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(message, t);
+                    } else {
+                        LOG.warn(message);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Gets the root path for the VFS-based message bundle containing the given message key.
+     *
+     * <p>If no VFS-based message bundle contains the given key, null is returned. If multiple message bundles contain it,
+     * one of them is arbitrarily chosen (but a warning is logged).
+     *
+     * <p>Note: This uses the online (published) state of message bundles, so if you have unpublished bundle changes, they will not be reflected in
+     * the result.
+     *
+     * @param messageKey the message key
+     * @return the root path of the bundle containing the message key
+     */
+    public String getBundleRootPath(String messageKey) {
+
+        CmsObject cms = getCmsObject();
+        try {
+            CmsMessageToBundleIndex bundleIndex = null;
+            OpenCmsServlet.RequestCache context = OpenCmsServlet.getRequestCache();
+            if (context != null) {
+                bundleIndex = (CmsMessageToBundleIndex)context.getAttribute(
+                    CmsMessageToBundleIndex.class.getName() + "_" + cms.getRequestContext().getLocale(),
+                    k -> {
+                        try {
+                            CmsMessageToBundleIndex result = CmsMessageToBundleIndex.read(getCmsObject());
+                            return result;
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+
+            } else {
+                bundleIndex = CmsMessageToBundleIndex.read(getCmsObject());
+            }
+            return bundleIndex.getBundlePathForKey(messageKey);
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+            return null;
+        }
+    }
+
+    /**
      * Returns the container the currently rendered element is part of.<p>
      *
-     * @return the currently the currently rendered element is part of
+     * @return the container the currently rendered element is part of
      */
     public CmsContainerBean getContainer() {
 
         return m_container;
+    }
+
+    /**
+     * Gets information about a given container type.
+     *
+     * @param containerType the container type
+     *
+     * @return the bean with the information about the container type
+     */
+    public CmsContainerTypeInfoWrapper getContainerTypeInfo(String containerType) {
+
+        return new CmsContainerTypeInfoWrapper(this, m_cms, m_config, containerType);
     }
 
     /**
@@ -1306,6 +1504,48 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Gets the formatter info wrapper for the given formatter key.
+     *
+     * @param formatterKey a formatter key
+     * @return the formatter information for the formatter key, or null if no formatter was found
+     */
+    public CmsFormatterInfoWrapper getFormatterInfo(String formatterKey) {
+
+        CmsObject cms = m_cms;
+        CmsADEConfigData config = m_config;
+        I_CmsFormatterBean formatter = config.findFormatter(formatterKey);
+        if (formatter == null) {
+            return null;
+        }
+        return new CmsFormatterInfoWrapper(cms, config, formatter);
+
+    }
+
+    /**
+     * Gets the formatter bean for active formatters with a given container type.
+     *
+     * @param containerType the container type
+     * @return the wrapped formatters
+     */
+    public List<CmsFormatterInfoWrapper> getFormatterInfoForContainer(String containerType) {
+
+        return wrapFormatters(m_config.getActiveFormattersWithContainerType(containerType));
+
+    }
+
+    /**
+     * Gets the formatter beans for active formatters with a given display type.
+     *
+     * @param displayType the display type
+     * @return the wrapped formatters
+     */
+    public List<CmsFormatterInfoWrapper> getFormatterInfoForDisplay(String displayType) {
+
+        CmsADEConfigData config = m_config;
+        return wrapFormatters(config.getActiveFormattersWithDisplayType(displayType));
+    }
+
+    /**
      * Returns a lazy initialized Map which allows access to the dynamic function beans using the JSP EL.<p>
      *
      * When given a key, the returned map will look up the corresponding dynamic function bean in the module configuration.<p>
@@ -1441,9 +1681,9 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * Checks if the current page is a detail page.
+     * Returns <code>true</code> if the current page is a detail page.<p>
      *
-     * @return true if the current page is a detail page
+     * @return <code>true</code> if the current page is a detail page
      */
     public boolean getIsDetailPage() {
 
@@ -1452,23 +1692,24 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * Checks if the current request should be direct edit enabled.
+     * Returns <code>true</code> if the current request is direct edit enabled.<p>
+     *
      * Online-, history-requests, previews and temporary files will not be editable.<p>
      *
-     * @return <code>true</code> if the current request should be direct edit enabled
+     * @return <code>true</code> if the current request is direct edit enabled
      */
     public boolean getIsEditMode() {
 
         if (m_isEditMode == null) {
             m_isEditMode = Boolean.valueOf(CmsJspTagEditable.isEditableRequest(m_request));
         }
-        return m_isEditMode.booleanValue();
+        return m_isEditMode.booleanValue() && !m_forceDisableEditMode;
     }
 
     /**
-     * Returns true if the current request is a JSON request.<p>
+     * Returns <code>true</code> if the current request is a JSON request.<p>
      *
-     * @return true if we are in a JSON request
+     * @return <code>true</code> if we are in a JSON request
      */
     public boolean getIsJSONRequest() {
 
@@ -1476,13 +1717,25 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
-     * Returns if the current project is the online project.<p>
+     * Returns <code>true</code> if the current project is the online project.<p>
      *
      * @return <code>true</code> if the current project is the online project
      */
     public boolean getIsOnlineProject() {
 
         return m_cms.getRequestContext().getCurrentProject().isOnlineProject();
+    }
+
+    /**
+     * Returns true if the current request is in direct edit preview mode.<p>
+     *
+     * This is the case if the request is not in edit mode and in the online project.<p>
+     *
+     * @return <code>true</code> if the current request is in direct edit preview mode
+     */
+    public boolean getIsPreviewMode() {
+
+        return !getIsOnlineProject() && !getIsEditMode();
     }
 
     /**
@@ -1960,6 +2213,25 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Gets information about a specific resource type for use in JSPs.
+     *
+     * <p>If no type with the given name exists, null is returned.
+     *
+     * @param typeName the type name
+     * @return the bean representing the resource type
+     */
+    public CmsResourceTypeInfoWrapper getResourceTypeInfo(String typeName) {
+
+        try {
+            I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(typeName);
+            return new CmsResourceTypeInfoWrapper(this, m_cms, m_config, type);
+        } catch (CmsLoaderException e) {
+            LOG.info(e.getLocalizedMessage(), e);
+            return null;
+        }
+    }
+
+    /**
      * Returns the current site.<p>
      *
      * @return the current site
@@ -2142,16 +2414,7 @@ public final class CmsJspStandardContextBean {
      */
     public Map<Object, Object> getWrap() {
 
-        return CmsCollectionsGenericWrapper.createLazyMap(obj -> {
-
-            if ((obj instanceof A_CmsJspValueWrapper) || (obj instanceof CmsJspResourceWrapper)) {
-                return obj;
-            } else if (obj instanceof CmsResource) {
-                return CmsJspResourceWrapper.wrap(m_cms, (CmsResource)obj);
-            } else {
-                return CmsJspObjectValueWrapper.createWrapper(m_cms, obj);
-            }
-        });
+        return CmsCollectionsGenericWrapper.createLazyMap(obj -> wrap(obj));
     }
 
     /**
@@ -2237,6 +2500,16 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * Checks if the flag that forces edit mode to be disabled is set.
+     *
+     * @return true if the flag that disables edit mode is set
+     */
+    public boolean isForceDisableEditMode() {
+
+        return m_forceDisableEditMode;
+    }
+
+    /**
      * Returns if the current element is a model group.<p>
      *
      * @return <code>true</code> if the current element is a model group
@@ -2256,6 +2529,53 @@ public final class CmsJspStandardContextBean {
         CmsResource page = getPageResource();
         return (page != null) && CmsContainerpageService.isEditingModelGroups(m_cms, page);
 
+    }
+
+    /**
+     * Gets the link wrapper for the given path.
+     *
+     * @param path the path
+     * @return the link wrapper
+     */
+    public CmsJspLinkWrapper link(String path) {
+
+        return CmsJspObjectValueWrapper.createWrapper(m_cms, path).getToLink();
+
+    }
+
+    /**
+     * Gets the resource wrapper for a given path or id.
+     *
+     * @param str a path or structure id
+     * @return the wrapper for the resource with the given path or id
+     */
+    public CmsJspResourceWrapper readResource(String str) {
+
+        return getVfs().getReadResource().get(str);
+
+    }
+
+    /**
+     * Reads an XML content and returns it as a content access bean
+     * @param str path or id
+     * @return the content access bean for the content with the given path or id
+     */
+    public CmsJspContentAccessBean readXml(String str) {
+
+        return getVfs().getReadXml().get(str);
+    }
+
+    /**
+     * Renders the elements of container in a container page wrapper as HTML (without a surrounding element).
+     *
+     * @param page the page wrapper
+     * @param name the name or name prefix of the container
+     * @return the rendered HTML
+     */
+    public String renderContainer(CmsJspContainerPageWrapper page, String name) {
+
+        String result = page.renderContainer(this, name);
+        return result;
     }
 
     /**
@@ -2300,6 +2620,27 @@ public final class CmsJspStandardContextBean {
     }
 
     /**
+     * In edit mode, creates a meta tag that tells the form-based content editor to use the stylesheet with the given path as a default.
+     *
+     * <p>Does nothing outside of edit mode.
+     *
+     * @param path the site path of a style sheet
+     * @return the meta tag
+     */
+    public String setEditorCssPath(String path) {
+
+        if (getIsEditMode()) {
+            return "\n<meta name=\""
+                + CmsGwtConstants.META_EDITOR_STYLESHEET
+                + "\" content=\""
+                + CmsEncoder.escapeXml(path)
+                + "\">\n";
+        } else {
+            return "";
+        }
+    }
+
+    /**
      * Sets the currently rendered element.<p>
      *
      * @param element the currently rendered element to set
@@ -2307,6 +2648,16 @@ public final class CmsJspStandardContextBean {
     public void setElement(CmsContainerElementBean element) {
 
         m_element = element;
+    }
+
+    /**
+     * Enables / disables the flag that forces edit mode to be disabled.
+     *
+     * @param forceDisableEditMode the new value for the flag
+     */
+    public void setForceDisableEditMode(boolean forceDisableEditMode) {
+
+        m_forceDisableEditMode = forceDisableEditMode;
     }
 
     /**
@@ -2318,6 +2669,29 @@ public final class CmsJspStandardContextBean {
 
         m_page = page;
         clearPageData();
+    }
+
+    /**
+     * Converts the given object to a resource wrapper and returns it, or returns null if the conversion fails
+     * @param obj the object to convert
+     * @return the resource wrapper
+     */
+    public CmsJspResourceWrapper toResource(Object obj) {
+
+        Object wrapper = wrap(obj);
+        try {
+            if (obj instanceof A_CmsJspValueWrapper) {
+                return ((A_CmsJspValueWrapper)obj).getToResource();
+            } else if (obj instanceof CmsJspResourceWrapper) {
+                return ((CmsJspResourceWrapper)obj).getToResource();
+            } else {
+                // in case we add another wrapper with a getToResource method that doesn't extend A_CmsJspValueWrapper
+                return (CmsJspResourceWrapper)wrapper.getClass().getMethod("getToResource").invoke(wrapper);
+            }
+        } catch (Exception e) {
+            LOG.debug(e.getLocalizedMessage(), e);
+            return null;
+        }
     }
 
     /**
@@ -2350,7 +2724,38 @@ public final class CmsJspStandardContextBean {
         CmsResource detailRes = CmsDetailPageResourceHandler.getDetailResource(cmsFlexRequest);
         m_detailContentResource = detailRes;
         m_request = cmsFlexRequest;
+    }
 
+    /**
+     * Gets the path of either the detail content (if this is a detail request) or the current page if it's not a detail request.
+     *
+     * @return the URI of the page or detail content
+     */
+    public String uri() {
+
+        return isDetailRequest() ? getDetailContent().getSitePath() : getRequestContext().getUri();
+    }
+
+    /**
+     * Returns an EL access wrapper map for the given object.<p>
+     *
+     * If the object is a {@link CmsResource}, then a {@link CmsJspResourceWrapper} is returned.
+     * Otherwise the object is wrapped in a {@link CmsJspObjectValueWrapper}.<p>
+     *
+     * If the object is already is a wrapper, it is returned unchanged.<p>
+     *
+     * @param obj the object to wrap
+     * @return an EL access wrapper map for the given object
+     */
+    public Object wrap(Object obj) {
+
+        if ((obj instanceof A_CmsJspValueWrapper) || (obj instanceof CmsJspResourceWrapper)) {
+            return obj;
+        } else if (obj instanceof CmsResource) {
+            return CmsJspResourceWrapper.wrap(m_cms, (CmsResource)obj);
+        } else {
+            return CmsJspObjectValueWrapper.createWrapper(m_cms, obj);
+        }
     }
 
     /**
@@ -2512,6 +2917,62 @@ public final class CmsJspStandardContextBean {
         CmsResource functionResource = m_cms.readResource(functionRef.getStructureId());
         CmsDynamicFunctionBean result = parser.parseFunctionBean(m_cms, functionResource);
         return result;
+    }
+
+    /**
+     * Wraps a list of formatter beans for use in JSPs.
+     *
+     * @param formatters the formatters to wrap
+     * @return the wrapped formatters
+     */
+    protected List<CmsFormatterInfoWrapper> wrapFormatters(Collection<? extends I_CmsFormatterBean> formatters) {
+
+        List<I_CmsFormatterBean> formattersToSort = new ArrayList<>(formatters);
+        List<CmsResourceTypeConfig> types = m_config.getResourceTypes();
+
+        // we want to 'group' the returned formatters by resource type, which is slightly
+        // complicated by the fact that formatters can support multiple resource types.
+
+        // first build a map that records the positions of the resource types configured in the sitemap configuration
+        Map<String, Integer> typePositionsByTypeName = new HashMap<>();
+        for (int i = 0; i < types.size(); i++) {
+            CmsResourceTypeConfig singleType = types.get(i);
+            typePositionsByTypeName.put(singleType.getTypeName(), Integer.valueOf(i));
+        }
+        // for each formatter, save the lowest position of any resource type it supports
+        Map<String, Integer> lowestResourceTypePositionsByFormatterId = new HashMap<>();
+        for (I_CmsFormatterBean formatter : formatters) {
+            int pos = Integer.MAX_VALUE;
+            for (String typeName : formatter.getResourceTypeNames()) {
+                Integer typeOrder = typePositionsByTypeName.get(typeName);
+                if (typeOrder != null) {
+                    pos = Math.min(pos, typeOrder.intValue());
+                }
+            }
+            lowestResourceTypePositionsByFormatterId.put(formatter.getId(), Integer.valueOf(pos));
+        }
+
+        // now we can group the formatters by types using sorting, and inside the groups we sort by formatter rank
+        Collections.sort(formattersToSort, new Comparator<I_CmsFormatterBean>() {
+
+            public int compare(I_CmsFormatterBean o1, I_CmsFormatterBean o2) {
+
+                return ComparisonChain.start().compare(getTypePosition(o1), getTypePosition(o2)).compare(
+                    o2.getRank(),
+                    o1.getRank()).result();
+            }
+
+            public int getTypePosition(I_CmsFormatterBean formatter) {
+
+                return lowestResourceTypePositionsByFormatterId.computeIfAbsent(
+                    formatter.getId(),
+                    id -> Integer.valueOf(Integer.MAX_VALUE));
+            }
+
+        });
+        return formattersToSort.stream().map(
+            formatter -> new CmsFormatterInfoWrapper(m_cms, m_config, formatter)).collect(Collectors.toList());
+
     }
 
     /**

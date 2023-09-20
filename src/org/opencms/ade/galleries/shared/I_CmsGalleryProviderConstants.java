@@ -171,7 +171,13 @@ public interface I_CmsGalleryProviderConstants {
         type_desc,
 
         /** Score sorting. */
-        score;
+        score,
+
+        /** Group galleries. */
+        grouped,
+
+        /** Group galleries, sort by title. */
+        grouped_title;
     }
 
     /** The request attribute name for the close link. */
@@ -203,6 +209,9 @@ public interface I_CmsGalleryProviderConstants {
 
     /** Configuration key. */
     String CONFIG_LOCALE = "locale";
+
+    /** Configuration key. */
+    String CONFIG_PAGE_ID = "pageId";
 
     /** Configuration key. */
     String CONFIG_REFERENCE_PATH = "resource";

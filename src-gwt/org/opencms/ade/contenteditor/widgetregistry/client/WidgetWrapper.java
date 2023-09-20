@@ -28,6 +28,7 @@
 package org.opencms.ade.contenteditor.widgetregistry.client;
 
 import org.opencms.acacia.client.widgets.I_CmsFormEditWidget;
+import org.opencms.acacia.client.widgets.I_CmsHasDisplayDirection;
 
 import com.google.gwt.dom.client.Document;
 import com.google.gwt.dom.client.Element;
@@ -42,7 +43,7 @@ import com.google.gwt.user.client.ui.Widget;
 /**
  * Wrapper for a native widget.<p>
  */
-public final class WidgetWrapper extends Widget implements I_CmsFormEditWidget {
+public final class WidgetWrapper extends Widget implements I_CmsFormEditWidget, I_CmsHasDisplayDirection {
 
     /** The wrapped native widget. */
     private NativeEditWidget m_nativeWidget;
@@ -73,6 +74,18 @@ public final class WidgetWrapper extends Widget implements I_CmsFormEditWidget {
     public HandlerRegistration addValueChangeHandler(ValueChangeHandler<String> handler) {
 
         return addHandler(handler, ValueChangeEvent.getType());
+    }
+
+    /**
+     * @see org.opencms.acacia.client.widgets.I_CmsHasDisplayDirection#getDisplayingDirection()
+     */
+    public Direction getDisplayingDirection() {
+
+        try {
+            return Direction.valueOf(m_nativeWidget.getDisplayingDirection());
+        } catch (Exception e) {
+            return Direction.none;
+        }
     }
 
     /**
@@ -151,6 +164,14 @@ public final class WidgetWrapper extends Widget implements I_CmsFormEditWidget {
     }
 
     /**
+     * @see org.opencms.acacia.client.widgets.I_CmsEditWidget#shouldSetDefaultWhenDisabled()
+     */
+    public boolean shouldSetDefaultWhenDisabled() {
+
+        return m_nativeWidget.shouldSetDefaultWhenDisabled();
+    }
+
+    /**
      * Fires the value change event.<p>
      */
     protected void fireChangeEvent() {
@@ -180,13 +201,13 @@ public final class WidgetWrapper extends Widget implements I_CmsFormEditWidget {
      * Initializes the native widget by setting the on change and on focus functions.<p>
      */
     private native void initNativeWidget()/*-{
-                                          var self = this;
-                                          var nativeWidget = this.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::m_nativeWidget;
-                                          nativeWidget.onChangeCommand = function() {
-                                          self.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::fireChangeEvent()();
-                                          }
-                                          nativeWidget.onFocusCommand = function() {
-                                          self.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::fireFocusEvent()();
-                                          }
-                                          }-*/;
+        var self = this;
+        var nativeWidget = this.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::m_nativeWidget;
+        nativeWidget.onChangeCommand = function() {
+            self.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::fireChangeEvent()();
+        }
+        nativeWidget.onFocusCommand = function() {
+            self.@org.opencms.ade.contenteditor.widgetregistry.client.WidgetWrapper::fireFocusEvent()();
+        }
+    }-*/;
 }

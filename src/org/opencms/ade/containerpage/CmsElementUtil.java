@@ -518,17 +518,23 @@ public class CmsElementUtil {
             return null;
         }
         boolean typeDisabled = false;
+        boolean createDisabled = false;
         if (page != null) {
 
             CmsADEConfigData config = OpenCms.getADEManager().lookupConfigurationWithCache(m_cms, page.getRootPath());
             String typeName = OpenCms.getResourceManager().getResourceType(element.getResource()).getTypeName();
-            if (!config.getActiveTypeNames().contains(typeName)) {
+            if (!config.getAddableTypeNames().contains(typeName)) {
                 typeDisabled = true;
+            }
+            CmsResourceTypeConfig typeConfig = config.getTypesByName().get(typeName);
+            if ((typeConfig == null) || typeConfig.isCreateDisabled()) {
+                createDisabled = true;
             }
         }
 
         CmsContainerElementData elementData = getBaseElementData(page, element);
-        elementData.setTypeDisabled(typeDisabled);
+        elementData.setAddDisabled(typeDisabled);
+        elementData.setCopyDisabled(createDisabled);
         CmsFormatterConfiguration formatterConfiguraton = getFormatterConfiguration(element.getResource());
         Map<String, String> contents = new HashMap<String, String>();
         if (element.isGroupContainer(m_cms)) {
@@ -697,7 +703,7 @@ public class CmsElementUtil {
             int underscorePos = entry.getKey().indexOf("_");
             if ((underscorePos >= 0) && !isSystemSetting(entry.getKey())) {
                 String prefix = entry.getKey().substring(0, underscorePos);
-                I_CmsFormatterBean dynamicFmt = adeConfig.findFormatter(prefix);
+                I_CmsFormatterBean dynamicFmt = adeConfig.findFormatter(prefix, true);
 
                 if (CmsUUID.isValidUUID(prefix)) {
                     // If we already have a formatter referenced by name, we don't need to do anything
@@ -1023,7 +1029,8 @@ public class CmsElementUtil {
             }
             result.setElementView(elementView);
         }
-        if (CmsStringUtil.isEmptyOrWhitespaceOnly(permissionInfo.getNoEditReason()) && (typeConfig == null)) {
+        if (CmsStringUtil.isEmptyOrWhitespaceOnly(permissionInfo.getNoEditReason())
+            && ((typeConfig == null) || typeConfig.isEditDisabled())) {
             String message = Messages.get().getBundle(wpLocale).key(
                 Messages.GUI_CONTAINERPAGE_EDIT_DISABLED_BY_SITEMAP_CONFIG_0);
             permissionInfo.setNoEditReason(message);

@@ -73,6 +73,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -231,6 +232,12 @@ public class CmsADEConfigData {
     /** The configuration sequence (contains the list of all sitemap configuration data beans to be used for inheritance). */
     private CmsADEConfigurationSequence m_configSequence;
 
+    /** Cache for formatters by container type. */
+    private Map<String, List<I_CmsFormatterBean>> m_formattersByContainerType = new HashMap<>();
+
+    /** Cache for formatters by display type. */
+    private Map<String, List<I_CmsFormatterBean>> m_formattersByDisplayType = new HashMap<>();
+
     /** Lazily initialized cache for formatters by JSP id. */
     private Multimap<CmsUUID, I_CmsFormatterBean> m_formattersByJspId;
 
@@ -258,7 +265,10 @@ public class CmsADEConfigData {
     private volatile ImmutableList<CmsUUID> m_sharedSettingOverrides;
 
     /** Set of names of active types.*/
-    private Set<String> m_typesActive;
+    private Set<String> m_typesAddable;
+
+    /** Cache of (active) resource type configurations by name. */
+    private Map<String, CmsResourceTypeConfig> m_typesByName;
 
     /** Type names configured in this or ancestor sitemap configurations. */
     private Set<String> m_typesInAncestors;
@@ -396,6 +406,21 @@ public class CmsADEConfigData {
      */
     public I_CmsFormatterBean findFormatter(CmsUUID id) {
 
+        return findFormatter(id, false);
+    }
+
+    /**
+     * Gets the 'best' formatter for the given ID.<p>
+     *
+     * If the formatter with the ID has a key, then the active formatter with the same key is returned.  Otherwise, the
+     * formatter matching the ID is returned. So being active and having the same key is prioritized over an exact ID match.
+     *
+     * @param id the formatter ID
+     * @param noWarn if true, disables warnings
+     * @return the best formatter the given ID
+     */
+    public I_CmsFormatterBean findFormatter(CmsUUID id, boolean noWarn) {
+
         if (id == null) {
             return null;
         }
@@ -405,13 +430,13 @@ public class CmsADEConfigData {
         I_CmsFormatterBean result = originalResult;
         if ((result != null) && (result.getKey() != null)) {
             String key = result.getKey();
-            I_CmsFormatterBean resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), key);
+            I_CmsFormatterBean resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), key, noWarn);
             if (resultForKey != null) {
                 result = resultForKey;
             } else {
                 String parentKey = getParentFormatterKey(key);
                 if (parentKey != null) {
-                    resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), parentKey);
+                    resultForKey = getFormatterAndWarnIfAmbiguous(getActiveFormattersByKey(), parentKey, noWarn);
                     if (resultForKey != null) {
                         result = resultForKey;
                     }
@@ -444,6 +469,22 @@ public class CmsADEConfigData {
      */
     public I_CmsFormatterBean findFormatter(String name) {
 
+        return findFormatter(name, false);
+    }
+
+    /**
+     * Gets the 'best' formatter for the given name.<p>
+     *
+     * The name can be either a formatter key, or a formatter UUID. If it's a key, an active formatter with that key is returned.
+     * If it's a UUID, and the formatter with that UUID has no key, it will be returned. If it does have a key, the active formatter
+     * with that key is returned (so being active and having the same key is prioritized over an exact ID match).
+     *
+     * @param name a formatter name (key or ID)
+     * @param noWarn if true, disables warnings
+     * @return the best formatter for that name, or null if no formatter could be found
+     */
+    public I_CmsFormatterBean findFormatter(String name, boolean noWarn) {
+
         if (name == null) {
             return null;
         }
@@ -456,7 +497,7 @@ public class CmsADEConfigData {
         }
 
         if (CmsUUID.isValidUUID(name)) {
-            return findFormatter(new CmsUUID(name));
+            return findFormatter(new CmsUUID(name), noWarn);
         }
 
         if (name.startsWith(CmsFormatterConfig.SCHEMA_FORMATTER_ID)) {
@@ -464,45 +505,49 @@ public class CmsADEConfigData {
         }
 
         Multimap<String, I_CmsFormatterBean> active = getActiveFormattersByKey();
-        I_CmsFormatterBean result = getFormatterAndWarnIfAmbiguous(active, name);
+        I_CmsFormatterBean result = getFormatterAndWarnIfAmbiguous(active, name, noWarn);
         if (result != null) {
             return result;
         }
 
         String parentName = getParentFormatterKey(name);
         if (parentName != null) {
-            result = getFormatterAndWarnIfAmbiguous(active, parentName);
+            result = getFormatterAndWarnIfAmbiguous(active, parentName, noWarn);
             if (result != null) {
                 return result;
             }
         }
 
-        String message1 = "No local formatter found for key '"
-            + name
-            + "' at '"
-            + getBasePath()
-            + "', trying inactive formatters";
-        LOG.warn(message1);
-        OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message1));
+        if (!noWarn) {
+            String message1 = "No local formatter found for key '"
+                + name
+                + "' at '"
+                + getBasePath()
+                + "', trying inactive formatters";
+            LOG.warn(message1);
+            OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message1));
+        }
 
         Multimap<String, I_CmsFormatterBean> all = getFormattersByKey();
-        result = getFormatterAndWarnIfAmbiguous(all, name);
+        result = getFormatterAndWarnIfAmbiguous(all, name, noWarn);
         if (result != null) {
             return result;
         }
 
         if (parentName != null) {
-            result = getFormatterAndWarnIfAmbiguous(all, parentName);
+            result = getFormatterAndWarnIfAmbiguous(all, parentName, noWarn);
             if (result != null) {
                 return result;
             }
         }
 
-        OpenCmsServlet.withRequestCache(
-            rc -> rc.addLog(
-                REQUEST_LOG_CHANNEL,
-                "warn",
-                REQ_LOG_PREFIX + "No formatter found for key '" + name + "' at '" + getBasePath() + "'"));
+        if (!noWarn) {
+            OpenCmsServlet.withRequestCache(
+                rc -> rc.addLog(
+                    REQUEST_LOG_CHANNEL,
+                    "warn",
+                    REQ_LOG_PREFIX + "No formatter found for key '" + name + "' at '" + getBasePath() + "'"));
+        }
         return null;
     }
 
@@ -525,22 +570,57 @@ public class CmsADEConfigData {
     }
 
     /**
+     * Gets the active formatters for a given container type.
+     *
+     * @param containerType a container type
+     *
+     * @return the active formatters for the container type
+     */
+    public List<I_CmsFormatterBean> getActiveFormattersWithContainerType(String containerType) {
+
+        return m_formattersByContainerType.computeIfAbsent(
+            containerType,
+            type -> Collections.unmodifiableList(
+                getActiveFormatters().values().stream().filter(
+                    formatter -> formatter.getContainerTypes().contains(type)).collect(Collectors.toList())));
+    }
+
+    /**
+     * Gets the active formatters for a given display type.
+     *
+     * @param displayType a display type
+     * @return the active formatters for the display type
+     */
+    public List<I_CmsFormatterBean> getActiveFormattersWithDisplayType(String displayType) {
+
+        return m_formattersByDisplayType.computeIfAbsent(
+            displayType,
+            type -> Collections.unmodifiableList(
+                getActiveFormatters().values().stream().filter(
+                    formatter -> Objects.equals(type, formatter.getDisplayType())).collect(Collectors.toList()))
+
+        );
+    }
+
+    /**
      * Gets the set of names of types active in this sitemap configuration.
      *
      * @return the set of type names of active types
      */
-    public Set<String> getActiveTypeNames() {
+    public Set<String> getAddableTypeNames() {
 
-        Set<String> result = m_typesActive;
+        Set<String> result = m_typesAddable;
         if (result != null) {
             return result;
         } else {
             Set<String> mutableResult = new HashSet<>();
             for (CmsResourceTypeConfig typeConfig : internalGetResourceTypes(true)) {
-                mutableResult.add(typeConfig.getTypeName());
+                if (!typeConfig.isAddDisabled()) {
+                    mutableResult.add(typeConfig.getTypeName());
+                }
             }
             result = Collections.unmodifiableSet(mutableResult);
-            m_typesActive = result;
+            m_typesAddable = result;
             return result;
         }
     }
@@ -632,6 +712,38 @@ public class CmsADEConfigData {
         } else {
             return defaultValue;
         }
+
+    }
+
+    /**
+     * Gets the active sitemap attribute editor configuration.
+     *
+     * @return the active sitemap attribute editor configuration
+     */
+    public CmsSitemapAttributeEditorConfiguration getAttributeEditorConfiguration() {
+
+        CmsUUID id = getAttributeEditorConfigurationId();
+        CmsSitemapAttributeEditorConfiguration result = m_cache.getAttributeEditorConfiguration(id);
+        if (result == null) {
+            result = CmsSitemapAttributeEditorConfiguration.EMPTY;
+        }
+        return result;
+
+    }
+
+    /**
+     * Gets the structure id of the configured sitemap attribute editor configuration.
+     *
+     * @return the structure id of the configured sitemap attribute editor configuration
+     */
+    public CmsUUID getAttributeEditorConfigurationId() {
+
+        CmsADEConfigData parent = parent();
+        CmsUUID result = m_data.getAttributeEditorConfigId();
+        if ((result == null) && (parent != null)) {
+            result = parent.getAttributeEditorConfigurationId();
+        }
+        return result;
 
     }
 
@@ -821,19 +933,15 @@ public class CmsADEConfigData {
         if (type.startsWith(CmsDetailPageInfo.FUNCTION_PREFIX)
             || ((typeConfig != null) && !typeConfig.isDetailPagesDisabled())) {
 
-            CmsDetailPageInfo defaultPage = null;
+            List<CmsDetailPageInfo> defaultPages = new ArrayList<>();
             for (CmsDetailPageInfo detailpage : getAllDetailPages(true)) {
                 if (detailpage.getType().equals(type)) {
                     result.add(detailpage);
-                } else
-                    if ((defaultPage == null) && CmsADEManager.DEFAULT_DETAILPAGE_TYPE.equals(detailpage.getType())) {
-                        defaultPage = detailpage;
-                    }
+                } else if (CmsADEManager.DEFAULT_DETAILPAGE_TYPE.equals(detailpage.getType())) {
+                    defaultPages.add(detailpage);
+                }
             }
-            if (defaultPage != null) {
-                // add default detail page last
-                result.add(defaultPage);
-            }
+            result.addAll(defaultPages);
         }
         return result;
     }
@@ -853,7 +961,7 @@ public class CmsADEConfigData {
 
         if (!getAncestorTypeNames().contains(type)) {
             // not configured anywhere for ADE
-            return SitemapDirectEditPermissions.notInSitemapConfig;
+            return SitemapDirectEditPermissions.editAndCreate;
         }
 
         CmsResourceTypeConfig typeConfig = getResourceType(type);
@@ -861,11 +969,51 @@ public class CmsADEConfigData {
             return SitemapDirectEditPermissions.none;
         }
 
+        if (typeConfig.isEnabledInLists()) {
+            return SitemapDirectEditPermissions.editAndCreate;
+        }
+
         if (typeConfig.isCreateDisabled() || typeConfig.isAddDisabled()) {
             return SitemapDirectEditPermissions.editOnly;
         }
 
         return SitemapDirectEditPermissions.all;
+    }
+
+    /**
+     * Gets the display mode for deactivated functions in the gallery dialog.
+     *
+     * @param defaultValue the default value to return if it's not set
+     * @return the display mode for deactivated types
+     */
+    public CmsGalleryDisabledTypesMode getDisabledFunctionsMode(CmsGalleryDisabledTypesMode defaultValue) {
+
+        CmsADEConfigData parentData = parent();
+        if (m_data.getGalleryDisabledFunctionsMode() != null) {
+            return m_data.getGalleryDisabledFunctionsMode();
+        } else if (parentData != null) {
+            return parentData.getDisabledFunctionsMode(defaultValue);
+        } else {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Gets the display mode for deactivated types in the gallery dialog.
+     *
+     * @param defaultValue the default value to return if it's not set
+     * @return the display mode for deactivated types
+     */
+    public CmsGalleryDisabledTypesMode getDisabledTypeMode(CmsGalleryDisabledTypesMode defaultValue) {
+
+        CmsADEConfigData parentData = parent();
+        if (m_data.getDisabledTypeMode() != null) {
+            return m_data.getDisabledTypeMode();
+        } else if (parentData != null) {
+            return parentData.getDisabledTypeMode(defaultValue);
+        } else {
+            return defaultValue;
+        }
     }
 
     /**
@@ -1061,22 +1209,6 @@ public class CmsADEConfigData {
         Map<CmsUUID, I_CmsFormatterBean> result = Maps.newHashMap(cacheState.getFormatters());
         result.keySet().removeAll(getActiveFormatters().keySet());
         return result;
-    }
-
-    /**
-     * Gets the main detail page for a specific type.<p>
-     *
-     * @param type the type name
-     *
-     * @return the main detail page for that type
-     */
-    public CmsDetailPageInfo getMainDetailPage(String type) {
-
-        List<CmsDetailPageInfo> detailPages = getDetailPagesForType(type);
-        if ((detailPages == null) || detailPages.isEmpty()) {
-            return null;
-        }
-        return detailPages.get(0);
     }
 
     /**
@@ -1350,6 +1482,25 @@ public class CmsADEConfigData {
     }
 
     /**
+     * Gets a map of the active resource type configurations, with type names as keys.
+     *
+     * @return the map of active types
+     */
+    public Map<String, CmsResourceTypeConfig> getTypesByName() {
+
+        if (m_typesByName != null) {
+            return m_typesByName;
+        }
+        Map<String, CmsResourceTypeConfig> result = new HashMap<>();
+        for (CmsResourceTypeConfig type : getResourceTypes()) {
+            result.put(type.getTypeName(), type);
+        }
+        result = Collections.unmodifiableMap(result);
+        m_typesByName = result;
+        return result;
+    }
+
+    /**
      * Gets the set of resource type names for which schema formatters can be enabled or disabled and which are not disabled in this sub-sitemap.<p>
      *
      * @return the set of types for which schema formatters are active
@@ -1482,6 +1633,11 @@ public class CmsADEConfigData {
         return m_data.isExcludeExternalDetailContents();
     }
 
+    public boolean isHideNonMatchingFunctions() {
+
+        return getDisabledFunctionsMode(CmsGalleryDisabledTypesMode.hide) == CmsGalleryDisabledTypesMode.hide;
+    }
+
     /**
      * Returns true if the subsite should be included in the site selector.
      *
@@ -1567,6 +1723,16 @@ public class CmsADEConfigData {
         } else {
             return null;
         }
+    }
+
+    /**
+     * Returns true if the sitemap attribute editor should be available in this subsite.
+     *
+     * @return true if the sitemap attribute editor dialog should be available
+     */
+    public boolean shouldShowSitemapAttributeDialog() {
+
+        return getAttributeEditorConfiguration().getAttributeDefinitions().size() > 0;
     }
 
     /**
@@ -1856,6 +2022,7 @@ public class CmsADEConfigData {
                     structureId,
                     rootPath,
                     page.getType(),
+                    page.getQualifier(),
                     iconClasses);
                 result.add(page.isInherited() ? correctedPage.copyAsInherited() : correctedPage);
             } catch (CmsException e) {
@@ -1890,26 +2057,32 @@ public class CmsADEConfigData {
      *
      * @param formatterMap the formatter multimap
      * @param name the formatter key
+     * @param noWarn if true, disables warnings
      * @return the formatter for the key (null if none are found, the first one if multiple are found)
      */
     private I_CmsFormatterBean getFormatterAndWarnIfAmbiguous(
         Multimap<String, I_CmsFormatterBean> formatterMap,
-        String name) {
+        String name,
+        boolean noWarn) {
 
         I_CmsFormatterBean result;
         result = null;
         Collection<I_CmsFormatterBean> activeForKey = formatterMap.get(name);
         if (activeForKey.size() > 0) {
             if (activeForKey.size() > 1) {
-                String labels = "" + activeForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
-                String message = "Ambiguous formatter for key '"
-                    + name
-                    + "' at '"
-                    + getBasePath()
-                    + "': found "
-                    + labels;
-                LOG.warn(message);
-                OpenCmsServlet.withRequestCache(rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
+                if (!noWarn) {
+                    String labels = ""
+                        + activeForKey.stream().map(this::getFormatterLabel).collect(Collectors.toList());
+                    String message = "Ambiguous formatter for key '"
+                        + name
+                        + "' at '"
+                        + getBasePath()
+                        + "': found "
+                        + labels;
+                    LOG.warn(message);
+                    OpenCmsServlet.withRequestCache(
+                        rc -> rc.addLog(REQUEST_LOG_CHANNEL, "warn", REQ_LOG_PREFIX + message));
+                }
             }
             result = activeForKey.iterator().next();
         }

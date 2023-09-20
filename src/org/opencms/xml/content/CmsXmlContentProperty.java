@@ -45,6 +45,7 @@ public class CmsXmlContentProperty implements Serializable {
 
     /** Type constants. */
     public enum PropType {
+
         /** Type constant string. */
         string,
         /** Type constant VFS list. */
@@ -82,7 +83,19 @@ public class CmsXmlContentProperty implements Serializable {
         parentIndividual,
 
         /** Visible only on list parent, as shared setting. */
-        parentShared
+        parentShared;
+
+        /**
+         * True if it should be visible on the element itself.
+         *
+         * @return true if visible on the element
+         **/
+        public boolean isVisibleOnElement() {
+
+            return (this == Visibility.element)
+                || (this == elementAndParentIndividual)
+                || (this == elementAndParentShared);
+        }
     }
 
     /** XML node name constants. */
@@ -107,6 +120,12 @@ public class CmsXmlContentProperty implements Serializable {
 
     /** The serialization uid. */
     private static final long serialVersionUID = -7718747702874213381L;
+
+    /** The property visibility. */
+    protected Visibility m_visibility;
+
+    /** Alias names, separated by pipes, possibly null. */
+    private String m_aliasName;
 
     /** Default value. */
     private String m_default;
@@ -138,11 +157,11 @@ public class CmsXmlContentProperty implements Serializable {
     /** The value which indicates whether the user can influence how this property is going to be inherited. */
     private String m_selectInherit;
 
+    /** newvalue:oldvalue pairs separated by pipes. */
+    private String m_translation;
+
     /** The property type. */
     private String m_type;
-
-    /** The property visibility. */
-    private Visibility m_visibility;
 
     /** The widget to use in the editor. */
     private String m_widget;
@@ -182,6 +201,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         this(
             name,
+            null,
             type,
             null, // visibility
             widget,
@@ -192,13 +212,15 @@ public class CmsXmlContentProperty implements Serializable {
             niceName,
             description,
             error,
-            preferFolder);
+            preferFolder,
+            null);
     }
 
     /**
      * Public constructor.<p>
      *
      * @param name the property name
+     * @param aliasName the alias name (can also contain multiple aliases separated by pipes)
      * @param type the property type (string|uri)
      * @param visibility the visibility of the property, used in the container page element context
      * @param widget the widget
@@ -210,9 +232,11 @@ public class CmsXmlContentProperty implements Serializable {
      * @param description  the description
      * @param error the error message
      * @param preferFolder the "prefer folder" option
+     * @param translation the value translation string (newval1:oldval1|newval2:oldval2|...)
      */
     public CmsXmlContentProperty(
         String name,
+        String aliasName,
         String type,
         Visibility visibility,
         String widget,
@@ -223,7 +247,8 @@ public class CmsXmlContentProperty implements Serializable {
         String niceName,
         String description,
         String error,
-        String preferFolder
+        String preferFolder,
+        String translation
 
     ) {
 
@@ -240,6 +265,8 @@ public class CmsXmlContentProperty implements Serializable {
         m_description = description;
         m_error = error;
         m_preferFolder = preferFolder;
+        m_aliasName = CmsStringUtil.isEmptyOrWhitespaceOnly(aliasName) ? null : aliasName;
+        m_translation = CmsStringUtil.isEmptyOrWhitespaceOnly(translation) ? null : translation;
     }
 
     /**
@@ -275,6 +302,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             m_name,
+            m_aliasName,
             m_type,
             m_visibility,
             m_widget,
@@ -285,7 +313,18 @@ public class CmsXmlContentProperty implements Serializable {
             m_niceName,
             m_description,
             m_error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
+    }
+
+    /**
+     * Gets the alias name (can also be a list of alias names separated by pipes).
+     *
+     * @return the alias name(s)
+     */
+    public String getAliasName() {
+
+        return m_aliasName;
     }
 
     /**
@@ -407,6 +446,16 @@ public class CmsXmlContentProperty implements Serializable {
     }
 
     /**
+     * Gets the value translation string, which has the form newval1:oldval1|newval2:oldval2|... .
+     *
+     * @return the value translation string
+     */
+    public String getTranslationStr() {
+
+        return m_translation;
+    }
+
+    /**
      * Returns the property type.<p>
      *
      * @return the property type
@@ -483,6 +532,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             firstNotNull(m_name, defaults.m_name),
+            firstNotNull(m_aliasName, defaults.m_aliasName),
             firstNotNull(m_type, defaults.m_type),
             firstNotNull(m_visibility, defaults.m_visibility),
             firstNotNull(m_widget, defaults.m_widget),
@@ -493,7 +543,8 @@ public class CmsXmlContentProperty implements Serializable {
             firstNotNull(m_niceName, defaults.m_niceName),
             firstNotNull(m_description, defaults.m_description),
             firstNotNull(m_error, defaults.m_error),
-            firstNotNull(m_preferFolder, defaults.m_preferFolder));
+            firstNotNull(m_preferFolder, defaults.m_preferFolder),
+            firstNotNull(m_translation, defaults.m_translation));
     }
 
     /**
@@ -506,6 +557,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             m_name,
+            m_aliasName,
             m_type,
             m_visibility,
             m_widget,
@@ -516,7 +568,8 @@ public class CmsXmlContentProperty implements Serializable {
             m_niceName,
             m_description,
             m_error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
     }
 
     /**
@@ -530,6 +583,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             m_name,
+            m_aliasName,
             m_type,
             m_visibility,
             CmsStringUtil.isEmptyOrWhitespaceOnly(m_widget) ? defaultWidget : m_widget,
@@ -540,7 +594,8 @@ public class CmsXmlContentProperty implements Serializable {
             m_niceName,
             m_description,
             m_error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
     }
 
     /**
@@ -571,6 +626,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             name,
+            m_aliasName,
             m_type,
             m_visibility,
             m_widget,
@@ -581,7 +637,8 @@ public class CmsXmlContentProperty implements Serializable {
             m_niceName,
             m_description,
             m_error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
     }
 
     /**
@@ -595,6 +652,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             m_name,
+            m_aliasName,
             m_type,
             m_visibility,
             m_widget,
@@ -605,7 +663,8 @@ public class CmsXmlContentProperty implements Serializable {
             niceName,
             m_description,
             m_error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
     }
 
     /**
@@ -621,6 +680,7 @@ public class CmsXmlContentProperty implements Serializable {
 
         return new CmsXmlContentProperty(
             m_name,
+            m_aliasName,
             m_type,
             m_visibility,
             m_widget,
@@ -631,7 +691,8 @@ public class CmsXmlContentProperty implements Serializable {
             m_niceName,
             m_description,
             error,
-            m_preferFolder);
+            m_preferFolder,
+            m_translation);
     }
 
 }

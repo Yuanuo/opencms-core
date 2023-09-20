@@ -56,6 +56,8 @@ import com.vaadin.ui.Window;
 import com.vaadin.ui.Window.CloseEvent;
 import com.vaadin.ui.Window.CloseListener;
 import com.vaadin.ui.declarative.DesignContext;
+import com.vaadin.v7.shared.ui.label.ContentMode;
+import com.vaadin.v7.ui.Label;
 
 /**
  * Basic dialog class with a content panel and button bar.<p>
@@ -80,6 +82,9 @@ public class CmsBasicDialog extends VerticalLayout {
 
     /** Serial version id. */
     private static final long serialVersionUID = 1L;
+
+    /** Maximum size of the resource list panel. */
+    private static final int RESOURCE_LIST_PANEL_MAX_SIZE = 1000;
 
     /** The window resize listener registration. */
     Registration m_resizeListenerRegistration;
@@ -181,17 +186,19 @@ public class CmsBasicDialog extends VerticalLayout {
         window.setModal(true);
         window.setClosable(true);
         int pageWidth = Page.getCurrent().getBrowserWindowWidth();
-        if (((width == DialogWidth.wide) && (pageWidth < 810))
-            || ((width == DialogWidth.narrow) && (pageWidth < 610))) {
-            // in case the available page width does not allow the desired width, use max
-            width = DialogWidth.max;
-        }
-        if (width == DialogWidth.max) {
-            // in case max width would result in a width very close to wide or narrow, use their static width instead of relative width
-            if ((pageWidth >= 610) && (pageWidth < 670)) {
-                width = DialogWidth.narrow;
-            } else if ((pageWidth >= 810) && (pageWidth < 890)) {
-                width = DialogWidth.wide;
+        if (pageWidth != 0) { // page width 0 can happen for first dialog opened in embedded mode in page editor
+            if (((width == DialogWidth.wide) && (pageWidth < 810))
+                || ((width == DialogWidth.narrow) && (pageWidth < 610))) {
+                // in case the available page width does not allow the desired width, use max
+                width = DialogWidth.max;
+            }
+            if (width == DialogWidth.max) {
+                // in case max width would result in a width very close to wide or narrow, use their static width instead of relative width
+                if ((pageWidth >= 610) && (pageWidth < 670)) {
+                    width = DialogWidth.narrow;
+                } else if ((pageWidth >= 810) && (pageWidth < 890)) {
+                    width = DialogWidth.wide;
+                }
             }
         }
         switch (width) {
@@ -293,8 +300,21 @@ public class CmsBasicDialog extends VerticalLayout {
         resourcePanel.addStyleName(OpenCmsTheme.REDUCED_SPACING);
         resourcePanel.setSpacing(true);
         resourcePanel.setMargin(true);
-        for (CmsResource resource : resources) {
-            resourcePanel.addComponent(new CmsResourceInfo(resource));
+        if (resources.size() <= RESOURCE_LIST_PANEL_MAX_SIZE) {
+            for (CmsResource resource : resources) {
+                resourcePanel.addComponent(new CmsResourceInfo(resource));
+            }
+        } else {
+            String message = CmsVaadinUtils.getMessageText(
+                Messages.get(),
+                Messages.GUI_TOO_MANY_RESOURCES_2,
+                String.valueOf(resources.size()),
+                String.valueOf(RESOURCE_LIST_PANEL_MAX_SIZE));
+            Label label = new Label(message);
+            label.setContentMode(ContentMode.HTML);
+            VerticalLayout verticalLayout = new VerticalLayout();
+            verticalLayout.addComponent(label);
+            resourcePanel.addComponent(verticalLayout);
         }
         return result;
     }

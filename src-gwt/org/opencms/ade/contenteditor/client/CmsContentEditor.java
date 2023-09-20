@@ -709,6 +709,7 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param mainLocale the main language to copy in case the element language node does not exist yet
      * @param editHandlerData the data for the edit handler, if one is used to create a new content; null otherwise
      * @param settingPresets the presets for container element settings
+     * @param editorStylesheet the path for the editor style sheet (may be null)
      * @param callback the callback
      */
     public void loadInitialDefinition(
@@ -720,6 +721,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         final String mainLocale,
         final CmsEditHandlerData editHandlerData,
         Map<String, String> settingPresets,
+        String editorStylesheet,
         final I_CmsSimpleCallback<CmsContentDefinition> callback) {
 
         CmsRpcAction<CmsContentDefinition> action = new CmsRpcAction<CmsContentDefinition>() {
@@ -739,6 +741,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                     mode,
                     editHandlerData,
                     settingPresets,
+                    editorStylesheet,
                     this);
             }
 
@@ -857,6 +860,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                         mainLocale,
                         editHandlerData,
                         context.getSettingPresets(),
+                        context.getEditorStylesheet(),
                         new I_CmsSimpleCallback<CmsContentDefinition>() {
 
                             public void execute(CmsContentDefinition contentDefinition) {
@@ -920,6 +924,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                         mainLocale,
                         null,
                         Collections.emptyMap(),
+                        context.getEditorStylesheet(),
                         new I_CmsSimpleCallback<CmsContentDefinition>() {
 
                             public void execute(CmsContentDefinition contentDefinition) {
@@ -1996,6 +2001,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         if (locale.equals(m_locale)) {
             return;
         }
+        final Integer oldTabIndex = getTabIndex();
         m_locale = locale;
         m_basePanel.clear();
         destroyForm(false);
@@ -2013,6 +2019,11 @@ public final class CmsContentEditor extends CmsEditorBase {
 
                     setContentDefinition(contentDefinition);
                     renderFormContent();
+                    if (oldTabIndex != null) {
+                        if (oldTabIndex.intValue() < getFormTabs().getTabCount()) {
+                            getFormTabs().selectTab(oldTabIndex.intValue());
+                        }
+                    }
                     setChanged();
 
                 }
@@ -2024,7 +2035,13 @@ public final class CmsContentEditor extends CmsEditorBase {
 
                     setContentDefinition(contentDefinition);
                     renderFormContent();
+                    if (oldTabIndex != null) {
+                        if (oldTabIndex.intValue() < getFormTabs().getTabCount()) {
+                            getFormTabs().selectTab(oldTabIndex.intValue());
+                        }
+                    }
                 }
+
             });
         }
     }
@@ -2229,6 +2246,19 @@ public final class CmsContentEditor extends CmsEditorBase {
     }
 
     /**
+     * Returns the selected tab index, or null if there are no tabs.
+     *
+     * @return the selected tab index or null
+     */
+    private Integer getTabIndex() {
+
+        if (getFormTabs() != null) {
+            return Integer.valueOf(getFormTabs().getSelectedIndex());
+        }
+        return null;
+    }
+
+    /**
      * Initializes the window closing handler to ensure the resource will be unlocked when leaving the editor.<p>
      */
     private void initClosingHandler() {
@@ -2323,6 +2353,7 @@ public final class CmsContentEditor extends CmsEditorBase {
             });
             m_toolbar.insertRight(m_copyLocaleButton, 3);
         }
+
     }
 
     /**
@@ -2561,12 +2592,12 @@ public final class CmsContentEditor extends CmsEditorBase {
                                         previousAttribute.getSimpleValues().get(i))
                                         && previousAttribute.getSimpleValues().get(i).equals(
                                             targetAttribute.getSimpleValues().get(i))) {
-                                                changeSimpleValue(
-                                                    attributeName,
-                                                    i,
-                                                    updatedAttribute.getSimpleValues().get(i),
-                                                    parentPathElements);
-                                            }
+                                        changeSimpleValue(
+                                            attributeName,
+                                            i,
+                                            updatedAttribute.getSimpleValues().get(i),
+                                            parentPathElements);
+                                    }
                                 }
                             } else {
                                 // values have been removed
@@ -2577,12 +2608,12 @@ public final class CmsContentEditor extends CmsEditorBase {
                                         previousAttribute.getSimpleValues().get(i))
                                         && previousAttribute.getSimpleValues().get(i).equals(
                                             targetAttribute.getSimpleValues().get(i))) {
-                                                changeSimpleValue(
-                                                    attributeName,
-                                                    i,
-                                                    updatedAttribute.getSimpleValues().get(i),
-                                                    parentPathElements);
-                                            }
+                                        changeSimpleValue(
+                                            attributeName,
+                                            i,
+                                            updatedAttribute.getSimpleValues().get(i),
+                                            parentPathElements);
+                                    }
                                 }
                             }
                         }

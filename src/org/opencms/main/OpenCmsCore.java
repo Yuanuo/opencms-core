@@ -29,6 +29,7 @@ package org.opencms.main;
 
 import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.ade.containerpage.CmsContainerpageService;
+import org.opencms.cache.CmsVfsMemoryObjectCache;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.configuration.CmsConfigurationManager;
 import org.opencms.configuration.CmsImportExportConfiguration;
@@ -105,6 +106,7 @@ import org.opencms.security.I_CmsAuthorizationHandler;
 import org.opencms.security.I_CmsCredentialsResolver;
 import org.opencms.security.I_CmsPasswordHandler;
 import org.opencms.security.I_CmsValidationHandler;
+import org.opencms.security.twofactor.CmsTwoFactorAuthenticationHandler;
 import org.opencms.site.CmsSite;
 import org.opencms.site.CmsSiteManagerImpl;
 import org.opencms.site.CmsSiteMatcher;
@@ -345,10 +347,14 @@ public final class OpenCmsCore {
     /** The template context manager. */
     private CmsTemplateContextManager m_templateContextManager;
 
-    private LinkedHashMap m_textEncryptions;
+    /** The text encryptions. */
+    private LinkedHashMap<String, I_CmsTextEncryption> m_textEncryptions;
 
     /** The thread store. */
     private CmsThreadStore m_threadStore;
+
+    /** The 2FA handler. */
+    private CmsTwoFactorAuthenticationHandler m_twoFactorAuthenticationHandler;
 
     /** The user data request manager. */
     private CmsUserDataRequestManager m_userDataRequestManager;
@@ -370,6 +376,9 @@ public final class OpenCmsCore {
 
     /** The XML content type manager that contains the initialized XML content types. */
     private CmsXmlContentTypeManager m_xmlContentTypeManager;
+
+    /** The default memory object cache instance. */
+    private CmsVfsMemoryObjectCache m_vfsMemoryObjectCache;
 
     /**
      * Protected constructor that will initialize the singleton OpenCms instance
@@ -485,56 +494,17 @@ public final class OpenCmsCore {
     }
 
     /**
-     * Gets a string containing all keys and variations currently in the flex cache, for debug purposes.<p>
+     * Gets the default CmsVfsMemoryCache instance.
      *
-     * @return a debug information string with the flex cache data
+     * @return the default cache instance
      */
-    public String getFlexCacheKeyDump() {
+    public CmsVfsMemoryObjectCache getVfsMemoryObjectCache() {
 
-        if (m_flexCache != null) {
-            StringBuffer buffer = new StringBuffer();
-            m_flexCache.dumpKeys(buffer);
-            return buffer.toString();
-        } else {
-            return null;
+        if (m_vfsMemoryObjectCache == null) {
+            m_vfsMemoryObjectCache = new CmsVfsMemoryObjectCache();
         }
-    }
+        return m_vfsMemoryObjectCache;
 
-    /**
-     * Gets the LetsEncrypt configuration.<p>
-     *
-     * @return the LetsEncrypt configuration
-     */
-    public CmsLetsEncryptConfiguration getLetsEncryptConfig() {
-
-        return m_letsEncryptConfig;
-    }
-
-    /**
-     * Handler for built-in AJAX services that don't belong anywhere else and don't deserve their own request handler.
-     *
-     * @param remainingPath the remainder of the path after /handleBuiltinService
-     * @param req the current request
-     * @param res the current response
-     *
-     * @throws ServletException if something goes wrong
-     */
-    public void invokeBuiltinService(String remainingPath, HttpServletRequest req, HttpServletResponse res)
-    throws ServletException {
-
-        try {
-            CmsObject cms = initCmsObject(req, res);
-            if (CmsGwtConstants.HANDLER_UNLOCK_PAGE.equals(remainingPath)) {
-                CmsContainerpageService.unlockPage(cms, req, res);
-            } else if (CmsGwtConstants.HANDLER_UPDATE_SESSION.equals(remainingPath)) {
-                // Count this as a heartbeat request, because it's not caused by user activity
-                boolean isHeartbeatRequest = true;
-                OpenCms.getSessionManager().updateSessionInfo(cms, req, isHeartbeatRequest);
-            }
-        } catch (Exception e) {
-            LOG.error(e.getLocalizedMessage(), e);
-            throw new ServletException(e);
-        }
     }
 
     /**
@@ -709,6 +679,22 @@ public final class OpenCmsCore {
     }
 
     /**
+     * Gets a string containing all keys and variations currently in the flex cache, for debug purposes.<p>
+     *
+     * @return a debug information string with the flex cache data
+     */
+    protected String getFlexCacheKeyDump() {
+
+        if (m_flexCache != null) {
+            StringBuffer buffer = new StringBuffer();
+            m_flexCache.dumpKeys(buffer);
+            return buffer.toString();
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Returns the initialized import/export manager,
      * which contains information about the Cms import/export.<p>
      *
@@ -717,6 +703,16 @@ public final class OpenCmsCore {
     protected CmsImportExportManager getImportExportManager() {
 
         return m_importExportManager;
+    }
+
+    /**
+     * Gets the LetsEncrypt configuration.<p>
+     *
+     * @return the LetsEncrypt configuration
+     */
+    protected CmsLetsEncryptConfiguration getLetsEncryptConfig() {
+
+        return m_letsEncryptConfig;
     }
 
     /**
@@ -980,6 +976,11 @@ public final class OpenCmsCore {
 
     }
 
+    /**
+     * Gets the text encryptions.
+     *
+     * @return the text encryptions
+     */
     protected Map<String, I_CmsTextEncryption> getTextEncryptions() {
 
         return m_textEncryptions;
@@ -993,6 +994,16 @@ public final class OpenCmsCore {
     protected CmsThreadStore getThreadStore() {
 
         return m_threadStore;
+    }
+
+    /**
+     * Gets the two-factor authentication handler.
+     *
+     * @return the two-factor authentication handler
+     */
+    protected CmsTwoFactorAuthenticationHandler getTwoFactorAuthenticationHandler() {
+
+        return m_twoFactorAuthenticationHandler;
     }
 
     /**
@@ -1828,6 +1839,10 @@ public final class OpenCmsCore {
                 m_textEncryptions.put(encryption.getName(), encryption);
             }
 
+            m_twoFactorAuthenticationHandler = new CmsTwoFactorAuthenticationHandler(
+                OpenCms.initCmsObject(adminCms),
+                systemConfiguration.getTwoFactorAuthenticationConfig());
+
         } catch (CmsException e) {
             throw new CmsInitException(Messages.get().container(Messages.ERR_CRITICAL_INIT_MANAGERS_0), e);
         }
@@ -2063,6 +2078,40 @@ public final class OpenCmsCore {
                 CmsLog.INIT.info(Messages.get().getBundle().key(Messages.INIT_LINE_0));
                 CmsLog.INIT.info(Messages.get().getBundle().key(Messages.INIT_DOT_0));
             }
+        }
+    }
+
+    /**
+     * Handler for built-in AJAX services that don't belong anywhere else and don't deserve their own request handler.
+     *
+     * @param remainingPath the remainder of the path after /handleBuiltinService
+     * @param req the current request
+     * @param res the current response
+     *
+     * @throws ServletException if something goes wrong
+     */
+    protected void invokeBuiltinService(String remainingPath, HttpServletRequest req, HttpServletResponse res)
+    throws ServletException {
+
+        try {
+            CmsObject cms = initCmsObject(req, res);
+            if (CmsGwtConstants.HANDLER_UNLOCK_PAGE.equals(remainingPath)) {
+                CmsContainerpageService.unlockPage(cms, req, res);
+            } else if (CmsGwtConstants.HANDLER_UPDATE_SESSION.equals(remainingPath)) {
+                // Count this as a heartbeat request, because it's not caused by user activity
+                boolean isHeartbeatRequest = true;
+                OpenCms.getSessionManager().updateSessionInfo(cms, req, isHeartbeatRequest);
+            } else if (remainingPath.startsWith(CmsGwtConstants.UNLOCK_FILE_PREFIX)) {
+                String idStr = remainingPath.substring(CmsGwtConstants.UNLOCK_FILE_PREFIX.length());
+                try {
+                    cms.unlockResource(cms.readResource(new CmsUUID(idStr), CmsResourceFilter.ALL));
+                } catch (Exception e) {
+                    LOG.debug(e.getLocalizedMessage(), e);
+                }
+            }
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+            throw new ServletException(e);
         }
     }
 
@@ -2934,10 +2983,10 @@ public final class OpenCmsCore {
             params = "__loginform=true";
         } else if (!httpAuthenticationSettings.useBrowserBasedHttpAuthentication()
             && CmsStringUtil.isNotEmpty(httpAuthenticationSettings.getFormBasedHttpAuthenticationUri())) {
-                // login form property value not set, but form login set in configuration
-                // build a redirect URL to the default login form URI configured in opencms.properties
-                loginFormURL = httpAuthenticationSettings.getFormBasedHttpAuthenticationUri();
-            }
+            // login form property value not set, but form login set in configuration
+            // build a redirect URL to the default login form URI configured in opencms.properties
+            loginFormURL = httpAuthenticationSettings.getFormBasedHttpAuthenticationUri();
+        }
 
         String callbackURL = CmsRequestUtil.encodeParamsWithUri(path, req);
         if (loginFormURL != null) {

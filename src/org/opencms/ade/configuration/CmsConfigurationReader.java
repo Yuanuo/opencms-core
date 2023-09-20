@@ -139,6 +139,12 @@ public class CmsConfigurationReader {
     /** The Attribute node name. */
     public static final String N_ATTRIBUTE = "Attribute";
 
+    /** Node name for the attribute editor configuration reference. */
+    public static final String N_ATTRIBUTE_EDITOR_CONFIG = "AttributeEditorConfig";
+
+    /** The CopyInModels node name. */
+    public static final String N_COPY_IN_MODELS = "CopyInModels";
+
     /** The create content locally node name. */
     public static final String N_CREATE_CONTENTS_LOCALLY = "CreateContentsLocally";
 
@@ -154,14 +160,14 @@ public class CmsConfigurationReader {
     /** The detail pages disabled node name. */
     public static final String N_DETAIL_PAGES_DISABLED = "DetailPagesDisabled";
 
-    /** The SharedSettingOverride node name. */
-    public static final String N_SHARED_SETTING_OVERRIDE = "SharedSettingOverride";
-
-    /** The RemoveAllSharedSettingOverrides node name. */
-    public static final String N_REMOVE_ALL_SHARED_SETTING_OVERRIDES = "RemoveAllSharedSettingOverrides";
-
     /** The disabled node name. */
     public static final String N_DISABLED = "Disabled";
+
+    /** The DisabledFunctionsMode node name. */
+    public static final String N_DISABLED_FUNCTIONS_MODE = "DisabledFunctionsMode";
+
+    /** The DisabledTypesMode node name. */
+    public static final String N_DISABLED_TYPES_MODE = "DisabledTypesMode";
 
     /** The discard model pages node name. */
     public static final String N_DISCARD_MODEL_PAGES = "DiscardModelPages";
@@ -202,6 +208,9 @@ public class CmsConfigurationReader {
     /** The 'include in site selector' node name. */
     public static final String N_INCLUDE_IN_SITE_SELECTOR = "IncludeInSiteSelector";
 
+    /** The IncludeName node name. */
+    public static final String N_INCLUDE_NAME = "IncludeName";
+
     /** The is default node name. */
     public static final String N_IS_DEFAULT = "IsDefault";
 
@@ -241,6 +250,9 @@ public class CmsConfigurationReader {
     /** The page node name. */
     public static final String N_PAGE = "Page";
 
+    /** The PageRelative node name. */
+    public static final String N_PAGE_RELATIVE = "PageRelative";
+
     /** The folder path node name. */
     public static final String N_PATH = "Path";
 
@@ -259,6 +271,9 @@ public class CmsConfigurationReader {
     /** The property name node name. */
     public static final String N_PROPERTY_NAME = "PropertyName";
 
+    /** XML node name. */
+    public static final String N_PROPERTY_NAME_ALIAS = "PropertyNameAlias";
+
     /** Node name for the "Remove all formatters"-option. */
     public static final String N_REMOVE_ALL_FORMATTERS = "RemoveAllFormatters";
 
@@ -267,6 +282,9 @@ public class CmsConfigurationReader {
 
     /** The RemoveAllPlugins node name. */
     public static final String N_REMOVE_ALL_PLUGINS = "RemoveAllPlugins";
+
+    /** The RemoveAllSharedSettingOverrides node name. */
+    public static final String N_REMOVE_ALL_SHARED_SETTING_OVERRIDES = "RemoveAllSharedSettingOverrides";
 
     /** Node name for removed formatters. */
     public static final String N_REMOVE_FORMATTER = "RemoveFormatter";
@@ -292,6 +310,12 @@ public class CmsConfigurationReader {
     /** The rule type node name. */
     public static final String N_RULE_TYPE = "RuleType";
 
+    /** The SharedSettingOverride node name. */
+    public static final String N_SHARED_SETTING_OVERRIDE = "SharedSettingOverride";
+
+    /** The ShowInDefaultView node name. */
+    public static final String N_SHOW_IN_DEFAULT_VIEW = "ShowInDefaultView";
+
     /** The type node name. */
     public static final String N_TYPE = "Type";
 
@@ -306,6 +330,9 @@ public class CmsConfigurationReader {
 
     /** The Value node name. */
     public static final String N_VALUE = "Value";
+
+    /** XML node name. */
+    public static final String N_VALUE_TRANSLATION = "ValueTranslation";
 
     /** The widget node name. */
     public static final String N_VISIBILITY = "Visibility";
@@ -322,20 +349,8 @@ public class CmsConfigurationReader {
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsConfigurationReader.class);
 
-    /** The CopyInModels node name. */
-    private static final String N_COPY_IN_MODELS = "CopyInModels";
-
     /** The ElementDeleteMode node name. */
     private static final String N_ELEMENT_DELETE_MODE = "ElementDeleteMode";
-
-    /** The IncludeName node name. */
-    private static final String N_INCLUDE_NAME = "IncludeName";
-
-    /** The PageRelative node name. */
-    private static final String N_PAGE_RELATIVE = "PageRelative";
-
-    /** The ShowInDefaultView node name. */
-    private static final String N_SHOW_IN_DEFAULT_VIEW = "ShowInDefaultView";
 
     /** The CMS context used for reading the configuration data. */
     private CmsObject m_cms;
@@ -402,6 +417,8 @@ public class CmsConfigurationReader {
         String niceName = getString(cms, field.getSubValue(N_DISPLAY_NAME));
         String description = getString(cms, field.getSubValue(N_DESCRIPTION));
         String preferFolder = getString(cms, field.getSubValue(N_PREFER_FOLDER));
+        String aliasName = getString(cms, field.getSubValue(N_PROPERTY_NAME_ALIAS));
+        String valueTranslations = getString(cms, field.getSubValue(N_VALUE_TRANSLATION));
 
         String disabledStr = getString(cms, field.getSubValue(N_DISABLED));
         boolean disabled = ((disabledStr != null) && Boolean.parseBoolean(disabledStr));
@@ -430,6 +447,7 @@ public class CmsConfigurationReader {
         }
         CmsXmlContentProperty prop = new CmsXmlContentProperty(
             name,
+            aliasName,
             "string",
             visibility,
             widget,
@@ -440,7 +458,8 @@ public class CmsConfigurationReader {
             niceName,
             description,
             error,
-            preferFolder).withIncludeName(includeName);
+            preferFolder,
+            valueTranslations).withIncludeName(includeName);
         // since these are real properties, using type vfslist makes no sense, so we always use the "string" type
         CmsPropertyConfig propConfig = new CmsPropertyConfig(prop, disabled, order);
         return propConfig;
@@ -607,6 +626,18 @@ public class CmsConfigurationReader {
         boolean exludeExternalDetailContents = getBoolean(root, N_EXCLUDE_EXTERNAL_DETAIL_CONTENTS);
         boolean includeInSiteSelector = getBoolean(root, N_INCLUDE_IN_SITE_SELECTOR);
 
+        String galleryDisabledTypesStr = getString(root.getSubValue(N_DISABLED_TYPES_MODE));
+        CmsGalleryDisabledTypesMode galleryDisabledTypesMode = null;
+        if (galleryDisabledTypesStr != null) {
+            galleryDisabledTypesMode = CmsGalleryDisabledTypesMode.valueOf(galleryDisabledTypesStr);
+        }
+
+        String galleryDisabledFunctionsStr = getString(root.getSubValue(N_DISABLED_FUNCTIONS_MODE));
+        CmsGalleryDisabledTypesMode galleryDisabledFunctionsMode = null;
+        if (galleryDisabledFunctionsStr != null) {
+            galleryDisabledFunctionsMode = CmsGalleryDisabledTypesMode.valueOf(galleryDisabledFunctionsStr);
+        }
+
         I_CmsXmlContentValueLocation typeOrderingLoc = root.getSubValue(N_TYPE_ORDERING_MODE);
         CmsTypeOrderingMode typeOrderingMode = null;
         if (typeOrderingLoc != null) {
@@ -638,6 +669,12 @@ public class CmsConfigurationReader {
             attributes.put(key, value);
         }
 
+        I_CmsXmlContentValueLocation attributeEditorConfigLoc = root.getSubValue(N_ATTRIBUTE_EDITOR_CONFIG);
+        CmsUUID attributeEditorConfigId = null;
+        if (attributeEditorConfigLoc != null) {
+            attributeEditorConfigId = attributeEditorConfigLoc.asId(m_cms);
+        }
+
         CmsAddContentRestriction addContentRestriction = CmsAddContentRestriction.read(
             m_cms,
             root,
@@ -650,6 +687,8 @@ public class CmsConfigurationReader {
             basePath,
             masterConfigIds,
             m_resourceTypeConfigs,
+            galleryDisabledTypesMode,
+            galleryDisabledFunctionsMode,
             discardInheritedTypes,
             m_propertyConfigs,
             discardPropertiesMode,
@@ -673,6 +712,7 @@ public class CmsConfigurationReader {
             addContentRestriction,
             sharedSettingOverride,
             removeSharedSettingOverrides,
+            attributeEditorConfigId,
             attributes);
         return result;
     }
@@ -804,14 +844,28 @@ public class CmsConfigurationReader {
         boolean disabled = false;
         boolean addDisabled = false;
         boolean createDisabled = false;
+        boolean editDisabled = false;
+        boolean listsOnly = false;
         String disabledStr = disabledLoc == null ? null : disabledLoc.asString(m_cms);
-        if ((disabledStr != null) && "add".equalsIgnoreCase(disabledStr.trim())) {
-            addDisabled = true;
-        } else if ((disabledStr != null) && "create".equalsIgnoreCase(disabledStr.trim())) {
-            createDisabled = true;
+        boolean availabilityNotSet = false;
+        if (disabledStr != null) {
+            if ("add".equalsIgnoreCase(disabledStr.trim())) {
+                addDisabled = true;
+            } else if ("create".equalsIgnoreCase(disabledStr.trim())) {
+                createDisabled = true;
+            } else if ("createOrEdit".equalsIgnoreCase(disabledStr.trim())) {
+                createDisabled = true;
+                editDisabled = true;
+            } else if ("listsOnly".equalsIgnoreCase(disabledStr.trim())) {
+                listsOnly = true;
+                addDisabled = true;
+            } else {
+                disabled = Boolean.parseBoolean(disabledStr);
+            }
         } else {
-            disabled = Boolean.parseBoolean(disabledStr);
+            availabilityNotSet = true;
         }
+
         I_CmsXmlContentValueLocation namePatternLoc = node.getSubValue(N_NAME_PATTERN);
         String namePattern = null;
         if (namePatternLoc != null) {
@@ -912,6 +966,9 @@ public class CmsConfigurationReader {
             detailPagesDisabled,
             addDisabled,
             createDisabled,
+            editDisabled,
+            listsOnly,
+            availabilityNotSet,
             elementView,
             localization,
             showInDefaultView,
@@ -1012,6 +1069,12 @@ public class CmsConfigurationReader {
 
         I_CmsXmlContentValueLocation pageLoc = node.getSubValue(N_PAGE);
         String typeName = getString(node.getSubValue(N_TYPE));
+        int qualifierPos = typeName.indexOf(CmsDetailPageInfo.QUALIFIER_SEPARATOR);
+        String qualifier = null;
+        if (qualifierPos != -1) {
+            qualifier = typeName.substring(qualifierPos + 1);
+            typeName = typeName.substring(0, qualifierPos);
+        }
         CmsXmlVfsFileValue detailPageValue = (CmsXmlVfsFileValue)pageLoc.getValue();
         CmsLink uncheckedLink = detailPageValue.getUncheckedLink();
         if (uncheckedLink == null) {
@@ -1032,7 +1095,7 @@ public class CmsConfigurationReader {
             iconClasses = CmsIconUtil.getIconClasses(typeName, null, false);
         }
 
-        CmsDetailPageInfo detailPage = new CmsDetailPageInfo(structureId, page, typeName, iconClasses);
+        CmsDetailPageInfo detailPage = new CmsDetailPageInfo(structureId, page, typeName, qualifier, iconClasses);
         m_detailPageConfigs.add(detailPage);
 
     }

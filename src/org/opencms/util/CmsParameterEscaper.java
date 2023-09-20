@@ -54,14 +54,29 @@ import org.owasp.validator.html.ScanException;
  */
 public class CmsParameterEscaper {
 
-    /** The logger instance for this class. */
-    private static final Log LOG = CmsLog.getLog(CmsParameterEscaper.class);
-
     /** The file name of the default policy. */
     public static final String DEFAULT_POLICY = "antisamy-opencms.xml";
 
     /** The default policy, which is used when no policy path is given. */
     protected static Policy defaultPolicy;
+
+    /** The logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsParameterEscaper.class);
+
+    /** The AntiSamy instance for cleaning HTML. */
+    private AntiSamy m_antiSamy;
+
+    /** The names of parameters which need to be HTML-cleaned. */
+    private Set<String> m_cleanHtml = new HashSet<String>();
+
+    /** The dummy value to replace invalid values with (if this is set, it replaces XML escaping). */
+    private String m_dummyValue;
+
+    /** Set of parameter names which should still replaced even if the dummy value is set. */
+    private Set<String> m_escapeInvalid = new HashSet<>();
+
+    /** The names of parameters which shouldn't be escaped. */
+    private Set<String> m_exceptions = new HashSet<String>();
 
     static {
         try {
@@ -75,15 +90,6 @@ public class CmsParameterEscaper {
             LOG.error(e.getLocalizedMessage(), e);
         }
     }
-
-    /** The names of parameters which shouldn't be escaped. */
-    private Set<String> m_exceptions = new HashSet<String>();
-
-    /** The names of parameters which need to be HTML-cleaned. */
-    private Set<String> m_cleanHtml = new HashSet<String>();
-
-    /** The AntiSamy instance for cleaning HTML. */
-    private AntiSamy m_antiSamy;
 
     /**
      * Helper method for reading an AntiSamy policy file from the VFS.<p>
@@ -163,23 +169,23 @@ public class CmsParameterEscaper {
      * Escapes a single parameter value.<p>
      *
      * @param name the name of the parameter
-     * @param html the value of the parameter
+     * @param value the value of the parameter
      *
      * @return the escaped parameter value
      */
-    public String escape(String name, String html) {
+    public String escape(String name, String value) {
 
-        if (html == null) {
+        if (value == null) {
             return null;
         }
         if (m_exceptions.contains(name)) {
-            return html;
+            return value;
         }
-        LOG.info("Escaping parameter '" + name + "' with value '" + html + "'");
+        LOG.info("Escaping parameter '" + name + "' with value '" + value + "'");
         if (m_cleanHtml.contains(name)) {
-            return filterAntiSamy(html);
+            return filterAntiSamy(name, value);
         }
-        return CmsEncoder.escapeXml(html);
+        return escapeSimple(name, value);
     }
 
     /**
@@ -202,9 +208,9 @@ public class CmsParameterEscaper {
         String[] result = new String[values.length];
         for (int i = 0; i < values.length; i++) {
             if (cleanHtml) {
-                result[i] = filterAntiSamy(values[i]);
+                result[i] = filterAntiSamy(name, values[i]);
             } else {
-                result[i] = CmsEncoder.escapeXml(values[i]);
+                result[i] = escapeSimple(name, values[i]);
             }
         }
         return result;
@@ -213,15 +219,16 @@ public class CmsParameterEscaper {
     /**
      * Filters HTML input using the internal AntiSamy instance.<p>
      *
+     * @param name the parameter name
      * @param html the HTML to filter
      *
      * @return the filtered HTML
      */
-    public String filterAntiSamy(String html) {
+    public String filterAntiSamy(String name, String html) {
 
         if (m_antiSamy == null) {
-            LOG.warn("Antisamy policy invalid, using escapeXml as a fallback");
-            return CmsEncoder.escapeXml(html);
+            LOG.warn("Antisamy policy invalid, using simple escaping as a fallback");
+            return escapeSimple(name, html);
         }
         try {
             CleanResults results = m_antiSamy.scan(html);
@@ -234,11 +241,33 @@ public class CmsParameterEscaper {
             return results.getCleanHTML();
         } catch (PolicyException e) {
             LOG.error(e.getLocalizedMessage(), e);
-            return CmsEncoder.escapeXml(html);
+            return escapeSimple(name, html);
         } catch (ScanException e) {
             LOG.error(e.getLocalizedMessage(), e);
-            return CmsEncoder.escapeXml(html);
+            return escapeSimple(name, html);
         }
+    }
+
+    /**
+     * Sets the dummy value.<p>
+     *
+     * If the dummy value is set, then values which would otherwise be XML-escaped will be replaced with the dummy value instead.
+     *
+     * @param dummyValue the new value
+     */
+    public void setDummyValue(String dummyValue) {
+
+        m_dummyValue = dummyValue;
+    }
+
+    /**
+     * Sets the parameters which should be escaped even if the dummy value is set.
+     *
+     * @param escapeInvalidList the collection of parameters which should be escaped even if the dummy value is set
+     */
+    public void setEscapeInvalid(Collection<String> escapeInvalidList) {
+
+        m_escapeInvalid = new HashSet<>(escapeInvalidList);
     }
 
     /**
@@ -249,6 +278,23 @@ public class CmsParameterEscaper {
     public void setExceptions(Collection<String> exceptions) {
 
         m_exceptions = new HashSet<String>(exceptions);
+    }
+
+    /**
+     * Default escape function that doesn't do HTML filtering.
+     * @param name the parameter name
+     * @param value the parameter value
+     *
+     * @return the escaped value
+     */
+    protected String escapeSimple(String name, String value) {
+
+        String result = CmsEncoder.escapeXml(value);
+        if ((m_dummyValue != null) && !result.equals(value) && !m_escapeInvalid.contains(name)) {
+            return name + "_" + m_dummyValue;
+        } else {
+            return result;
+        }
     }
 
 }

@@ -403,12 +403,11 @@ public class CmsUploadPropertyDialog {
 
         m_uploadPropertyPanel = new CmsUploadPropertyPanel(this, m_dialogData, m_panelData);
         m_dialogContent.setWidget(m_uploadPropertyPanel);
-        m_frameDialog.setWidth(960);
+        m_frameDialog.setWidth(975);
         if (!m_frameDialog.isShowing()) {
             m_frameDialog.show();
             m_dialogContent.onResizeDescendant();
         }
-        m_uploadPropertyPanel.truncate("POST_UPLOAD_DIALOG", 955);
     }
 
     /**

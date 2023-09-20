@@ -34,7 +34,9 @@ import org.opencms.ui.components.CmsBasicDialog.DialogWidth;
 import org.opencms.util.CmsUUID;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import com.vaadin.ui.Component;
 import com.vaadin.ui.Window;
@@ -60,6 +62,9 @@ public interface I_CmsDialogContext {
         /** The sitemap toolbar context. */
         sitemapToolbar
     }
+
+    /** Request context attribute used to pass the sitemap configuration to sitemap context menu items. */
+    public static final String ATTR_SITEMAP_CONFIG_RESOURCE = "sitemap_config_resource";
 
     /**
      * Signals an error which occurred in the dialog.<p>
@@ -119,6 +124,16 @@ public interface I_CmsDialogContext {
      * @return the context type
      */
     ContextType getContextType();
+
+    /**
+     * Gets additional parameters.
+     *
+     * @return the map of additional parameters
+     */
+    default Map<String, String> getParameters() {
+
+        return Collections.emptyMap();
+    }
 
     /**
      * Gets the list of resources for which the dialog should be opened.<p>

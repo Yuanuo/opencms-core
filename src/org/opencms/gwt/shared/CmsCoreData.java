@@ -254,6 +254,9 @@ public class CmsCoreData implements IsSerializable {
     /** ADE parameters. */
     private Map<String, String> m_adeParameters;
 
+    /** The category base folder. */
+    private String m_categoryBaseFolder;
+
     /** The XML content editor back-link URL. */
     private String m_contentEditorBacklinkUrl;
 
@@ -271,6 +274,9 @@ public class CmsCoreData implements IsSerializable {
 
     /** The file explorer link. */
     private String m_fileExplorerLink;
+
+    /** True if deactivated types should be hidden in the gallery dialog. */
+    private boolean m_hideDisabledGalleryTypes;
 
     /** The resource icon mapping. */
     private Map<String, String> m_iconMapping;
@@ -293,6 +299,9 @@ public class CmsCoreData implements IsSerializable {
     /** The project id. */
     private CmsUUID m_projectId;
 
+    /** The shared folder. */
+    private String m_sharedFolder;
+
     /** The current site root. */
     private String m_siteRoot;
 
@@ -305,8 +314,14 @@ public class CmsCoreData implements IsSerializable {
     /** A flag which indicates whether the toolbar should be shown initially. */
     private boolean m_toolbarVisible;
 
+    /** Flag indicating whether upload buttons should be disabled. */
+    private boolean m_uploadDisabled;
+
     /** The maximum file size for the upload. */
     private long m_uploadFileSizeLimit;
+
+    /** The upload restriction data. */
+    private CmsUploadRestrictionInfo m_uploadRestriction;
 
     /** The current uri. */
     private String m_uri;
@@ -319,9 +334,6 @@ public class CmsCoreData implements IsSerializable {
 
     /** The current workplace locale. */
     private String m_wpLocale;
-
-    /** Flag indicating whether upload buttons should be disabled. */
-    private boolean m_uploadDisabled;
 
     /**
      * Constructor.<p>
@@ -347,6 +359,7 @@ public class CmsCoreData implements IsSerializable {
             clone.getWorkplaceResourcesPrefix(),
             clone.getEmbeddedDialogsUrl(),
             clone.getSiteRoot(),
+            clone.getSharedFolder(),
             clone.getProjectId(),
             clone.getLocale(),
             clone.getWpLocale(),
@@ -364,7 +377,10 @@ public class CmsCoreData implements IsSerializable {
             clone.getUploadFileSizeLimit(),
             clone.isKeepAlive(),
             clone.isUploadDisabled(),
-            clone.m_adeParameters);
+            clone.m_adeParameters,
+            clone.m_uploadRestriction,
+            clone.m_categoryBaseFolder,
+            clone.m_hideDisabledGalleryTypes);
         setTinymce(clone.getTinymce());
     }
 
@@ -379,6 +395,7 @@ public class CmsCoreData implements IsSerializable {
      * @param workplaceResourcesPrefix the workplace resources path prefix
      * @param embeddedDialogsUrl the embedded dialogs URL
      * @param siteRoot the current site root
+     * @param sharedFolder the shared folder
      * @param projectId the project id
      * @param locale the current request locale
      * @param wpLocale the workplace locale
@@ -397,6 +414,9 @@ public class CmsCoreData implements IsSerializable {
      * @param isKeepAlive the keep-alive mode
      * @param uploadDisabled true if upload buttons should be disabled
      * @param adeParameters the map of ADE configuration parameters
+     * @param uploadRestriction the upload restriction data
+     * @param categoryBaseFolder the category base folder
+     * @param hideDisabledGalleryTypes true if deactivated types should be hidden in the gallery dialog
      */
     public CmsCoreData(
         String contentEditorUrl,
@@ -407,6 +427,7 @@ public class CmsCoreData implements IsSerializable {
         String workplaceResourcesPrefix,
         String embeddedDialogsUrl,
         String siteRoot,
+        String sharedFolder,
         CmsUUID projectId,
         String locale,
         String wpLocale,
@@ -424,7 +445,10 @@ public class CmsCoreData implements IsSerializable {
         long uploadFileSizeLimit,
         boolean isKeepAlive,
         boolean uploadDisabled,
-        Map<String, String> adeParameters) {
+        Map<String, String> adeParameters,
+        CmsUploadRestrictionInfo uploadRestriction,
+        String categoryBaseFolder,
+        boolean hideDisabledGalleryTypes) {
 
         m_contentEditorUrl = contentEditorUrl;
         m_contentEditorBacklinkUrl = contentEditorBacklinkUrl;
@@ -452,6 +476,10 @@ public class CmsCoreData implements IsSerializable {
         m_adeParameters = adeParameters;
         m_fileExplorerLink = fileExplorerLink;
         m_uploadDisabled = uploadDisabled;
+        m_uploadRestriction = uploadRestriction;
+        m_sharedFolder = sharedFolder;
+        m_categoryBaseFolder = categoryBaseFolder;
+        m_hideDisabledGalleryTypes = hideDisabledGalleryTypes;
     }
 
     /**
@@ -472,6 +500,16 @@ public class CmsCoreData implements IsSerializable {
     public Map<String, String> getAdeParameters() {
 
         return m_adeParameters;
+    }
+
+    /**
+     * Gets the category folder name.
+     *
+     * @return the category folder name
+     */
+    public String getCategoryBaseFolder() {
+
+        return m_categoryBaseFolder;
     }
 
     /**
@@ -585,6 +623,16 @@ public class CmsCoreData implements IsSerializable {
     }
 
     /**
+     * Gets the shared folder.
+     *
+     * @return the shared folder
+     */
+    public String getSharedFolder() {
+
+        return m_sharedFolder;
+    }
+
+    /**
      * Returns the current site root.<p>
      *
      * @return the current site root
@@ -623,6 +671,16 @@ public class CmsCoreData implements IsSerializable {
     public long getUploadFileSizeLimit() {
 
         return m_uploadFileSizeLimit;
+    }
+
+    /**
+     * Gets the upload restriction data.
+     *
+     * @return the upload restriction data
+     */
+    public CmsUploadRestrictionInfo getUploadRestriction() {
+
+        return m_uploadRestriction;
     }
 
     /**
@@ -673,6 +731,16 @@ public class CmsCoreData implements IsSerializable {
     public String getWpLocale() {
 
         return m_wpLocale;
+    }
+
+    /**
+     * Returns true if deactivated types should be hidden in the gallery dialog.
+     *
+     * @return true if deactivated types should be hidden
+     */
+    public boolean isHideDisabledGalleryTypes() {
+
+        return m_hideDisabledGalleryTypes;
     }
 
     /**

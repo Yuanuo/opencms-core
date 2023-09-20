@@ -60,8 +60,16 @@ public final class CmsDateConverter {
     /** The formatter for the date format. */
     private static final DateTimeFormat Z_DATE_FORMAT = DateTimeFormat.getFormat(DATE_PATTERN);
 
+    /** The format used to parse dates (this needs to be different from Z_DATE_FORMAT because we want to interpret the year 22 as 2022, but don't want to format 1922 as 22. */
+    private static final DateTimeFormat Z_DATE_FORMAT_SHORTYEAR = DateTimeFormat.getFormat(
+        DATE_PATTERN.replace("yyyy", "yy"));
+
     /** The formatter for the date time format. */
     private static final DateTimeFormat Z_DATETIME_FORMAT = DateTimeFormat.getFormat(DATETIME_PATTERN);
+
+    /** The format used to parse date/time combinations (this needs to be different from Z_DATETIME_FORMAT because we want to interpret the year 22 as 2022, but don't want to format 1922 as 22. */
+    private static final DateTimeFormat Z_DATETIME_FORMAT_SHORTYEAR = DateTimeFormat.getFormat(
+        DATETIME_PATTERN.replace("yyyy", "yy"));
 
     /** The formatter for the time format. */
     private static final DateTimeFormat Z_TIME_FORMAT = DateTimeFormat.getFormat(TIME_PATTERN);
@@ -130,9 +138,23 @@ public final class CmsDateConverter {
     @SuppressWarnings("deprecation")
     public static Date getDateWithTime(Date date, String time) {
 
+        return getDateWithTime(date, time, Z_TIME_FORMAT);
+    }
+
+    /**
+     * Changes the time portion of date to another value.
+     *
+     * @param date the original date
+     * @param time the string representing the time to be set in the result
+     * @param timeFormat the format to use for parsing the time
+     *
+     * @return a new Date with the date from the date parameter and the time from the time parameter.
+     */
+    public static Date getDateWithTime(Date date, String time, DateTimeFormat timeFormat) {
+
         Date result;
         try {
-            Date timeAsDate = Z_TIME_FORMAT.parse(time);
+            Date timeAsDate = timeFormat.parse(time);
             result = new Date(date.getYear(), date.getMonth(), date.getDate());
             result.setHours(timeAsDate.getHours());
             result.setMinutes(timeAsDate.getMinutes());
@@ -141,6 +163,7 @@ public final class CmsDateConverter {
             result = null;
         }
         return result;
+
     }
 
     /**
@@ -196,7 +219,7 @@ public final class CmsDateConverter {
 
         Date date = null;
         if (dateText.length() > 0) {
-            date = Z_DATETIME_FORMAT.parse(dateText.trim());
+            date = Z_DATETIME_FORMAT_SHORTYEAR.parse(dateText.trim());
             if (!validateDate(date)) {
                 throw new IllegalArgumentException();
             }
@@ -239,7 +262,7 @@ public final class CmsDateConverter {
 
         Date date = null;
         if (dateText.length() > 0) {
-            date = Z_DATE_FORMAT.parse(dateText.trim());
+            date = Z_DATE_FORMAT_SHORTYEAR.parse(dateText.trim());
         }
         return date;
     }
@@ -275,7 +298,8 @@ public final class CmsDateConverter {
     public static boolean validateDate(Date date) {
 
         String time = getTime(date);
-        return validateTime(time);
+        boolean timeOk = validateTime(time);
+        return timeOk;
 
     }
 

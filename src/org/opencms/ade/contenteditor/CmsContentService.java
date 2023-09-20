@@ -68,6 +68,7 @@ import org.opencms.json.JSONObject;
 import org.opencms.jsp.CmsJspTagEdit;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
+import org.opencms.main.CmsRuntimeException;
 import org.opencms.main.OpenCms;
 import org.opencms.relations.CmsCategory;
 import org.opencms.relations.CmsCategoryService;
@@ -94,6 +95,7 @@ import org.opencms.widgets.I_CmsWidget;
 import org.opencms.workplace.CmsDialog;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.editors.CmsEditor;
+import org.opencms.workplace.editors.CmsEditorCssHandlerDefault;
 import org.opencms.workplace.editors.CmsXmlContentEditor;
 import org.opencms.workplace.editors.directedit.I_CmsEditHandler;
 import org.opencms.xml.CmsXmlContentDefinition;
@@ -564,7 +566,7 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
     }
 
     /**
-     * @see org.opencms.ade.contenteditor.shared.rpc.I_CmsContentService#loadInitialDefinition(java.lang.String, java.lang.String, java.lang.String, org.opencms.util.CmsUUID, java.lang.String, java.lang.String, java.lang.String, java.lang.String, org.opencms.ade.contenteditor.shared.CmsEditHandlerData, java.util.Map)
+     * @see org.opencms.ade.contenteditor.shared.rpc.I_CmsContentService#loadInitialDefinition(java.lang.String, java.lang.String, java.lang.String, org.opencms.util.CmsUUID, java.lang.String, java.lang.String, java.lang.String, java.lang.String, org.opencms.ade.contenteditor.shared.CmsEditHandlerData, java.util.Map, java.lang.String)
      */
     public CmsContentDefinition loadInitialDefinition(
 
@@ -577,7 +579,8 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
         String mode,
         String postCreateHandler,
         CmsEditHandlerData editHandlerDataForNew,
-        Map<String, String> settingPresets)
+        Map<String, String> settingPresets,
+        String editorStylesheet)
     throws CmsRpcException {
 
         CmsObject cms = getCmsObject();
@@ -586,6 +589,11 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
             cms.getRequestContext().getRootUri());
         CmsContentDefinition result = null;
         getCmsObject().getRequestContext().setAttribute(CmsXmlContentEditor.ATTRIBUTE_EDITCONTEXT, editContext);
+        if (editorStylesheet != null) {
+            getCmsObject().getRequestContext().setAttribute(
+                CmsEditorCssHandlerDefault.ATTRIBUTE_EDITOR_STYLESHEET,
+                editorStylesheet);
+        }
         try {
             CmsUUID structureId = CmsContentDefinition.entityIdToUuid(entityId);
             CmsResource resource = getCmsObject().readResource(structureId, CmsResourceFilter.IGNORE_EXPIRATION);
@@ -691,6 +699,15 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
 
             try {
                 CmsResource resource = cms.readResource(paramResource, CmsResourceFilter.IGNORE_EXPIRATION);
+
+                if (OpenCms.getADEManager().isEditorRestricted(cms, resource)) {
+                    // Context menus / buttons for editing the file should be disabled if above condition is true.
+                    // You only get here if you directly open the editor URL, so this does not need
+                    // a particularly nice error message
+                    throw new CmsRuntimeException(
+                        org.opencms.ade.contenteditor.Messages.get().container(
+                            org.opencms.ade.contenteditor.Messages.ERR_EDITOR_RESTRICTED_0));
+                }
                 if (CmsResourceTypeXmlContent.isXmlContent(resource) || createNew) {
                     if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(paramLocale)) {
                         locale = CmsLocaleManager.getLocale(paramLocale);
@@ -1033,7 +1050,7 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
                     }
                 }
                 return result;
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 error(e);
             }
         }
@@ -2062,6 +2079,7 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
      * @param mainLocale the main language to copy in case the element language node does not exist yet
      * @param editedLocaleEntity the edited locale entity
      * @param settingPresets the presets for settings
+     * @param configData the sitemap configuration to use
      *
      * @return the content definition
      *
@@ -2439,9 +2457,9 @@ public class CmsContentService extends CmsGwtService implements I_CmsContentServ
             } else if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)
                 && !HIDDEN_SETTINGS_WIDGET_NAME.equals(settingsEntry.getValue().getWidget())
                 && !value.equals(values.get(settingsEntry.getKey()))) {
-                    values.put(settingsEntry.getKey(), value);
-                    hasChangedSettings = true;
-                }
+                values.put(settingsEntry.getKey(), value);
+                hasChangedSettings = true;
+            }
         }
         if (hasChangedSettings) {
             containerElement.updateIndividualSettings(values);

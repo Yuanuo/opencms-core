@@ -30,9 +30,11 @@ package org.opencms.search.galleries;
 import org.opencms.ade.configuration.CmsFunctionAvailability;
 import org.opencms.ade.galleries.shared.CmsGallerySearchScope;
 import org.opencms.file.CmsObject;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.types.CmsResourceTypeFunctionConfig;
 import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.search.A_CmsSearchIndex;
 import org.opencms.search.CmsSearchUtil;
@@ -46,11 +48,16 @@ import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.apache.commons.logging.Log;
 import org.apache.solr.client.solrj.SolrQuery.ORDER;
+
+import com.google.common.base.Joiner;
 
 /**
  * Parameters used for the gallery search index.<p>
@@ -191,8 +198,8 @@ public class CmsGallerySearchParameters {
         }
     }
 
-    /** If true, empty search result should be returned regardless of other settings. */
-    private boolean m_forceEmptyResult;
+    /** Logge instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsGallerySearchParameters.class);
 
     /** The categories to search in. */
     private List<String> m_categories;
@@ -206,17 +213,29 @@ public class CmsGallerySearchParameters {
     /** The time range for the date of resource last modification to consider in the search. */
     private CmsGallerySearchTimeRange m_dateLastModifiedTimeRange;
 
+    /** The set of functions to be excluded from the search result (may be null). */
+    private Set<CmsUUID> m_excludedFunctions;
+
     /** The list of folders to search in. */
     private List<String> m_folders;
 
     /** Enlists all VFS folders to perform a search in. */
     private List<String> m_foldersToSearchIn;
 
+    /** If true, empty search result should be returned regardless of other settings. */
+    private boolean m_forceEmptyResult;
+
+    /** Function availability. */
+    private CmsFunctionAvailability m_functionAvailability;
+
     /** The galleries to search in. */
     private List<String> m_galleries;
 
     /** Indicates the search exclude property should be ignored. */
     private boolean m_ignoreSearchExclude;
+
+    /** Set of functions to include (whitelist). */
+    private Set<CmsUUID> m_includedFunctions;
 
     /** Indicates if expired and unreleased resources should be included in the search. */
     private boolean m_includeExpired;
@@ -242,11 +261,11 @@ public class CmsGallerySearchParameters {
     /** The sort order for the search result. */
     private CmsGallerySortParam m_sortOrder;
 
+    /** The template compatibility. */
+    private String m_templateCompatibility;
+
     /** Search words to search for. */
     private String m_words;
-
-    /** Function availability. */
-    private CmsFunctionAvailability m_functionAvailability;
 
     /**
      * Default constructor.<p>
@@ -312,6 +331,16 @@ public class CmsGallerySearchParameters {
     }
 
     /**
+     * Gets the set of structure IDs of functions to exclude from the search result.
+     *
+     * @return the set of structure IDs to exclude
+     */
+    public Set<CmsUUID> getExcludedFunctions() {
+
+        return m_excludedFunctions;
+    }
+
+    /**
      * Returns the list of folders to search in.<p>
      *
      * @return a list of paths of VFS folders
@@ -331,6 +360,19 @@ public class CmsGallerySearchParameters {
     public List<String> getGalleries() {
 
         return m_galleries;
+    }
+
+    /**
+     * Gets the set of ids of functions to include.
+     *
+     * <p>Note: If the id of a function is returned in the ID set returned by thsi method,
+     * the function may still be excluded from search results based on other parameters.
+     *
+     * @return the included functions
+     */
+    public Set<CmsUUID> getIncludedFunctions() {
+
+        return m_includedFunctions;
     }
 
     /**
@@ -464,7 +506,7 @@ public class CmsGallerySearchParameters {
         query.setFields(CmsGallerySearchResult.getRequiredSolrFields());
 
         if ((m_functionAvailability != null) && m_functionAvailability.isDefined()) {
-            String notFunction = "(-type:("
+            String notFunction = "(*:* AND -type:("
                 + CmsXmlDynamicFunctionHandler.TYPE_FUNCTION
                 + " OR "
                 + CmsResourceTypeFunctionConfig.TYPE_NAME
@@ -487,6 +529,45 @@ public class CmsGallerySearchParameters {
             }
             String functionFilter = "(" + notFunction + " OR (" + idClause + "))";
             query.addFilterQuery(functionFilter);
+        }
+
+        if ((m_resourceTypes != null) && m_resourceTypes.contains(CmsResourceTypeFunctionConfig.TYPE_NAME)) {
+            if ((m_excludedFunctions != null) && (m_excludedFunctions.size() > 0)) {
+                List<CmsUUID> excludedFunctions = new ArrayList<>(m_excludedFunctions);
+                Collections.sort(excludedFunctions);
+                String orList = Joiner.on(" OR ").join(excludedFunctions);
+                String filter = "*:* AND -id:(" + orList + ")";
+                query.addFilterQuery(filter);
+            }
+            if (m_includedFunctions != null) {
+                List<CmsUUID> includedFunctions = new ArrayList<>(m_includedFunctions);
+                // not sure if order of terms matters for filter query caching in Solr, so normalize order just in case
+                Collections.sort(includedFunctions);
+                List<String> conditions = new ArrayList<>();
+                String notFunction = "(*:* AND -type:("
+                    + CmsXmlDynamicFunctionHandler.TYPE_FUNCTION
+                    + " OR "
+                    + CmsResourceTypeFunctionConfig.TYPE_NAME
+                    + "))";
+                conditions.add(notFunction);
+                for (CmsUUID id : includedFunctions) {
+                    conditions.add("id:" + id);
+                }
+                String includedFunctionsFilter = Joiner.on(" OR ").join(conditions);
+                query.addFilterQuery(includedFunctionsFilter);
+            }
+        }
+
+        if (m_templateCompatibility != null) {
+            if (m_templateCompatibility.matches("^[0-9a-zA-Z_]+$")) {
+                String fieldName = CmsPropertyDefinition.PROPERTY_TEMPLATE_COMPATILIBITY + "_prop";
+                query.addFilterQuery("(*:* NOT " + fieldName + ":*) OR " + fieldName + ":" + m_templateCompatibility);
+            } else {
+                LOG.warn(
+                    "Invalid template compatibility value: "
+                        + m_templateCompatibility
+                        + ". Must only contain digits, letters (a-z) or underscores.");
+            }
         }
 
         // include expired/unreleased
@@ -576,8 +657,21 @@ public class CmsGallerySearchParameters {
     }
 
     /**
+     * Gets the template compatibility.
+     *
+     * <p>If set, matches those resources whose template.compatibility property is either empty or contains the value (possibly together with other values, separated by whitespace).
+     *
+     * @return the template compatibility
+     */
+    public String getTemplateCompatibility() {
+
+        return m_templateCompatibility;
+    }
+
+    /**
      * If this returns true, an empty search result should be returned, regardless of other settings.
-     * @return
+     *
+     * @return true if an empty search result should be forced
      */
     public boolean isForceEmptyResult() {
 
@@ -656,6 +750,17 @@ public class CmsGallerySearchParameters {
     }
 
     /**
+     * Sets the structure IDs of functions to exclude from the search results.
+     *
+     * @param excludedFunctions the structure IDs of functions to exclude
+     */
+    public void setExcludedFunctions(Set<CmsUUID> excludedFunctions) {
+
+        m_excludedFunctions = excludedFunctions;
+
+    }
+
+    /**
      * Sets the folders to search in.<p>
      *
      * @param folders the list of VFS folders
@@ -708,6 +813,16 @@ public class CmsGallerySearchParameters {
     public void setIgnoreSearchExclude(boolean excludeForPageEditor) {
 
         m_ignoreSearchExclude = excludeForPageEditor;
+    }
+
+    /**
+     * Sets the ids of functions to include.
+     *
+     * @param includedFunctions the ids of functions to include
+     */
+    public void setIncludedFunctions(Set<CmsUUID> includedFunctions) {
+
+        m_includedFunctions = includedFunctions;
     }
 
     /**
@@ -824,6 +939,16 @@ public class CmsGallerySearchParameters {
     public void setSortOrder(CmsGallerySortParam sortOrder) {
 
         m_sortOrder = sortOrder;
+    }
+
+    /**
+     * Sets the template compatibility string.
+     *
+     * @param compatibility the template compatibility string
+     */
+    public void setTemplateCompatibility(String compatibility) {
+
+        m_templateCompatibility = compatibility;
     }
 
     /**

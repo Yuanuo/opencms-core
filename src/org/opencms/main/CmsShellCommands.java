@@ -30,6 +30,7 @@ package org.opencms.main;
 import org.opencms.configuration.CmsSitesConfiguration;
 import org.opencms.configuration.CmsVariablesConfiguration;
 import org.opencms.db.CmsDbEntryNotFoundException;
+import org.opencms.db.CmsLoginManager;
 import org.opencms.db.CmsLoginMessage;
 import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsFile;
@@ -57,14 +58,17 @@ import org.opencms.module.CmsModule;
 import org.opencms.module.CmsModule.ExportMode;
 import org.opencms.module.CmsModuleImportExportHandler;
 import org.opencms.module.CmsModuleManager;
+import org.opencms.report.CmsLogReport;
 import org.opencms.report.CmsMultiplexReport;
 import org.opencms.report.CmsPrintStreamReport;
 import org.opencms.report.CmsShellLogReport;
 import org.opencms.report.CmsShellReport;
 import org.opencms.report.I_CmsReport;
+import org.opencms.search.CmsSearchManager;
 import org.opencms.search.I_CmsSearchIndex;
 import org.opencms.security.CmsAccessControlEntry;
 import org.opencms.security.CmsAccessControlList;
+import org.opencms.security.CmsOrgUnitManager;
 import org.opencms.security.CmsOrganizationalUnit;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
@@ -96,6 +100,7 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.StringTokenizer;
@@ -171,6 +176,22 @@ class CmsShellCommands implements I_CmsShellCommands {
         }
         entries.add(entry);
         favDao.saveFavorites(entries);
+    }
+
+    /**
+     * Adds a resource to an organizational unit.
+     *
+     * @param ouFqn the full path of the OU
+     * @param resource the resource path to add
+     *
+     * @throws Exception if something goes wrong
+     */
+    public void addResourceToOU(String ouFqn, String resource) throws Exception {
+
+        CmsObject cms = m_cms;
+        CmsOrgUnitManager ouManager = OpenCms.getOrgUnitManager();
+        ouManager.addResourceToOrgUnit(cms, ouFqn, resource);
+
     }
 
     /**
@@ -361,6 +382,28 @@ class CmsShellCommands implements I_CmsShellCommands {
     public CmsGroup createGroup(String name, String description) throws Exception {
 
         return m_cms.createGroup(name, description, I_CmsPrincipal.FLAG_ENABLED, null);
+    }
+
+    /**
+     * Create an OU
+     * @param ouFqn the fully qualified name of the OU
+     * @param description the description of the OU
+     * @param hideLogin flag, indicating if the OU should be hidden from the login form.
+     * @param resource the initial OU resource
+     *
+     * @return the created OU, or <code>null</code> if creation fails.
+     * @throws Exception if something goes wrong
+     */
+    public CmsOrganizationalUnit createOU(String ouFqn, String description, boolean hideLogin, String resource)
+    throws Exception {
+
+        return OpenCms.getOrgUnitManager().createOrganizationalUnit(
+            m_cms,
+            ouFqn,
+            description,
+            (hideLogin ? CmsOrganizationalUnit.FLAG_HIDE_LOGIN : 0),
+            resource);
+
     }
 
     /**
@@ -845,6 +888,33 @@ class CmsShellCommands implements I_CmsShellCommands {
             moduleName,
             true,
             new CmsShellReport(m_cms.getRequestContext().getLocale()));
+    }
+
+    /**
+     * Forces password reset state for (non-managed, non-default) users.
+     */
+    public void forcePasswordResetForUsers() throws Exception {
+
+        CmsObject cms = m_cms;
+        OpenCms.getRoleManager().checkRole(cms, CmsRole.ACCOUNT_MANAGER);
+        CmsLoginManager loginManager = OpenCms.getLoginManager();
+        String ou = "";
+        List<CmsUser> users = OpenCms.getOrgUnitManager().getUsers(cms, ou, true);
+        for (CmsUser user : users) {
+            if (loginManager.isExcludedFromPasswordReset(cms, user)) {
+                LOG.info("Excluded user " + user.getName() + " from password reset.");
+                continue;
+            }
+            try {
+                if (user.getAdditionalInfo(CmsUserSettings.ADDITIONAL_INFO_PASSWORD_RESET) == null) {
+                    LOG.info("Marking user " + user.getName() + " for password reset.");
+                    user.setAdditionalInfo(CmsUserSettings.ADDITIONAL_INFO_PASSWORD_RESET, "true");
+                    cms.writeUser(user);
+                }
+            } catch (CmsException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
     }
 
     /**
@@ -1345,6 +1415,33 @@ class CmsShellCommands implements I_CmsShellCommands {
     public void rebuildIndex(String index) throws Exception {
 
         OpenCms.getSearchManager().rebuildIndex(index, new CmsShellReport(m_cms.getRequestContext().getLocale()));
+    }
+
+    /**
+     * Reindexes either a single file or all files under a folder in the given project.
+     *
+     * @param path the path of either a file to reindex, or a folder under which resources should be indexed
+     * @param reindexRelated true if related resources should be reindexed
+     * @throws CmsException if something goes wrong
+     */
+    public void reindexResources(String path, boolean reindexRelated) throws CmsException {
+
+        CmsObject cms = OpenCms.initCmsObject(m_cms);
+        Map<String, Object> eventData = new HashMap<>(3);
+        boolean online = cms.getRequestContext().getCurrentProject().isOnlineProject();
+        if (!online) {
+            eventData.put(I_CmsEventListener.KEY_PROJECTID, cms.getRequestContext().getCurrentProject().getId());
+        }
+        CmsResource resource = cms.readResource(path, CmsResourceFilter.IGNORE_EXPIRATION);
+        eventData.put(I_CmsEventListener.KEY_RESOURCES, Collections.singletonList(resource));
+        eventData.put(
+            I_CmsEventListener.KEY_REPORT,
+            new CmsLogReport(CmsLocaleManager.getDefaultLocale(), CmsSearchManager.class));
+        eventData.put(I_CmsEventListener.KEY_REINDEX_RELATED, Boolean.valueOf(reindexRelated));
+        CmsEvent reindexEvent = new CmsEvent(
+            online ? I_CmsEventListener.EVENT_REINDEX_ONLINE : I_CmsEventListener.EVENT_REINDEX_OFFLINE,
+            eventData);
+        OpenCms.fireCmsEvent(reindexEvent);
     }
 
     /**

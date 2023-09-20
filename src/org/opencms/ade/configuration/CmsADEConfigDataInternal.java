@@ -149,6 +149,9 @@ public class CmsADEConfigDataInternal {
     /** The set of ids of site plugins to add. */
     private Set<CmsUUID> m_addedPlugins;
 
+    /** Structure id of the sitemap attribute editor configuration file. */
+    private CmsUUID m_attributeEditorConfigId;
+
     /** The map of attributes. */
     private Map<String, AttributeValue> m_attributes = Collections.emptyMap();
 
@@ -175,6 +178,11 @@ public class CmsADEConfigDataInternal {
 
     /** The internal model page entries. */
     private volatile List<CmsModelPageConfig> m_ownModelPageConfig = null;
+
+    /** The display mode for deactivated types in the gallery dialog. */
+    private CmsGalleryDisabledTypesMode m_galleryDisabledTypesMode;
+
+    private CmsGalleryDisabledTypesMode m_galleryDisabledFunctionsMode;
 
     /** Model page data with no resources. */
     private List<CmsModelPageConfigWithoutResource> m_ownModelPageConfigRaw = new ArrayList<>();
@@ -218,6 +226,7 @@ public class CmsADEConfigDataInternal {
      * @param basePath the base path
      * @param masterConfigs structure ids of master configuration files
      * @param resourceTypeConfig the resource type configuration
+     * @param galleryDisabledTypesMode  the display mode deactivated types in the gallery dialog
      * @param discardInheritedTypes the "discard inherited types" flag
      * @param propertyConfig the property configuration
      * @param discardPropertiesMode the "discard inherited properties" mode
@@ -241,6 +250,7 @@ public class CmsADEConfigDataInternal {
      * @param restriction the restrictions for the 'Add content' dialog
      * @param sharedSettingOverride shared setting override id, may be null
      * @param removeSharedSettingOverrides true if inherited shared setting overrides should be removed
+     * @param attributeEditorConfigId the structure id of the attribute editor configuration file
      * @param attributes the map of attributes
      */
     public CmsADEConfigDataInternal(
@@ -250,6 +260,8 @@ public class CmsADEConfigDataInternal {
         String basePath,
         List<CmsUUID> masterConfigs,
         List<CmsResourceTypeConfig> resourceTypeConfig,
+        CmsGalleryDisabledTypesMode galleryDisabledTypesMode,
+        CmsGalleryDisabledTypesMode galleryDisabledFunctionsMode,
         boolean discardInheritedTypes,
         List<CmsPropertyConfig> propertyConfig,
         DiscardPropertiesMode discardPropertiesMode,
@@ -273,12 +285,15 @@ public class CmsADEConfigDataInternal {
         CmsAddContentRestriction restriction,
         CmsUUID sharedSettingOverride,
         boolean removeSharedSettingOverrides,
+        CmsUUID attributeEditorConfigId,
         Map<String, String> attributes) {
 
         m_cms = cms;
         m_resource = resource;
         m_basePath = basePath;
         m_ownResourceTypes = resourceTypeConfig;
+        m_galleryDisabledTypesMode = galleryDisabledTypesMode;
+        m_galleryDisabledFunctionsMode = galleryDisabledFunctionsMode;
         m_ownPropertyConfigurations = propertyConfig;
         m_ownModelPageConfigRaw = modelPages;
         m_ownDetailPages = detailPageInfos;
@@ -319,6 +334,7 @@ public class CmsADEConfigDataInternal {
 
         m_typeOrderingMode = orderingMode;
         m_addContentRestriction = restriction;
+        m_attributeEditorConfigId = attributeEditorConfigId;
     }
 
     /**
@@ -333,7 +349,7 @@ public class CmsADEConfigDataInternal {
 
     /**
      * Creates a new configuration data instance.<p>
-
+    
      * @param resource the resource from which this configuration data was read
      * @param isModuleConfig true if this is a module configuration
      * @param basePath the base path
@@ -433,6 +449,15 @@ public class CmsADEConfigDataInternal {
     }
 
     /**
+     * Gets the structure id of the sitemap attribute editor configuration
+     * @return the structure id of the sitemap attribute editor configuration
+     */
+    public CmsUUID getAttributeEditorConfigId() {
+
+        return m_attributeEditorConfigId;
+    }
+
+    /**
      * Gets the map of attributes for this sitemap configuration.
      *
      * @return the map of attributes
@@ -450,6 +475,16 @@ public class CmsADEConfigDataInternal {
     public String getBasePath() {
 
         return m_basePath;
+    }
+
+    /**
+     * Gets the display mode for deactivated types in the sitemap dialog.
+     *
+     * @return the display mode for deactivated types
+     */
+    public CmsGalleryDisabledTypesMode getDisabledTypeMode() {
+
+        return m_galleryDisabledTypesMode;
     }
 
     /**
@@ -504,6 +539,11 @@ public class CmsADEConfigDataInternal {
     public Collection<CmsUUID> getFunctionsToRemove() {
 
         return m_functionsToRemove;
+    }
+
+    public CmsGalleryDisabledTypesMode getGalleryDisabledFunctionsMode() {
+
+        return m_galleryDisabledFunctionsMode;
     }
 
     /**

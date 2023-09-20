@@ -350,6 +350,24 @@ public final class Messages extends A_CmsMessageBundle {
     public static final String GUI_LOCK_DIALOG_TITLE_0 = "GUI_LOCK_DIALOG_TITLE_0";
 
     /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_DESCRIPTION_0 = "GUI_LOGIN_2FA_DESCRIPTION_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_SETUP_0 = "GUI_LOGIN_2FA_SETUP_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_SETUP_DESCRIPTION_0 = "GUI_LOGIN_2FA_SETUP_DESCRIPTION_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_SETUP_INVALID_CODE_0 = "GUI_LOGIN_2FA_SETUP_INVALID_CODE_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_VERIFICATION_0 = "GUI_LOGIN_2FA_VERIFICATION_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_LOGIN_2FA_VERIFICATION_CODE_0 = "GUI_LOGIN_2FA_VERIFICATION_CODE_0";
+
+    /** Message constant for key in the resource bundle. */
     public static final String GUI_LOGIN_NO_OU_SELECTED_0 = "GUI_LOGIN_NO_OU_SELECTED_0";
 
     /** Message constant for key in the resource bundle. */
@@ -479,6 +497,9 @@ public final class Messages extends A_CmsMessageBundle {
     public static final String GUI_SCHEDULER_TITLE_CREATE_0 = "GUI_SCHEDULER_TITLE_CREATE_0";
 
     /** Message constant for key in the resource bundle. */
+    public static final String GUI_TOO_MANY_RESOURCES_2 = "GUI_TOO_MANY_RESOURCES_2";
+
+    /** Message constant for key in the resource bundle. */
     public static final String GUI_SELECTED_0 = "GUI_SELECTED_0";
 
     /** Message constant for key in the resource bundle. */
@@ -573,6 +594,9 @@ public final class Messages extends A_CmsMessageBundle {
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_UNDO_UNDOMOVE_0 = "GUI_UNDO_UNDOMOVE_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_UNUSED_CONTENT_FINDER_0 = "GUI_UNUSED_CONTENT_FINDER_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_VALIDATION_FIELD_EMPTY_0 = "GUI_VALIDATION_FIELD_EMPTY_0";

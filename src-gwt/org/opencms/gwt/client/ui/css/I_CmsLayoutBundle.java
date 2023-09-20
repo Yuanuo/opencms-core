@@ -524,6 +524,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          *
          * @return the CSS class name
          */
+        String embeddedDialogFrameHidden();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
         String frameDialog();
 
         /**
@@ -628,6 +635,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          * @return the CSS class name
          */
         String dragStarted();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String fullWindowDrag();
     }
 
     /** The error dialog CSS classes. */
@@ -693,6 +707,27 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          * @return the CSS class name
          */
         String legend();
+    }
+
+    /**
+     * CSS for the filter select box.
+     */
+    interface I_CmsFilterSelectCss extends CssResource {
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String filterInput();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String filterSelect();
+
     }
 
     /** General CSS, used for general re-occurring styles. */
@@ -1039,8 +1074,29 @@ public interface I_CmsLayoutBundle extends ClientBundle {
         String deletedEntryLabel();
     }
 
+    /**
+     * CSS for the list item creation dialog.
+     */
+    interface I_CmsListAddCss extends CssResource {
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String labelContainer();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String optionContainer();
+    }
+
     /** List item CSS. */
     @Shared
+    @ImportedWithPrefix("liw")
     interface I_CmsListItemWidgetCss extends I_CmsStateCss {
 
         /**
@@ -2315,6 +2371,15 @@ public interface I_CmsLayoutBundle extends ClientBundle {
     I_CmsLayoutBundle INSTANCE = GWT.create(I_CmsLayoutBundle.class);
 
     /**
+     * Access method.
+     *
+     * @return the attribute editor CSS
+     */
+    @Source("attributeEditor.gss")
+    @Import(value = {I_CmsInputCss.class, I_CmsDialogCss.class})
+    I_CmsAttributeEditorCss attributeEditorCss();
+
+    /**
      * Access method.<p>
      *
      * @return the availability dialog CSS
@@ -2438,6 +2503,15 @@ public interface I_CmsLayoutBundle extends ClientBundle {
     /**
      * Access method.<p>
      *
+     * @return the filter select CSS
+     */
+    @Source("filterselect.gss")
+    @Import(value = {I_CmsInputCss.class})
+    I_CmsFilterSelectCss filterSelectCss();
+
+    /**
+     * Access method.<p>
+     *
      * @return the toolbar CSS
      */
     @Source("floatDecoratedPanel.gss")
@@ -2474,6 +2548,15 @@ public interface I_CmsLayoutBundle extends ClientBundle {
      */
     @Source("linkWarning.gss")
     I_CmsLinkWarningCss linkWarningCss();
+
+    /**
+     * Access method.<p>
+     *
+     * @return the CSS for the list add dialog
+     */
+    @Source("listadd.css")
+    @Import(value = {I_CmsListItemWidgetCss.class})
+    I_CmsListAddCss listAddCss();
 
     /**
      * Access method.<p>

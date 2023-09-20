@@ -30,6 +30,8 @@ package org.opencms.ade.galleries.shared;
 import org.opencms.ade.galleries.shared.I_CmsGalleryProviderConstants.GalleryMode;
 import org.opencms.ade.galleries.shared.I_CmsGalleryProviderConstants.GalleryTabId;
 import org.opencms.ade.galleries.shared.I_CmsGalleryProviderConstants.SortParams;
+import org.opencms.gwt.shared.CmsGalleryContainerInfo;
+import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.util.CmsStringUtil;
 
 import java.util.ArrayList;
@@ -61,6 +63,9 @@ public class CmsGallerySearchBean implements IsSerializable {
 
     /** The list of selected categories ids (path). */
     private List<String> m_categories = new ArrayList<String>();
+
+    /** The container information (used for the container page Add menu case of the gallery dialog). */
+    private CmsGalleryContainerInfo m_containerInfo;
 
     /** The end creation date criteria as long. */
     private long m_dateCreatedEnd = -1L;
@@ -155,6 +160,9 @@ public class CmsGallerySearchBean implements IsSerializable {
     /** The tab id to be selected by opening the gallery dialog. */
     private String m_tabId = I_CmsGalleryProviderConstants.GalleryTabId.cms_tab_types.name();
 
+    /** The template context information. */
+    private CmsTemplateContextInfo m_templateContextInfo;
+
     /** The list of the resource types ids (resource type name). */
     private List<String> m_types = new ArrayList<String>();
 
@@ -204,6 +212,7 @@ public class CmsGallerySearchBean implements IsSerializable {
         setServerSearchTypes(searchObj.getServerSearchTypes());
         setOriginalGalleryData(searchObj.getOriginalGalleryData());
         setReplacedResults(searchObj.hasReplacedResults());
+        setContainerInfo(searchObj.getContainerInfo());
     }
 
     /**
@@ -317,6 +326,18 @@ public class CmsGallerySearchBean implements IsSerializable {
     public List<String> getCategories() {
 
         return m_categories;
+    }
+
+    /**
+     * Gets the container information.<p>
+     *
+     * This is used for filtering of dynamic function search results in the 'Add menu' case of the gallery dialog.
+     *
+     * @return the container information
+     */
+    public CmsGalleryContainerInfo getContainerInfo() {
+
+        return m_containerInfo;
     }
 
     /**
@@ -587,6 +608,16 @@ public class CmsGallerySearchBean implements IsSerializable {
     }
 
     /**
+     * Gets the template context information.
+     * 
+     * @return the template context information
+     */
+    public CmsTemplateContextInfo getTemplateContextInfo() {
+
+        return m_templateContextInfo;
+    }
+
+    /**
      * Returns the list of the available type.<p>
      *
      * @return the typeNames
@@ -747,6 +778,16 @@ public class CmsGallerySearchBean implements IsSerializable {
     public void setCategories(List<String> categories) {
 
         m_categories = categories;
+    }
+
+    /**
+     * Sets the container information.
+     *
+     * @param containerInfo the container information
+     */
+    public void setContainerInfo(CmsGalleryContainerInfo containerInfo) {
+
+        m_containerInfo = containerInfo;
     }
 
     /**
@@ -1058,6 +1099,11 @@ public class CmsGallerySearchBean implements IsSerializable {
     public void setTabId(String tabId) {
 
         m_tabId = tabId;
+    }
+
+    public void setTemplateContextInfo(CmsTemplateContextInfo cmsTemplateContextInfo) {
+
+        m_templateContextInfo = cmsTemplateContextInfo;
     }
 
     /**

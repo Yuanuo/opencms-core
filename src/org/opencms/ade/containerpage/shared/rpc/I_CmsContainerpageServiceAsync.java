@@ -40,6 +40,8 @@ import org.opencms.ade.containerpage.shared.CmsGroupContainer;
 import org.opencms.ade.containerpage.shared.CmsGroupContainerSaveResult;
 import org.opencms.ade.containerpage.shared.CmsInheritanceContainer;
 import org.opencms.ade.containerpage.shared.CmsRemovedElementStatus;
+import org.opencms.gwt.shared.CmsListElementCreationDialogData;
+import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.util.CmsUUID;
 
 import java.util.Collection;
@@ -57,12 +59,12 @@ import com.google.gwt.user.client.rpc.AsyncCallback;
 public interface I_CmsContainerpageServiceAsync {
 
     /**
-     * Adds an element specified by it's id to the favorite list.<p>
-     *
-     * @param context the rpc context
-     * @param clientId the element id
-     * @param callback the call-back executed on response
-     */
+    * Adds an element specified by it's id to the favorite list.<p>
+    *
+    * @param context the rpc context
+    * @param clientId the element id
+    * @param callback the call-back executed on response
+    */
     void addToFavoriteList(CmsContainerPageRpcContext context, String clientId, AsyncCallback<Void> callback);
 
     /**
@@ -93,6 +95,7 @@ public interface I_CmsContainerpageServiceAsync {
      * Returns a bean containing either the new element data or a list of model resources to select.<p>
      *
      * @param pageStructureId the container page structure id
+     * @param detailContentId the detail content id
      * @param clientId the client id of the new element (this will be the structure id of the configured new resource)
      * @param resourceType the resource tape of the new element
      * @param container the parent container
@@ -101,6 +104,7 @@ public interface I_CmsContainerpageServiceAsync {
      */
     void checkCreateNewElement(
         CmsUUID pageStructureId,
+        CmsUUID detailContentId,
         String clientId,
         String resourceType,
         CmsContainer container,
@@ -130,6 +134,7 @@ public interface I_CmsContainerpageServiceAsync {
      * Creates a new element of the given type and returns the new element data containing structure id and site path.<p>
      *
      * @param pageStructureId the container page structure id
+     * @param detailContentId the structure id of the detail content
      * @param clientId the client id of the new element (this will be the structure id of the configured new resource)
      * @param resourceType the resource tape of the new element
      * @param modelResourceStructureId the model resource structure id
@@ -138,6 +143,7 @@ public interface I_CmsContainerpageServiceAsync {
      */
     void createNewElement(
         CmsUUID pageStructureId,
+        CmsUUID detailContentId,
         String clientId,
         String resourceType,
         CmsUUID modelResourceStructureId,
@@ -282,15 +288,31 @@ public interface I_CmsContainerpageServiceAsync {
      * @param containers the page containers
      * @param elementView the element view
      * @param uri the page URI
+     * @param detailContentId the detail content id
      * @param locale the content locale
+     * @param contextInfo the template context information
      * @param callback the call-back executed on response
      */
     void getGalleryDataForPage(
         List<CmsContainer> containers,
         CmsUUID elementView,
         String uri,
+        CmsUUID detailContentId,
         String locale,
+        CmsTemplateContextInfo contextInfo,
         AsyncCallback<CmsContainerPageGalleryData> callback);
+
+    /**
+     * Loads the data for the list element creation dialog.
+     *
+     * @param structureId the structure id of the container element for which we want to load the options
+     * @param jsonListAddData the list-add metadata read from the DOM
+     * @param callback the callback for the result
+     */
+    void getListElementCreationOptions(
+        CmsUUID structureId,
+        String jsonListAddData,
+        AsyncCallback<CmsListElementCreationDialogData> callback);
 
     /**
      * Returns new container element data for the given resource type name.<p>
@@ -555,4 +577,18 @@ public interface I_CmsContainerpageServiceAsync {
      * @param callback the callback
      */
     void setLastPage(CmsUUID pageId, CmsUUID detailId, AsyncCallback<Void> callback);
+
+    /**
+     * Updates the formatter setting for an element in the server-side element cache.
+     *
+     * @param clientId the client id of the element
+     * @param containerId the id of the container containing the element
+     * @param settings the settings of the element
+     * @param callback the result callback
+     */
+    void updateServerElementFormatter(
+        String clientId,
+        String containerId,
+        Map<String, String> settings,
+        AsyncCallback<Void> callback);
 }

@@ -1643,3 +1643,4 @@ tasks.withType(Javadoc) {
 tasks.withType(CopySpec){
     duplicatesStrategy 'fail'
 }
+

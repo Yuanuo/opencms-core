@@ -184,7 +184,14 @@ public class CmsToolbarGalleryMenu extends A_CmsToolbarMenu<CmsContainerpageHand
             }
             final Predicate<CmsResultItemBean> finalDndFilter = resultDndFilter;
             CmsGalleryDialog galleryDialog = new CmsGalleryDialog(new GalleryHandler(finalDndFilter));
-            new CmsGalleryController(new CmsGalleryControllerHandler(galleryDialog), m_galleryData, m_search);
+            CmsGalleryController galleryController = new CmsGalleryController(
+                new CmsGalleryControllerHandler(galleryDialog),
+                m_galleryData,
+                m_search);
+            galleryController.setContainerInfoProvider(
+                () -> CmsContainerpageController.get().getContainerInfoForGalleries());
+            galleryController.setTemplateContextInfoProvider(
+                () -> CmsContainerpageController.get().getData().getTemplateContextInfo());
             m_dialog = galleryDialog;
             m_dialog.setDialogSize(dialogWidth, dialogHeight);
             getPopup().setWidth(dialogWidth);

@@ -379,6 +379,7 @@ public class CmsContainerpageDNDController implements I_CmsDNDController {
                         if ((cachedElementData != null)
                             && (!cachedElementData.hasWritePermission()
                                 || cachedElementData.isModelGroup()
+                                || cachedElementData.isCopyDisabled()
                                 || cachedElementData.isWasModelGroup())) {
                             // User is not allowed to create this element in current view, so reuse the element instead
                             reuseMode = ElementReuseMode.reuse;
@@ -692,6 +693,10 @@ public class CmsContainerpageDNDController implements I_CmsDNDController {
                     });
                 } else {
                     m_controller.setPageChanged();
+                    String clientId = elementData.getClientId();
+                    String containerId = container.getContainerId();
+                    Map<String, String> settings = elementData.getSettings();
+                    m_controller.updateServerElementFormatter(clientId, containerId, settings);
                 }
             }
             if (m_controller.isGroupcontainerEditing()) {

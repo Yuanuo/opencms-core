@@ -336,6 +336,33 @@ public class CmsContentTypeVisitor {
     }
 
     /**
+     * Returns the label for this value.<p>
+     *
+     * @param value the value
+     *
+     * @return the label
+     */
+    public String getLabel(I_CmsXmlSchemaType value, String defaultValue) {
+
+        I_CmsXmlContentHandler handler = value.getContentDefinition().getContentHandler();
+        if (handler instanceof CmsDefaultXmlContentHandler) {
+            CmsDefaultXmlContentHandler defaultHandler = (CmsDefaultXmlContentHandler)handler;
+            String label = defaultHandler.getFieldLabels().get(value.getName());
+            if (label != null) {
+                CmsMacroResolver resolver = new CmsMacroResolver();
+                resolver.setCmsObject(m_cms);
+                resolver.setKeepEmptyMacros(true);
+                resolver.setMessages(m_messages);
+                return resolver.resolveMacros(label);
+            }
+        }
+        StringBuffer result = new StringBuffer(64);
+        result.append(A_CmsWidget.LABEL_PREFIX);
+        result.append(getTypeKey(value));
+        return m_messages.keyDefault(result.toString(), defaultValue);
+    }
+
+    /**
      * Gets the optional dynamic category fields collected so far.
      *
      * @return the optional dynamic category fields
@@ -552,33 +579,6 @@ public class CmsContentTypeVisitor {
     }
 
     /**
-     * Returns the label for this value.<p>
-     *
-     * @param value the value
-     *
-     * @return the label
-     */
-    private String getLabel(I_CmsXmlSchemaType value) {
-
-        I_CmsXmlContentHandler handler = value.getContentDefinition().getContentHandler();
-        if (handler instanceof CmsDefaultXmlContentHandler) {
-            CmsDefaultXmlContentHandler defaultHandler = (CmsDefaultXmlContentHandler)handler;
-            String label = defaultHandler.getFieldLabels().get(value.getName());
-            if (label != null) {
-                CmsMacroResolver resolver = new CmsMacroResolver();
-                resolver.setCmsObject(m_cms);
-                resolver.setKeepEmptyMacros(true);
-                resolver.setMessages(m_messages);
-                return resolver.resolveMacros(label);
-            }
-        }
-        StringBuffer result = new StringBuffer(64);
-        result.append(A_CmsWidget.LABEL_PREFIX);
-        result.append(getTypeKey(value));
-        return m_messages.keyDefault(result.toString(), value.getName());
-    }
-
-    /**
      * Returns the schema type message key.<p>
      *
      * @param value the schema type
@@ -652,13 +652,19 @@ public class CmsContentTypeVisitor {
         String widgetName = null;
         String widgetConfig = null;
         CmsObject cms = getCmsObject();
-        String label = getLabel(schemaType);
+        String label = getLabel(schemaType, schemaType.getName());
         // set the default display type
         DisplayType configuredType = DisplayType.none;
         DisplayType defaultType = DisplayType.none;
         EvaluationRule rule = EvaluationRule.none;
         try {
-            WidgetInfo widgetInfo = CmsWidgetUtil.collectWidgetInfo(cms, m_rootContentDefinition, path);
+            if ((cms.getRequestContext().getAttribute(CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH) == null)
+                && (m_file != null)) {
+                cms.getRequestContext().setAttribute(
+                    CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH,
+                    m_file.getRootPath());
+            }
+            WidgetInfo widgetInfo = CmsWidgetUtil.collectWidgetInfo(cms, m_rootContentDefinition, path, m_messages);
             I_CmsWidget widget = widgetInfo.getWidget();
             I_CmsComplexWidget complexWidget = widgetInfo.getComplexWidget();
             configuredType = widgetInfo.getDisplayType();
@@ -691,12 +697,7 @@ public class CmsContentTypeVisitor {
                     I_CmsADEWidget adeWidget = (I_CmsADEWidget)widget;
                     defaultType = adeWidget.getDefaultDisplayType();
                     widgetName = adeWidget.getWidgetName();
-                    if ((cms.getRequestContext().getAttribute(CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH) == null)
-                        && (m_file != null)) {
-                        cms.getRequestContext().setAttribute(
-                            CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH,
-                            m_file.getRootPath());
-                    }
+
                     widgetConfig = adeWidget.getConfiguration(cms, schemaType, m_messages, m_file, m_locale);
                     if (!adeWidget.isInternal() && !m_widgetConfigurations.containsKey(widgetName)) {
                         CmsExternalWidgetConfiguration externalConfiguration = new CmsExternalWidgetConfiguration(

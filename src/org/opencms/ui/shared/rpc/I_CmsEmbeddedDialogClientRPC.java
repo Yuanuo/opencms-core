@@ -50,6 +50,11 @@ public interface I_CmsEmbeddedDialogClientRPC extends ClientRpc {
     void finishForProjectOrSiteChange(String sitePath, String serverLink);
 
     /**
+     * Tells the client to initialize the client-to-server RPC.
+     **/
+    void initServerRpc();
+
+    /**
      * Leaves the current page calling the given URI.<p>
      *
      * @param targetUri the target URI

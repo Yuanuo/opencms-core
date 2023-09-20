@@ -45,6 +45,7 @@ import org.opencms.ade.sitemap.shared.CmsLocaleComparePropertyData;
 import org.opencms.ade.sitemap.shared.CmsModelInfo;
 import org.opencms.ade.sitemap.shared.CmsModelPageEntry;
 import org.opencms.ade.sitemap.shared.CmsNewResourceInfo;
+import org.opencms.ade.sitemap.shared.CmsSitemapAttributeData;
 import org.opencms.ade.sitemap.shared.CmsSitemapCategoryData;
 import org.opencms.ade.sitemap.shared.CmsSitemapChange;
 import org.opencms.ade.sitemap.shared.CmsSitemapChange.ChangeType;
@@ -62,6 +63,7 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
+import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
@@ -81,10 +83,12 @@ import org.opencms.gwt.CmsIconUtil;
 import org.opencms.gwt.CmsPropertyEditorHelper;
 import org.opencms.gwt.CmsRpcException;
 import org.opencms.gwt.CmsTemplateFinder;
+import org.opencms.gwt.CmsVfsService;
 import org.opencms.gwt.shared.CmsCategoryTreeEntry;
 import org.opencms.gwt.shared.CmsClientLock;
 import org.opencms.gwt.shared.CmsCoreData;
 import org.opencms.gwt.shared.CmsCoreData.AdeContext;
+import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.gwt.shared.alias.CmsAliasEditValidationReply;
 import org.opencms.gwt.shared.alias.CmsAliasEditValidationRequest;
@@ -102,12 +106,14 @@ import org.opencms.json.JSONArray;
 import org.opencms.jsp.CmsJspNavBuilder;
 import org.opencms.jsp.CmsJspNavBuilder.Visibility;
 import org.opencms.jsp.CmsJspNavElement;
+import org.opencms.jsp.CmsJspTagLink;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.lock.CmsLock;
 import org.opencms.lock.CmsLockUtil;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.main.OpenCmsServlet;
 import org.opencms.relations.CmsCategory;
 import org.opencms.relations.CmsCategoryService;
 import org.opencms.search.galleries.CmsGallerySearch;
@@ -140,6 +146,7 @@ import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
 import org.opencms.xml.containerpage.mutable.CmsContainerPageWrapper;
 import org.opencms.xml.containerpage.mutable.CmsMutableContainer;
 import org.opencms.xml.containerpage.mutable.CmsMutableContainerPage;
+import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.content.CmsXmlContentProperty;
 import org.opencms.xml.content.CmsXmlContentPropertyHelper;
@@ -543,7 +550,45 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             OpenCms.getADEManager().waitForCacheUpdate(false);
         } catch (Throwable e) {
             error(e);
+        }
+    }
 
+    /**
+     * @see org.opencms.ade.sitemap.shared.rpc.I_CmsSitemapService#editAttributeData(org.opencms.util.CmsUUID)
+     */
+    public CmsSitemapAttributeData editAttributeData(CmsUUID rootId) throws CmsRpcException {
+
+        try {
+            CmsObject cms = getCmsObject();
+            CmsResource root = cms.readResource(rootId);
+            CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(cms, root.getRootPath());
+            String sitePath = cms.getSitePath(root);
+            String configPath = CmsStringUtil.joinPaths(sitePath, "/.content/.config");
+            CmsResource configResource = cms.readResource(configPath);
+            cms.lockResourceTemporary(configResource);
+            CmsListInfoBean configInfo = CmsVfsService.getPageInfo(cms, configResource);
+            Map<String, CmsXmlContentProperty> definitions = config.getAttributeEditorConfiguration().getAttributeDefinitions();
+            cms.getRequestContext().setAttribute(
+                CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH,
+                configResource.getRootPath());
+            definitions = CmsXmlContentPropertyHelper.resolveMacrosInProperties(
+                definitions,
+                CmsMacroResolver.newWorkplaceLocaleResolver(cms));
+
+            HashMap<String, String> values = new HashMap<>();
+            for (String key : definitions.keySet()) {
+                values.put(key, config.getAttribute(key, ""));
+            }
+            String unlockUrl = CmsStringUtil.joinPaths(
+                OpenCms.getStaticExportManager().getVfsPrefix(),
+                OpenCmsServlet.HANDLE_BUILTIN_SERVICE,
+                CmsGwtConstants.UNLOCK_FILE_PREFIX,
+                configResource.getStructureId().toString());
+            CmsSitemapAttributeData result = new CmsSitemapAttributeData(configInfo, definitions, values, unlockUrl);
+            return result;
+        } catch (Exception e) {
+            error(e);
+            return null;
         }
     }
 
@@ -720,6 +765,10 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             CmsResource baseResource = cms.readResource(baseId, CmsResourceFilter.IGNORE_EXPIRATION);
             String contextPath = cms.getSitePath(baseResource);
             cms.getRequestContext().setUri(contextPath);
+            Locale locale = CmsJspTagLink.getBaseUriLocale(cms, contextPath);
+            if (locale != null) {
+                cms.getRequestContext().setLocale(locale);
+            }
             String result = OpenCms.getLinkManager().substituteLinkForUnknownTarget(cms, sitePath);
             return result;
         } catch (Exception e) {
@@ -1111,6 +1160,41 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
         } catch (Exception e) {
             error(e);
         }
+    }
+
+    /**
+     * @see org.opencms.ade.sitemap.shared.rpc.I_CmsSitemapService#saveSitemapAttributes(org.opencms.util.CmsUUID, java.util.Map)
+     */
+    public void saveSitemapAttributes(CmsUUID rootId, Map<String, String> attributes) throws CmsRpcException {
+
+        CmsResource configResource = null;
+        try {
+            CmsObject cms = getCmsObject();
+            CmsResource root = cms.readResource(rootId);
+            String sitePath = cms.getSitePath(root);
+            String configPath = CmsStringUtil.joinPaths(sitePath, "/.content/.config");
+            configResource = cms.readResource(configPath);
+            CmsXmlContent configContent = CmsXmlContentFactory.unmarshal(cms, cms.readFile(configResource));
+            CmsSitemapAttributeUpdater updater = new CmsSitemapAttributeUpdater(cms, configContent);
+            if (updater.saveAttributesFromEditorDialog(attributes)) {
+                byte[] newContentBytes = configContent.marshal();
+                CmsFile file = configContent.getFile();
+                file.setContents(newContentBytes);
+                cms.writeFile(file);
+                OpenCms.getADEManager().waitForCacheUpdate(false);
+            }
+        } catch (Exception e) {
+            error(e);
+        } finally {
+            try {
+                if (configResource != null) {
+                    getCmsObject().unlockResource(configResource);
+                }
+            } catch (Exception e) {
+                LOG.debug(e.getLocalizedMessage(), e);
+            }
+        }
+
     }
 
     /**
@@ -1877,32 +1961,36 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                     CmsContainerPageWrapper wrapper = new CmsContainerPageWrapper(cms, page);
                     if (isFunctionDetail) {
                         String functionDetailContainer = getFunctionDetailContainerName(parentFolder);
-                        CmsUUID functionStructureId = new CmsUUID(change.getCreateParameter());
-                        CmsResource functionRes = cms.readResource(
-                            functionStructureId,
-                            CmsResourceFilter.IGNORE_EXPIRATION);
-                        CmsResource functionFormatter;
-                        if (OpenCms.getResourceManager().matchResourceType(
-                            CmsResourceTypeFunctionConfig.TYPE_NAME,
-                            functionRes.getTypeId())) {
-                            functionFormatter = cms.readResource(CmsResourceTypeFunctionConfig.FORMATTER_PATH);
-                        } else {
-                            functionFormatter = cms.readResource(
-                                CmsResourceTypeFunctionConfig.FORMATTER_PATH,
-                                CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
-                        }
-                        if (!wrapper.addElementToContainer(
-                            functionDetailContainer,
-                            new CmsContainerElementBean(
+                        if (functionDetailContainer != null) {
+                            CmsUUID functionStructureId = new CmsUUID(change.getCreateParameter());
+                            CmsResource functionRes = cms.readResource(
                                 functionStructureId,
-                                functionFormatter.getStructureId(),
-                                new HashMap<>(),
-                                false))) {
+                                CmsResourceFilter.IGNORE_EXPIRATION);
+                            CmsResource functionFormatter;
+                            if (OpenCms.getResourceManager().matchResourceType(
+                                CmsResourceTypeFunctionConfig.TYPE_NAME,
+                                functionRes.getTypeId())) {
+                                functionFormatter = cms.readResource(CmsResourceTypeFunctionConfig.FORMATTER_PATH);
+                            } else {
+                                functionFormatter = cms.readResource(
+                                    CmsResourceTypeFunctionConfig.FORMATTER_PATH,
+                                    CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+                            }
+                            if (!wrapper.addElementToContainer(
+                                functionDetailContainer,
+                                new CmsContainerElementBean(
+                                    functionStructureId,
+                                    functionFormatter.getStructureId(),
+                                    new HashMap<>(),
+                                    false))) {
 
-                            throw new CmsException(
-                                Messages.get().container(
-                                    Messages.ERR_NO_FUNCTION_DETAIL_CONTAINER_1,
-                                    page.getFile().getRootPath()));
+                                throw new CmsException(
+                                    Messages.get().container(
+                                        Messages.ERR_NO_FUNCTION_DETAIL_CONTAINER_1,
+                                        page.getFile().getRootPath()));
+                            }
+                        } else {
+                            LOG.debug("function detail container is null for " + parentFolder.getRootPath());
                         }
                     }
                     createNewContainerElements(cms, wrapper.page(), entryPath);

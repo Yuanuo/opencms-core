@@ -61,17 +61,26 @@ public class CmsTemplateContextInfo implements IsSerializable {
     /** The context provider class. */
     private String m_contextProvider;
 
+    /** The custom label for the default template option. */
+    private String m_defaultLabel;
+
     /** The name of the cookie used for overriding the template context. */
     private String m_cookieName;
 
     /** The key of the currently active context. */
     private String m_currentContext;
 
+    /** Custom label for the context menu entry. */
+    private String m_menuLabel;
+
     /** The name of the selected context (using the cookie) .*/
     private String m_selectedContext;
 
     /** The setting definition for the templateContexts setting. */
     private CmsXmlContentProperty m_settingDefinition;
+
+    /** If false, hide template context select options in the settings dialog. */
+    private boolean m_shouldShowElementTemplateContextSelection;
 
     /**
      * Default constructor.<p>
@@ -142,6 +151,26 @@ public class CmsTemplateContextInfo implements IsSerializable {
     public String getCurrentContext() {
 
         return m_currentContext;
+    }
+
+    /**
+     * Gets the default label.
+     *
+     * @return the default label
+     */
+    public String getDefaultLabel() {
+
+        return m_defaultLabel;
+    }
+
+    /**
+     * Gets the custom context menu entry label (if null, the default is used).
+     *
+     * @return the custom context menu entry label
+     */
+    public String getMenuLabel() {
+
+        return m_menuLabel;
     }
 
     /**
@@ -242,6 +271,26 @@ public class CmsTemplateContextInfo implements IsSerializable {
     }
 
     /**
+     * Sets the default label.
+     *
+     * @param defaultLabel the default label
+     */
+    public void setDefaultLabel(String defaultLabel) {
+
+        m_defaultLabel = defaultLabel;
+    }
+
+    /**
+     * Sets the custom context menu entry label.
+     *
+     * @param label the custom context menu entry label
+     */
+    public void setMenuLabel(String label) {
+
+        m_menuLabel = label;
+    }
+
+    /**
      * Sets the selected context.<p>
      *
      * @param selectedContext the selected context
@@ -262,13 +311,23 @@ public class CmsTemplateContextInfo implements IsSerializable {
     }
 
     /**
+     * Enables / disables display of the template context select options in the settings dialog.
+     *
+     * @param newValue if true, show the select options
+     */
+    public void setShouldShowElementTemplateContextSelection(boolean newValue) {
+
+        m_shouldShowElementTemplateContextSelection = newValue;
+    }
+
+    /**
      * Returns true if the template context selection should be shown for container elements.<p>
      *
      * @return true if the template context selection for elements should be shown
      */
     public boolean shouldShowElementTemplateContextSelection() {
 
-        return hasMoreThanOneOption();
+        return m_shouldShowElementTemplateContextSelection && hasMoreThanOneOption();
     }
 
     /**
@@ -289,6 +348,6 @@ public class CmsTemplateContextInfo implements IsSerializable {
      */
     private boolean hasMoreThanOneOption() {
 
-        return (m_currentContext != null) && (m_contextLabels.size() > 1);
+        return (m_currentContext != null);
     }
 }

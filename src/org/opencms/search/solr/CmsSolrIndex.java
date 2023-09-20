@@ -75,8 +75,8 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.servlet.ServletResponse;
@@ -879,7 +879,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
                         query,
                         getName()));
             }
-            query.addFilterQuery(CmsSearchField.FIELD_SEARCH_EXCLUDE + ":\"false\"");
+            String fqSearchExclude = CmsSearchField.FIELD_SEARCH_EXCLUDE + ":\"false\"";
+            query.removeFilterQuery(fqSearchExclude);
+            query.addFilterQuery(fqSearchExclude);
         }
 
         // get start parameter from the request
@@ -1102,9 +1104,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
             SolrQuery queryForResults = query.clone();
             // we add an additional filter, such that we can only find the documents we want to retrieve, as we figured out in the check query.
             if (!resultSolrIds.isEmpty()) {
-                Optional<String> queryFilterString = resultSolrIds.stream().map(a -> '"' + a + '"').reduce(
-                    (a, b) -> a + " OR " + b);
-                queryForResults.addFilterQuery(CmsSearchField.FIELD_SOLR_ID + ":(" + queryFilterString.get() + ")");
+                String queryFilterString = resultSolrIds.stream().collect(Collectors.joining(","));
+                queryForResults.addFilterQuery(
+                    "{!terms f=" + CmsSearchField.FIELD_SOLR_ID + " separator=\",\"}" + queryFilterString);
             }
             queryForResults.setRows(Integer.valueOf(resultSolrIds.size()));
             queryForResults.setStart(Integer.valueOf(0));

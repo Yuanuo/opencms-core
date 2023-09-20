@@ -48,14 +48,20 @@ public class CmsJspTagSecureParams extends TagSupport {
     /** Serial version id. */
     private static final long serialVersionUID = -3571347944585254L;
 
-    /** The policy path. */
-    private String m_policy;
+    /** The comma-separated list of parameters for which HTML will be allowed, but be escaped. */
+    private String m_allowHtml;
 
     /** The comma-separated list of parameters for which XML characters will not be escaped. */
     private String m_allowXml;
 
-    /** The comma-separated list of parameters for which HTML will be allowed, but be escaped. */
-    private String m_allowHtml;
+    /** List of parameters which should be escaped even if replaceInvalid is set. */
+    private String m_escapeInvalid;
+
+    /** The policy path. */
+    private String m_policy;
+
+    /** The 'bad value'. */
+    private String m_replaceInvalid;
 
     /**
      * Static method which provides the actual functionality of this tag.<p>
@@ -65,8 +71,16 @@ public class CmsJspTagSecureParams extends TagSupport {
      * @param allowXml the comma-separated list of parameters for which XML characters will not be escaped
      * @param allowHtml the comma-separated list of parameters for which HTML will be allowed, but be escaped
      * @param policy  the site path of an AntiSamy policy file
+     * @param replaceInvalid if not null, replaces parameters that would otherwise be
+     * @param escapeInvalid a comma-separated list of the names of parameters which should still be escaped even if replaceInvalid is set
      */
-    public static void secureParamsTagAction(ServletRequest request, String allowXml, String allowHtml, String policy) {
+    public static void secureParamsTagAction(
+        ServletRequest request,
+        String allowXml,
+        String allowHtml,
+        String policy,
+        String replaceInvalid,
+        String escapeInvalid) {
 
         if (request instanceof CmsFlexRequest) {
             CmsFlexRequest flexRequest = (CmsFlexRequest)request;
@@ -77,6 +91,12 @@ public class CmsJspTagSecureParams extends TagSupport {
             }
             flexRequest.enableParameterEscaping();
             flexRequest.getParameterEscaper().setExceptions(exceptions);
+            flexRequest.getParameterEscaper().setDummyValue(replaceInvalid);
+            if (escapeInvalid != null) {
+                List<String> escapeInvalidList = CmsStringUtil.splitAsList(escapeInvalid.trim(), ",");
+                flexRequest.getParameterEscaper().setEscapeInvalid(escapeInvalidList);
+
+            }
             Set<String> allowHtmlSet = Collections.emptySet();
             if (allowHtml != null) {
                 allowHtmlSet = new HashSet<String>(CmsStringUtil.splitAsList(allowHtml, ","));
@@ -91,7 +111,13 @@ public class CmsJspTagSecureParams extends TagSupport {
     @Override
     public int doStartTag() {
 
-        secureParamsTagAction(pageContext.getRequest(), m_allowXml, m_allowHtml, m_policy);
+        secureParamsTagAction(
+            pageContext.getRequest(),
+            m_allowXml,
+            m_allowHtml,
+            m_policy,
+            m_replaceInvalid,
+            m_escapeInvalid);
         return SKIP_BODY;
     }
 
@@ -116,6 +142,16 @@ public class CmsJspTagSecureParams extends TagSupport {
     }
 
     /**
+     * Sets the parameters which should still be XML escaped, even if replaceInvalid is set.
+     *
+     * @param escapeInvalid a comma-separated list of parameter names
+     */
+    public void setEscapeInvalid(String escapeInvalid) {
+
+        m_escapeInvalid = escapeInvalid;
+    }
+
+    /**
      * Sets the 'policy' parameter.<p>
      *
      * @param policy the new 'policy' parameter
@@ -123,6 +159,17 @@ public class CmsJspTagSecureParams extends TagSupport {
     public void setPolicy(String policy) {
 
         m_policy = policy;
+    }
+
+    /**
+     * Sets the 'bad value', which, if set, is used as a replacement for values that would otherwise be XML-escaped.
+     *
+     * @param replaceInvalid the bad value
+     */
+    public void setReplaceInvalid(String replaceInvalid) {
+
+        m_replaceInvalid = replaceInvalid;
+
     }
 
 }

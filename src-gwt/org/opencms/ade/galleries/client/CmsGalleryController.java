@@ -59,6 +59,8 @@ import org.opencms.gwt.client.util.CmsJsUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsCategoryBean;
 import org.opencms.gwt.shared.CmsCategoryTreeEntry;
+import org.opencms.gwt.shared.CmsGalleryContainerInfo;
+import org.opencms.gwt.shared.CmsTemplateContextInfo;
 import org.opencms.gwt.shared.rpc.I_CmsVfsServiceAsync;
 import org.opencms.gwt.shared.sort.CmsComparatorPath;
 import org.opencms.gwt.shared.sort.CmsComparatorTitle;
@@ -74,7 +76,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
+import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.Lists;
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
@@ -128,6 +132,9 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
     /** The gallery configuration. */
     private I_CmsGalleryConfiguration m_configuration;
 
+    /** Provides container information for the gallery dialog. */
+    private Supplier<CmsGalleryContainerInfo> m_containerInfoProvider = () -> null;
+
     /** The current resource preview. */
     private I_CmsResourcePreview<?> m_currentPreview;
 
@@ -154,6 +161,9 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
 
     /** The configured tabs. */
     private GalleryTabId[] m_tabIds;
+
+    /** Provides the template context information. */
+    private Supplier<CmsTemplateContextInfo> m_templateContextInfoProvider = () -> null;
 
     /** The tree token for this gallery instance (determines which tree open state to use). */
     private String m_treeToken;
@@ -303,10 +313,6 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
 
         m_previewFactoryRegistration.put(previewProviderName, factory);
     }
-
-    private static native void debugger() /*-{
-        debugger;
-    }-*/;
 
     /**
      * Add category to search object.<p>
@@ -1111,6 +1117,28 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
     }
 
     /**
+     * Removes the query.
+     */
+    public void removeQuery() {
+
+        m_searchObject.setQuery(null);
+        m_handler.onRemoveQuery();
+        updateResultsTab(false);
+        ValueChangeEvent.fire(this, m_searchObject);
+    }
+
+    /**
+     * Removes the search scope.
+     */
+    public void removeScope() {
+
+        m_searchObject.setScope(null);
+        m_handler.onRemoveScope();
+        updateResultsTab(false);
+        ValueChangeEvent.fire(this, m_searchObject);
+    }
+
+    /**
      * Removes the given full text search criteria from the search object.<p>
      *
      * @param key the key of the parameter to remove
@@ -1122,9 +1150,6 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
             switch (type) {
                 case language:
                     m_searchObject.setLocale(getStartLocale());
-                    break;
-                case text:
-                    m_searchObject.setQuery(null);
                     break;
                 case expired:
                     m_searchObject.setIncludeExpired(false);
@@ -1274,6 +1299,19 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
     }
 
     /**
+     * Sets the function that provides the container information.
+     *
+     * @param containerInfoProvider the container info provider
+     */
+    public void setContainerInfoProvider(Supplier<CmsGalleryContainerInfo> containerInfoProvider) {
+
+        if (containerInfoProvider == null) {
+            containerInfoProvider = () -> null;
+        }
+        m_containerInfoProvider = containerInfoProvider;
+    }
+
+    /**
      * Sets the controller handler for gallery dialog.<p>
      *
      * @param handler the handler to set
@@ -1353,6 +1391,16 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
     }
 
     /**
+     * Sets the template context info provider.
+     *
+     * @param provider the template context info provider
+     */
+    public void setTemplateContextInfoProvider(Supplier<CmsTemplateContextInfo> provider) {
+
+        m_templateContextInfoProvider = provider;
+    }
+
+    /**
      * Sorts the categories according to given parameters and updates the list.<p>
      *
      * @param sortParams the sort parameters
@@ -1407,6 +1455,7 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
             galleries = m_dialogBean.getGalleries();
         }
         SortParams sort = SortParams.valueOf(sortParams);
+        boolean grouped = false;
         switch (sort) {
             case title_asc:
                 Collections.sort(galleries, new CmsComparatorTitle(true));
@@ -1426,6 +1475,26 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
             case path_desc:
                 Collections.sort(galleries, new CmsComparatorPath(false));
                 break;
+            case grouped:
+                Collections.sort(
+                    galleries,
+                    (
+                        a,
+                        b) -> ComparisonChain.start().compare(a.getGroup(), b.getGroup()).compare(
+                            a.getPath(),
+                            b.getPath()).result());
+                grouped = true;
+                break;
+            case grouped_title:
+                Collections.sort(
+                    galleries,
+                    (
+                        a,
+                        b) -> ComparisonChain.start().compare(a.getGroup(), b.getGroup()).compare(
+                            a.getTitle(),
+                            b.getTitle()).result());
+                grouped = true;
+                break;
             case tree:
                 m_handler.onUpdateGalleryTree(galleryListToTree(galleries), m_searchObject.getGalleries());
                 return;
@@ -1435,7 +1504,7 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
                 // not supported
                 return;
         }
-        m_handler.onUpdateGalleries(galleries, m_searchObject.getGalleries());
+        m_handler.onUpdateGalleries(galleries, m_searchObject.getGalleries(), grouped);
     }
 
     /**
@@ -1562,15 +1631,19 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
         // if the RPC call will be sent the search object is in a unchanged state
         m_searchObjectChanged = false;
         if (!m_handler.hasResultsTab()) {
+
             return;
         }
         if (m_searchObject.isEmpty()) {
+
             // don't search: notify the user that at least one search criteria should be selected
             if ((m_handler.m_galleryDialog.getResultsTab() == null)
                 || m_handler.m_galleryDialog.getResultsTab().isSelected()) {
+
                 m_handler.showFirstTab();
             }
         } else {
+
             // perform the search
 
             /** The RPC search action for the gallery dialog. */
@@ -1588,6 +1661,7 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
                     m_currentCallId++;
                     m_callId = m_currentCallId;
                     m_loading = true;
+
                     CmsGallerySearchBean preparedObject = prepareSearchObject();
 
                     if (isNextPage) {
@@ -1787,6 +1861,8 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
             preparedSearchObj.setGalleriesChanged(true);
             m_galleriesChanged = false;
         }
+        preparedSearchObj.setContainerInfo(m_containerInfoProvider.get());
+        preparedSearchObj.setTemplateContextInfo(m_templateContextInfoProvider.get());
         return preparedSearchObj;
 
     }
@@ -1960,14 +2036,15 @@ public class CmsGalleryController implements HasValueChangeHandlers<CmsGallerySe
                     types.add(type.getType());
                 }
 
-                getGalleryService().getGalleries(types, this);
+                // not sure if this ever gets called in practice
+                getGalleryService().getGalleries("/", types, this);
             }
 
             @Override
             protected void onResponse(List<CmsGalleryFolderBean> result) {
 
                 m_dialogBean.setGalleries(result);
-                m_handler.setGalleriesTabContent(result, m_searchObject.getGalleries());
+                m_handler.setGalleriesTabContent(result, m_searchObject.getGalleries(), false);
                 m_handler.onGalleriesTabSelection();
                 stop(false);
             }

@@ -296,6 +296,9 @@ public class CmsHtmlWidgetOption {
     /** Option for the "show/hide visual control characters" button. */
     public static final String OPTION_VISUALCHARS = "visualchars";
 
+    /** Option for the default protocol for links */
+    public static final String OPTION_LINKDEFAULTPROTOCOL = "linkdefaultprotocol:";
+
     /** The optional buttons that can be additionally added to the button bar. */
     public static final String[] OPTIONAL_BUTTONS = {
         OPTION_ANCHOR,
@@ -354,6 +357,9 @@ public class CmsHtmlWidgetOption {
     public static final Pattern PATTERN_EMBEDDED_GALLERY_CONFIG = Pattern.compile(
         "(?<![a-zA-Z0-9_])(imagegallery|downloadgallery)(\\{.*?\\})");
 
+    /** If this is set, the contents of the path following the ':' will be interpreted as JSON and passed to TinyMCE directly. */
+    public static final String OPTION_EDITORCONFIG = "editorconfig:";
+
     /** Holds the global button bar configuration options to increase performance. */
     private static List<String> m_globalButtonBarOption;
 
@@ -398,12 +404,18 @@ public class CmsHtmlWidgetOption {
 
     /**
     private boolean m_allowScripts;
-    
+
     /** The path for custom styles. */
     private String m_stylesFormatPath;
 
     /** The style XML path. */
     private String m_stylesXmlPath;
+
+    /** Path to an external TinyMCE JSON config file. */
+    private String m_editorConfigPath;
+
+    /** The link default protocol */
+    private String m_linkDefaultProtocol;
 
     /**
      * Creates a new empty HTML widget object object.<p>
@@ -502,6 +514,20 @@ public class CmsHtmlWidgetOption {
             result.append(OPTION_FORMATSELECT_OPTIONS);
             result.append(option.getFormatSelectOptions());
             added = true;
+        }
+
+        if (null != option.getEditorConfigPath()) {
+            if (added) {
+                result.append(DELIMITER_OPTION);
+            }
+            result.append(OPTION_EDITORCONFIG);
+            result.append(option.getEditorConfigPath());
+            added = true;
+        }
+
+        if (CmsStringUtil.isNotEmpty(option.getLinkDefaultProtocol())) {
+            result.append(OPTION_LINKDEFAULTPROTOCOL);
+            result.append(option.getLinkDefaultProtocol());
         }
 
         return result.toString();
@@ -802,6 +828,16 @@ public class CmsHtmlWidgetOption {
     }
 
     /**
+     * Gets the path of a JSON file containing options to be passed directly into TinyMCE.
+     *
+     * @return the path of a JSON with direct TinyMCE options
+     */
+    public String getEditorConfigPath() {
+
+        return m_editorConfigPath;
+    }
+
+    /**
      * Returns the widget editor height.<p>
      *
      * @return the widget editor height
@@ -839,6 +875,16 @@ public class CmsHtmlWidgetOption {
     public List<String> getHiddenButtons() {
 
         return m_hiddenButtons;
+    }
+
+    /**
+     * Returns the link default protocol to use when inserting/editing links via the link dialog.
+     *
+     * @return the link default protocol to use when inserting/editing links via the link dialog
+     */
+    public String getLinkDefaultProtocol() {
+
+        return m_linkDefaultProtocol;
     }
 
     /**
@@ -984,6 +1030,16 @@ public class CmsHtmlWidgetOption {
     }
 
     /**
+     * Sets the path for a file containing JSON options to be passed directly into TinyMCE.
+     *
+     * @param optionJsonPath the path of a JSON file
+     */
+    public void setEditorConfigPath(String optionJsonPath) {
+
+        m_editorConfigPath = optionJsonPath;
+    }
+
+    /**
      * Sets the widget editor height.<p>
      *
      * @param editorHeight the widget editor height
@@ -1021,6 +1077,17 @@ public class CmsHtmlWidgetOption {
     public void setHiddenButtons(List<String> buttons) {
 
         m_hiddenButtons = buttons;
+    }
+
+    /**
+     * Set the link default protocol to use when inserting/editing links via the link dialog
+     *
+     * @param linkDefaultProtocol
+     *            the link default protocol to use when inserting/editing links via the link dialog
+     */
+    public void setLinkDefaultProtocol(String linkDefaultProtocol) {
+
+        m_linkDefaultProtocol = linkDefaultProtocol;
     }
 
     /**
@@ -1224,10 +1291,19 @@ public class CmsHtmlWidgetOption {
                     // the button bar definition string
                     option = option.substring(OPTION_BUTTONBAR.length());
                     setButtonBarOptionString(option);
+                } else if (option.startsWith(OPTION_EDITORCONFIG)) {
+                    option = option.substring(OPTION_EDITORCONFIG.length());
+                    setEditorConfigPath(option);
                 } else if (option.startsWith(OPTION_IMPORTCSS)) {
                     m_importCss = true;
                 } else if (option.startsWith(OPTION_ALLOWSCRIPTS)) {
                     m_allowScripts = true;
+                } else if (option.startsWith(OPTION_LINKDEFAULTPROTOCOL)) {
+                    // the link default protocol
+                    option = option.substring(OPTION_LINKDEFAULTPROTOCOL.length());
+                    if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(option)) {
+                        setLinkDefaultProtocol(option);
+                    }
                 } else {
                     // check if option describes an additional button
                     if (OPTIONAL_BUTTONS_LIST.contains(option)) {

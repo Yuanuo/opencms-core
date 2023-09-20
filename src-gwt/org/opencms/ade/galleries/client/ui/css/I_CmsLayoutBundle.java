@@ -84,6 +84,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
     interface I_CmsGalleryDialogCss extends CssResource {
 
         /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String column();
+
+        /** Access method.<p>
          *
          * @return the CSS class name
          */
@@ -102,6 +108,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
         String galleryBody();
 
         /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String groupHeader();
+
+        /** Access method.<p>
          *
          * @return the CSS class name
          */
@@ -118,6 +130,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
          * @return the CSS class name
          */
         String listIcon();
+
+        /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String localeLabel();
 
         /** Access method.<p>
          *
@@ -154,6 +172,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
          * @return the CSS class name
          */
         String searchTabDesMargin();
+
+        /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String searchTabFlexRow();
 
         /** Access method.<p>
          *

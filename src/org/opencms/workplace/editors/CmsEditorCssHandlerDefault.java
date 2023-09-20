@@ -52,6 +52,9 @@ public class CmsEditorCssHandlerDefault implements I_CmsEditorCssHandler {
     /** Sitemap attribute that can be used to configure the editor stylesheet. */
     public static final String ATTR_TEMPLATE_EDITOR_CSS = "template.editor.css";
 
+    /** Request context attribute used to pass the editor stylesheet (normally defined as a meta tag) to the CSS handler. */
+    public static final String ATTRIBUTE_EDITOR_STYLESHEET = "cms-editor-stylesheet";
+
     /**
      * @see org.opencms.workplace.editors.I_CmsEditorCssHandler#getUriStyleSheet(org.opencms.file.CmsObject, java.lang.String)
      */
@@ -92,6 +95,13 @@ public class CmsEditorCssHandlerDefault implements I_CmsEditorCssHandler {
             return "";
         }
         String result = "";
+
+        Object attr = cms.getRequestContext().getAttribute(ATTRIBUTE_EDITOR_STYLESHEET);
+        if (attr instanceof String) {
+            String editorStylesheet = (String)attr;
+            return editorStylesheet;
+        }
+
         try {
             CmsADEConfigData config = OpenCms.getADEManager().lookupConfigurationWithCache(
                 cms,

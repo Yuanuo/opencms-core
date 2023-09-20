@@ -118,6 +118,9 @@ public class CmsXmlContent extends A_CmsXmlDocument {
     /** Flag which records whether a version transformation was used when this content object was created. */
     private boolean m_isTransformedVersion;
 
+    /** Indicates whether any broken links have been invalidated in the content. */
+    protected boolean m_hasInvalidatedBrokenLinks;
+
     /**
      * Hides the public constructor.<p>
      */
@@ -696,6 +699,16 @@ public class CmsXmlContent extends A_CmsXmlDocument {
     }
 
     /**
+     * Checks if any broken links have been invalidated in this content.
+     *
+     * @return true if broken links have been invalidated
+     */
+    public boolean hasInvalidatedBrokenLinks() {
+
+        return m_hasInvalidatedBrokenLinks;
+    }
+
+    /**
      * @see org.opencms.xml.A_CmsXmlDocument#isAutoCorrectionEnabled()
      */
     @Override
@@ -832,7 +845,7 @@ public class CmsXmlContent extends A_CmsXmlDocument {
      * Visits all values of this XML content with the given value visitor.<p>
      *
      * Please note that the order in which the values are visited may NOT be the
-     * order they appear in the XML document. It is ensured that the the parent
+     * order they appear in the XML document. It is ensured that the parent
      * of a nested value is visited before the element it contains.<p>
      *
      * @param visitor the value visitor implementation to visit the values with

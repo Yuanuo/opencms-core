@@ -53,6 +53,7 @@ import org.opencms.main.CmsException;
 import org.opencms.main.CmsIllegalStateException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.security.CmsPermissionViolationException;
 import org.opencms.security.CmsRole;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
@@ -121,6 +122,9 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
 
     /** The evaluated body content if available. */
     private String m_bodyContent;
+
+    /** If false, formatters are always included in non-cacheable mode, otherwise they are included in cacheable mode in the Online project only. */
+    private boolean m_cacheable = true;
 
     /** States if this container should only be displayed on detail pages. */
     private boolean m_detailOnly;
@@ -492,6 +496,10 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                         if (detailOnlyPage != null) {
                             container = detailOnlyPage.getContainers().get(getName());
                         }
+                        if (container == null && m_editableRequest && containerPage != null) {
+                            // this is for the case where the current container is the nested container of a model group which the user is dragging into a detail container 
+                            container = containerPage.getContainers().get(getName());
+                        }
                     }
                 } else if (containerPage != null) {
                     container = containerPage.getContainers().get(getName());
@@ -509,16 +517,16 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                 } else if ((m_parentElement != null)
                     && !m_detailOnly //ignore parent information for detail only containers to render content on different detail pages.
                     && !m_parentElement.getInstanceId().equals(container.getParentInstanceId())) {
-                        // the container parent instance id does not match the parent element instance id, skip rendering to avoid recursion
-                        LOG.error(
-                            new CmsIllegalStateException(
-                                Messages.get().container(
-                                    Messages.ERR_INVALID_CONTAINER_PARENT_2,
-                                    getName(),
-                                    m_parentElement.getInstanceId())));
-                        resetState();
-                        return EVAL_PAGE;
-                    }
+                    // the container parent instance id does not match the parent element instance id, skip rendering to avoid recursion
+                    LOG.error(
+                        new CmsIllegalStateException(
+                            Messages.get().container(
+                                Messages.ERR_INVALID_CONTAINER_PARENT_2,
+                                getName(),
+                                m_parentElement.getInstanceId())));
+                    resetState();
+                    return EVAL_PAGE;
+                }
                 // set the parameter
                 container.setParam(getParam());
                 // set the detail only flag
@@ -760,6 +768,19 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
     public String getWidth() {
 
         return m_width;
+    }
+
+    /**
+     * Sets the 'cacheable' mode for included formatters.
+     *
+     * <p>If this is set to false, formatters will never be included in cacheable mode, otherwise they will
+     * only be included in cacheable mode in the Online project.
+     *
+     * @param cacheable the cacheable mode (true or false)
+     */
+    public void setCacheable(String cacheable) {
+
+        m_cacheable = Boolean.parseBoolean(cacheable);
     }
 
     /**
@@ -1379,7 +1400,12 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
         if (!m_editableRequest && !showInContext) {
             return false;
         }
-        element.initResource(cms);
+        try {
+            element.initResource(cms);
+        } catch (CmsPermissionViolationException e) {
+            LOG.info(e.getLocalizedMessage(), e);
+            return false;
+        }
         if (!m_editableRequest && !element.isReleasedAndNotExpired()) {
             // do not render expired resources for the online project
             return false;
@@ -1486,7 +1512,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                                 null,
                                 locale,
                                 false,
-                                isOnline,
+                                isOnline && m_cacheable,
                                 null,
                                 CmsRequestUtil.getAttributeMap(req),
                                 req,
@@ -1585,7 +1611,7 @@ public class CmsJspTagContainer extends BodyTagSupport implements TryCatchFinall
                             null,
                             locale,
                             false,
-                            isOnline,
+                            isOnline && m_cacheable,
                             null,
                             CmsRequestUtil.getAtrributeMap(req),
                             req,

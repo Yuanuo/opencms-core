@@ -37,6 +37,7 @@ import java.util.Collection;
 import java.util.List;
 
 import com.google.gwt.user.client.ui.FlowPanel;
+import com.google.gwt.user.client.ui.Widget;
 
 /**
  * Form field panel for the sitemap entry editor in the navigation mode.<p>
@@ -78,6 +79,17 @@ public class CmsInfoBoxFormFieldPanel extends A_CmsFormFieldPanel {
     }
 
     /**
+     * Adds another widget after the list info widget.
+     *
+     * @param widget the widget to add
+     */
+    public void addWidgetAfterListInfo(Widget widget) {
+
+        int index = m_panel.getWidgetIndex(m_infoWidget);
+        m_panel.insert(widget, index + 1);
+    }
+
+    /**
      * @see org.opencms.gwt.client.ui.input.form.A_CmsFormFieldPanel#getDefaultGroup()
      */
     @Override
@@ -104,10 +116,7 @@ public class CmsInfoBoxFormFieldPanel extends A_CmsFormFieldPanel {
      */
     public void truncate(String textMetricsKey, int clientWidth) {
 
-        clientWidth -= 12;
-        storeTruncation(textMetricsKey, clientWidth);
-        truncatePanel(m_panel, textMetricsKey, clientWidth);
-        truncatePanel(m_innerPanel, textMetricsKey, clientWidth);
+        // do nothing
     }
 
 }

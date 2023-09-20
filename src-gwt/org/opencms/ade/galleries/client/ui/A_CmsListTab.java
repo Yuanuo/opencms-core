@@ -43,6 +43,7 @@ import org.opencms.gwt.client.ui.I_CmsButton.ButtonStyle;
 import org.opencms.gwt.client.ui.I_CmsListItem;
 import org.opencms.gwt.client.ui.I_CmsTruncable;
 import org.opencms.gwt.client.ui.externallink.CmsEditExternalLinkDialog;
+import org.opencms.gwt.client.ui.input.A_CmsSelectBox;
 import org.opencms.gwt.client.ui.input.CmsCheckBox;
 import org.opencms.gwt.client.ui.input.CmsSelectBox;
 import org.opencms.gwt.client.ui.input.CmsTextBox;
@@ -259,7 +260,7 @@ public abstract class A_CmsListTab extends A_CmsTab implements ValueChangeHandle
     protected CmsPushButton m_searchButton;
 
     /** The select box to change the sort order. */
-    protected CmsSelectBox m_sortSelectBox;
+    protected A_CmsSelectBox<?> m_sortSelectBox;
 
     /** The option panel. */
     @UiField
@@ -273,6 +274,10 @@ public abstract class A_CmsListTab extends A_CmsTab implements ValueChangeHandle
 
     /** The quick search handler registration. */
     private HandlerRegistration m_quickSearchRegistration;
+
+    /** Panel to put additional widgets. */
+    @UiField
+    FlowPanel m_additionalWidgets;
 
     /**
      * The default constructor with drag handler.<p>
@@ -562,6 +567,17 @@ public abstract class A_CmsListTab extends A_CmsTab implements ValueChangeHandle
     }
 
     /**
+     * Creates the sort select box.
+     * @param options the options for the select box
+     *
+     * @return the sort select box
+     */
+    protected A_CmsSelectBox<?> createSelectBox(LinkedHashMap<String, String> options) {
+
+        return new CmsSelectBox(options);
+    }
+
+    /**
      * Creates a select button.<p>
      *
      * @param selectionHandler the selction handler
@@ -674,10 +690,9 @@ public abstract class A_CmsListTab extends A_CmsTab implements ValueChangeHandle
 
         LinkedHashMap<String, String> sortList = getSortList();
         if (sortList != null) {
-            m_sortSelectBox = new CmsSelectBox(sortList);
+            m_sortSelectBox = createSelectBox(sortList);
             m_sortSelectBox.addValueChangeHandler(this);
             m_sortSelectBox.addStyleName(DIALOG_CSS.selectboxWidth());
-            m_sortSelectBox.truncate(TM_GALLERY_SORT, 200);
             m_options.add(m_sortSelectBox);
             Label infoLabel = new Label();
             infoLabel.setStyleName(DIALOG_CSS.infoLabel());

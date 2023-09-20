@@ -39,27 +39,33 @@ import org.opencms.jsp.search.config.I_CmsSearchConfigurationFacetField;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationFacetRange;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationPagination;
 import org.opencms.jsp.search.config.I_CmsSearchConfigurationSortOption;
+import org.opencms.jsp.search.config.parser.simplesearch.CmsCategoryFolderRestrictionBean;
+import org.opencms.jsp.search.config.parser.simplesearch.CmsConfigurationBean;
+import org.opencms.jsp.search.config.parser.simplesearch.CmsConfigurationBean.CombinationMode;
+import org.opencms.jsp.search.config.parser.simplesearch.CmsGeoFilterBean;
+import org.opencms.jsp.search.config.parser.simplesearch.daterestrictions.I_CmsDateRestriction;
+import org.opencms.jsp.search.config.parser.simplesearch.preconfiguredrestrictions.CmsRestrictionRule;
+import org.opencms.jsp.search.config.parser.simplesearch.preconfiguredrestrictions.CmsRestrictionsBean;
+import org.opencms.jsp.search.config.parser.simplesearch.preconfiguredrestrictions.CmsRestrictionsBean.FieldValues;
+import org.opencms.jsp.search.config.parser.simplesearch.preconfiguredrestrictions.CmsRestrictionsBean.FieldValues.FieldType;
 import org.opencms.main.CmsException;
 import org.opencms.relations.CmsCategoryService;
 import org.opencms.search.fields.CmsSearchField;
 import org.opencms.search.solr.CmsSolrQuery;
 import org.opencms.search.solr.CmsSolrQueryUtil;
-import org.opencms.ui.apps.lists.CmsListManager;
-import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean;
-import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean.ListCategoryFolderRestrictionBean;
-import org.opencms.ui.apps.lists.CmsListManager.ListConfigurationBean.ListGeoFilterBean;
-import org.opencms.ui.apps.lists.daterestrictions.I_CmsListDateRestriction;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
-import org.opencms.xml.types.CmsXmlDisplayFormatterValue;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import org.apache.solr.common.params.CommonParams;
 
@@ -163,6 +169,21 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         }
     }
 
+    /** SOLR field name. */
+    public static final String FIELD_CATEGORIES = "category_exact";
+
+    /** SOLR field name. */
+    public static final String FIELD_DATE = "instancedate_%s_dt";
+
+    /** SOLR field name. */
+    public static final String FIELD_DATE_RANGE = "instancedaterange_%s_dr";
+
+    /** SOLR field name. */
+    public static final String FIELD_DATE_FACET_NAME = "instancedate";
+
+    /** SOLR field name. */
+    public static final String FIELD_PARENT_FOLDERS = "parent-folders";
+
     /** Pagination which may override the default pagination. */
     private I_CmsSearchConfigurationPagination m_pagination;
 
@@ -170,7 +191,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
     private CmsObject m_cms;
 
     /** The list configuration bean. */
-    private ListConfigurationBean m_config;
+    private CmsConfigurationBean m_config;
 
     /** The (mutable) search locale. */
     private Locale m_searchLocale;
@@ -190,10 +211,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
      *
      * @throws JSONException in case parsing the JSON fails
      */
-    public CmsSimpleSearchConfigurationParser(
-        CmsObject cms,
-        CmsListManager.ListConfigurationBean config,
-        String additionalParamJSON)
+    public CmsSimpleSearchConfigurationParser(CmsObject cms, CmsConfigurationBean config, String additionalParamJSON)
     throws JSONException {
 
         super(CmsStringUtil.isEmptyOrWhitespaceOnly(additionalParamJSON) ? "{}" : additionalParamJSON);
@@ -214,7 +232,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
      */
     public static CmsSimpleSearchConfigurationParser createInstanceWithNoJsonConfig(
         CmsObject cms,
-        CmsListManager.ListConfigurationBean config) {
+        CmsConfigurationBean config) {
 
         try {
             return new CmsSimpleSearchConfigurationParser(cms, config, null);
@@ -286,9 +304,9 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
             return super.parseRangeFacets();
         } else {
             Map<String, I_CmsSearchConfigurationFacetRange> rangeFacets = new HashMap<String, I_CmsSearchConfigurationFacetRange>();
-            String indexField = CmsListManager.FIELD_DATE;
-            if (Boolean.parseBoolean(m_config.getParameterValue(CmsListManager.N_FILTER_MULTI_DAY))) {
-                indexField = CmsListManager.FIELD_DATE_RANGE;
+            String indexField = FIELD_DATE;
+            if (Boolean.parseBoolean(m_config.getParameterValue(CmsConfigurationBean.PARAM_FILTER_MULTI_DAY))) {
+                indexField = FIELD_DATE_RANGE;
             }
             I_CmsSearchConfigurationFacetRange rangeFacet = new CmsSearchConfigurationFacetRange(
                 String.format(indexField, getSearchLocale().toString()),
@@ -297,7 +315,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
                 "+1MONTHS",
                 null,
                 Boolean.FALSE,
-                CmsListManager.FIELD_DATE_FACET_NAME,
+                FIELD_DATE_FACET_NAME,
                 Integer.valueOf(1),
                 "Date",
                 Boolean.FALSE,
@@ -387,6 +405,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         if (CmsStringUtil.isEmptyOrWhitespaceOnly(params)) {
             params = getCategoryFolderFilter()
                 + getResourceTypeFilter()
+                + getPreconfiguredFilterQuery()
                 + getFilterQuery()
                 + getBlacklistFilter()
                 + getGeoFilterQuery();
@@ -493,6 +512,53 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
     }
 
     /**
+     * Generates the query part for the preconfigured restrictions for the type.
+     * @param type the type to generate the restriction for.
+     * @param restrictionsForType the preconfigured restrictions for the type.
+     * @return the part of the Solr query for the restriction.
+     */
+    String generatePreconfiguredRestriction(
+        String type,
+        Map<CmsRestrictionRule, Collection<FieldValues>> restrictionsForType) {
+
+        String result = "";
+        if ((null != restrictionsForType) && (restrictionsForType.size() > 0)) {
+            Collection<String> ruleRestrictions = new HashSet<>(restrictionsForType.size());
+            for (Map.Entry<CmsRestrictionRule, Collection<FieldValues>> ruleEntry : restrictionsForType.entrySet()) {
+                ruleRestrictions.add(generatePreconfiguredRestrictionForRule(ruleEntry.getKey(), ruleEntry.getValue()));
+            }
+            result = ruleRestrictions.size() > 1
+            ? ruleRestrictions.stream().reduce((r1, r2) -> (r1 + " " + CombinationMode.AND + " " + r2)).get()
+            : ruleRestrictions.iterator().next();
+            if (null != type) {
+                result = "type:\"" + type + "\" AND (" + result + ")";
+            }
+        } else if (null != type) {
+            result = "type:\"" + type + "\"";
+        }
+        return result.isEmpty() ? result : "(" + result + ")";
+    }
+
+    /**
+     * Generates the query part for the preconfigured restriction for a single rule.
+     * @param rule the rule to generate the restriction for.
+     * @param values the values provided for the rule.
+     * @return the part of the Solr query for the restriction.
+     */
+    String generatePreconfiguredRestrictionForRule(CmsRestrictionRule rule, Collection<FieldValues> values) {
+
+        Collection<String> resolvedFieldValues = values.stream().map(v -> resolveFieldValues(rule, v)).collect(
+            Collectors.toSet());
+
+        String seperator = " " + rule.getCombinationModeBetweenFields().toString() + " ";
+        return rule.getFieldForLocale(getSearchLocale())
+            + ":("
+            + resolvedFieldValues.stream().reduce((v1, v2) -> v1 + seperator + v2).get()
+            + ")";
+
+    }
+
+    /**
      * Returns the blacklist filter.<p>
      *
      * @return the blacklist filter
@@ -557,7 +623,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         if (!categoryFilterPart.isEmpty()) {
             defaultPart = "((" + defaultPart + ") AND (" + categoryFilterPart + "))";
         }
-        for (ListCategoryFolderRestrictionBean restriction : m_config.getCategoryFolderRestrictions()) {
+        for (CmsCategoryFolderRestrictionBean restriction : m_config.getCategoryFolderRestrictions()) {
             String restrictionQuery = restriction.toString();
             if (!restrictionQuery.isEmpty()) {
                 restrictionQuery = "(" + restrictionQuery + " AND " + defaultPart + ")";
@@ -628,7 +694,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         if (!result.contains(CommonParams.FL + "=")) {
             result += "&" + CommonParams.FL + "=" + CmsEncoder.encode(getDefaultReturnFields());
         }
-        I_CmsListDateRestriction dateRestriction = m_config.getDateRestriction();
+        I_CmsDateRestriction dateRestriction = m_config.getDateRestriction();
         if (dateRestriction != null) {
             result += "&fq="
                 + CmsEncoder.encode(
@@ -673,7 +739,7 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
     String getGeoFilterQuery() {
 
         String result = "";
-        ListGeoFilterBean geoFilterBean = m_config.getGeoFilter();
+        CmsGeoFilterBean geoFilterBean = m_config.getGeoFilter();
         if (geoFilterBean != null) {
             String fq = CmsSolrQueryUtil.composeGeoFilterQuery(
                 CmsSearchField.FIELD_GEOCOORDS,
@@ -686,6 +752,36 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
     }
 
     /**
+     * Returns the filter query string.<p>
+     *
+     * @return the filter query
+     */
+    String getPreconfiguredFilterQuery() {
+
+        String result = "";
+        if (m_config.hasPreconfiguredRestrictions()) {
+            CmsRestrictionsBean restrictions = m_config.getPreconfiguredRestrictions();
+            String restriction = generatePreconfiguredRestriction(null, restrictions.getRestrictionsForType(null));
+            if (!restriction.isEmpty()) {
+                result = "&fq=" + CmsEncoder.encode(restriction);
+            }
+            Collection<String> typedRestrictions = new HashSet<>();
+            for (String type : m_config.getTypes()) {
+                restriction = generatePreconfiguredRestriction(type, restrictions.getRestrictionsForType(type));
+                if (!restriction.isEmpty()) {
+                    typedRestrictions.add(restriction);
+                }
+            }
+            if (!typedRestrictions.isEmpty()) {
+                result += "&fq="
+                    + CmsEncoder.encode(
+                        "(" + typedRestrictions.stream().reduce((r1, r2) -> (r1 + " OR " + r2)).get() + ")");
+            }
+        }
+        return result;
+    }
+
+    /**
      * Returns the resource type filter string.<p>
      *
      * @return the folder filter
@@ -693,19 +789,61 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
     String getResourceTypeFilter() {
 
         String result = "";
-        List<String> typeVals = Lists.newArrayList();
-        if (!m_config.getDisplayTypes().isEmpty()) {
-            for (String displayType : m_config.getDisplayTypes()) {
-                if (displayType.contains(CmsXmlDisplayFormatterValue.SEPARATOR)) {
-                    displayType = displayType.substring(0, displayType.indexOf(CmsXmlDisplayFormatterValue.SEPARATOR));
-                }
-                typeVals.add("\"" + displayType + "\"");
+        // When we have pre-configured restrictions, we need to combine the type filter with these restrictions.
+        if (!m_config.hasPreconfiguredRestrictions()) {
+            List<String> typeVals = Lists.newArrayList();
+            for (String type : m_config.getTypes()) {
+                typeVals.add("\"" + type + "\"");
+            }
+            if (!typeVals.isEmpty()) {
+                result = "&fq=" + CmsEncoder.encode("type:(" + CmsStringUtil.listAsString(typeVals, " OR ") + ")");
             }
         }
-        if (!typeVals.isEmpty()) {
-            result = "&fq=" + CmsEncoder.encode("type:(" + CmsStringUtil.listAsString(typeVals, " OR ") + ")");
-        }
         return result;
+    }
+
+    /**
+     * Generates the search string part for one input field value.
+     * @param rule the preconfigured rule.
+     * @param fieldValues the values in the field.
+     * @return the search term part for the value in the field.
+     */
+    String resolveFieldValues(CmsRestrictionRule rule, FieldValues fieldValues) {
+
+        Collection<String> values = fieldValues.getValues();
+        Collection<String> finalValues;
+        if (FieldType.PLAIN.equals(fieldValues.getFieldType())) {
+            // We are sure that there is exactly one value in that case.
+            return "(" + values.iterator().next() + ")";
+        } else {
+            switch (rule.getMatchType()) {
+                case DEFAULT:
+                    finalValues = values;
+                    break;
+                case EXACT:
+                    finalValues = values.stream().map(v -> ("\"" + v + "\"")).collect(Collectors.toSet());
+                    break;
+                case INFIX:
+                    finalValues = values.stream().map(
+                        v -> ("(" + v + " OR *" + v + " OR *" + v + "* OR " + v + "*)")).collect(Collectors.toSet());
+                    break;
+                case POSTFIX:
+                    finalValues = values.stream().map(v -> ("(" + v + " OR *" + v + ")")).collect(Collectors.toSet());
+                    break;
+                case PREFIX:
+                    finalValues = values.stream().map(v -> ("(" + v + " OR " + v + "*)")).collect(Collectors.toSet());
+                    break;
+                default:
+                    throw new IllegalArgumentException("Unknown match type '" + rule.getMatchType() + "'.");
+            }
+            if (finalValues.size() > 1) {
+                String seperator = " " + rule.getCombinationModeInField().toString() + " ";
+                return "(" + finalValues.stream().reduce((v1, v2) -> v1 + seperator + v2).get() + ")";
+            } else {
+                return finalValues.iterator().next();
+            }
+
+        }
     }
 
     /** The default field facets.
@@ -717,9 +855,9 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
 
         Map<String, I_CmsSearchConfigurationFacetField> fieldFacets = new HashMap<String, I_CmsSearchConfigurationFacetField>();
         fieldFacets.put(
-            CmsListManager.FIELD_CATEGORIES,
+            FIELD_CATEGORIES,
             new CmsSearchConfigurationFacetField(
-                CmsListManager.FIELD_CATEGORIES,
+                FIELD_CATEGORIES,
                 null,
                 Integer.valueOf(1),
                 Integer.valueOf(200),
@@ -732,9 +870,9 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
                 Boolean.TRUE,
                 null));
         fieldFacets.put(
-            CmsListManager.FIELD_PARENT_FOLDERS,
+            FIELD_PARENT_FOLDERS,
             new CmsSearchConfigurationFacetField(
-                CmsListManager.FIELD_PARENT_FOLDERS,
+                FIELD_PARENT_FOLDERS,
                 null,
                 Integer.valueOf(1),
                 Integer.valueOf(200),

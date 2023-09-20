@@ -28,6 +28,8 @@
 package org.opencms.ade.configuration;
 
 import org.opencms.ade.configuration.CmsConfigurationReader.DiscardPropertiesMode;
+import org.opencms.ade.containerpage.CmsSettingTranslator;
+import org.opencms.ade.detailpage.CmsDetailPageFilter;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
@@ -52,6 +54,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.google.common.collect.Lists;
 
@@ -480,26 +483,115 @@ public class TestConfig extends OpenCmsTestCase {
     }
 
     /**
+     * Tests filtering of qualified detail pages.
+     *
+     * @throws Exception if something goes wrong
+     */
+    public void testDetailPageFiltering() throws Exception {
+
+        CmsDetailPageInfo foo1 = new CmsDetailPageInfo(new CmsUUID(), "/sites/default/a1", "a", "foo", "");
+        CmsDetailPageInfo foo2 = new CmsDetailPageInfo(new CmsUUID(), "/sites/default/a2", "a", "foo", "");
+        CmsDetailPageInfo bar = new CmsDetailPageInfo(new CmsUUID(), "/sites/default/a3", "a", "bar", "");
+        CmsDetailPageInfo unqualified1 = new CmsDetailPageInfo(new CmsUUID(), "/sites/default/a4", "a", null, "");
+        CmsDetailPageInfo unqualified2 = new CmsDetailPageInfo(new CmsUUID(), "/sites/default/a5", "a", null, "");
+        CmsDetailPageInfo unqualifiedDefault = new CmsDetailPageInfo(
+            new CmsUUID(),
+            "/sites/default/a6",
+            "##DEFAULT##",
+            null,
+            "");
+        CmsDetailPageInfo fooDefault = new CmsDetailPageInfo(
+            new CmsUUID(),
+            "/sites/default/a7",
+            "##DEFAULT##",
+            "foo",
+            "");
+        final Set<String> qualifiersToMatch = new HashSet<>();
+        // we use a dummy that doesn't check categories and just uses the set qualifierToMatch for testing qualifiers
+        CmsDetailPageFilter filter = new CmsDetailPageFilter(getCmsObject(), (CmsResource)null) {
+
+            @Override
+            protected boolean checkQualifier(String qualifier) {
+
+                return qualifiersToMatch.contains(qualifier);
+            }
+        };
+
+        List<CmsDetailPageInfo> infos2 = filter.filterDetailPages(
+            Arrays.asList(fooDefault, unqualifiedDefault, unqualified1, unqualified2, bar, foo1, foo2)).collect(
+                Collectors.toList());
+        assertEquals(Arrays.asList(unqualified1, unqualified2, unqualifiedDefault), infos2);
+
+        infos2 = filter.filterDetailPages(
+            Arrays.asList(foo1, foo2, bar, unqualified1, unqualified2, unqualifiedDefault, fooDefault)).collect(
+                Collectors.toList());
+        assertEquals(Arrays.asList(unqualified1, unqualified2, unqualifiedDefault), infos2);
+
+        qualifiersToMatch.add("foo");
+        infos2 = filter.filterDetailPages(
+            Arrays.asList(fooDefault, unqualifiedDefault, unqualified1, unqualified2, bar, foo1, foo2)).collect(
+                Collectors.toList());
+        assertEquals(Arrays.asList(foo1, foo2, unqualified1, unqualified2, fooDefault, unqualifiedDefault), infos2);
+
+        infos2 = filter.filterDetailPages(
+            Arrays.asList(foo1, foo2, bar, unqualified1, unqualified2, unqualifiedDefault, fooDefault)).collect(
+                Collectors.toList());
+        assertEquals(Arrays.asList(foo1, foo2, unqualified1, unqualified2, fooDefault, unqualifiedDefault), infos2);
+
+        qualifiersToMatch.add("bar");
+        infos2 = filter.filterDetailPages(
+            Arrays.asList(fooDefault, unqualifiedDefault, unqualified1, unqualified2, bar, foo1, foo2)).collect(
+                Collectors.toList());
+        assertEquals(
+            Arrays.asList(bar, foo1, foo2, unqualified1, unqualified2, fooDefault, unqualifiedDefault),
+            infos2);
+
+        infos2 = filter.filterDetailPages(
+            Arrays.asList(foo1, foo2, bar, unqualified1, unqualified2, unqualifiedDefault, fooDefault)).collect(
+                Collectors.toList());
+        assertEquals(
+            Arrays.asList(foo1, foo2, bar, unqualified1, unqualified2, fooDefault, unqualifiedDefault),
+            infos2);
+
+    }
+
+    /**
      * Tests inheritance of detail page configurations.<p>
      *
      * @throws Exception -
      */
     public void testDetailPages2() throws Exception {
 
-        CmsDetailPageInfo a1 = new CmsDetailPageInfo(getId("/sites/default/a1"), "/sites/default/a1", "a", "");
-        CmsDetailPageInfo a2 = new CmsDetailPageInfo(getId("/sites/default/a2"), "/sites/default/a2", "a", "");
-        CmsDetailPageInfo a3 = new CmsDetailPageInfo(getId("/sites/default/a3"), "/sites/default/a3", "a", "");
-        CmsDetailPageInfo a4 = new CmsDetailPageInfo(getId("/sites/default/a4"), "/sites/default/a4", "a", "");
+        CmsDetailPageInfo a1 = new CmsDetailPageInfo(getId("/sites/default/a1"), "/sites/default/a1", "a", null, "");
+        CmsDetailPageInfo a2 = new CmsDetailPageInfo(getId("/sites/default/a2"), "/sites/default/a2", "a", null, "");
+        CmsDetailPageInfo a3 = new CmsDetailPageInfo(getId("/sites/default/a3"), "/sites/default/a3", "a", null, "");
+        CmsDetailPageInfo a4 = new CmsDetailPageInfo(getId("/sites/default/a4"), "/sites/default/a4", "a", null, "");
 
-        CmsDetailPageInfo b1 = new CmsDetailPageInfo(getId("/sites/default/b1"), "/sites/default/b1", "b", "");
-        CmsDetailPageInfo b2 = new CmsDetailPageInfo(getId("/sites/default/b2"), "/sites/default/b2", "b", "");
+        CmsDetailPageInfo b1 = new CmsDetailPageInfo(getId("/sites/default/b1"), "/sites/default/b1", "b", null, "");
+        CmsDetailPageInfo b2 = new CmsDetailPageInfo(getId("/sites/default/b2"), "/sites/default/b2", "b", null, "");
 
         List<CmsDetailPageInfo> parentDetailPages = list(a1, a2, b1, b2);
         List<CmsDetailPageInfo> childDetailPages = list(a3, a4);
 
         List<CmsResourceTypeConfig> types = new ArrayList<CmsResourceTypeConfig>();
         types.add(
-            new CmsResourceTypeConfig("a", false, null, null, false, false, false, null, null, true, false, 1, null));
+            new CmsResourceTypeConfig(
+                "a",
+                false,
+                null,
+                null,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                null,
+                null,
+                true,
+                false,
+                1,
+                null));
 
         CmsTestConfigData config1 = new CmsTestConfigData(
             "/sites/default",
@@ -973,6 +1065,7 @@ public class TestConfig extends OpenCmsTestCase {
                 new HashMap<CmsUUID, CmsADEConfigDataInternal>(),
                 new ArrayList<CmsADEConfigDataInternal>(),
                 new HashMap<CmsUUID, CmsElementView>(),
+                new HashMap<>(),
                 new HashMap<>()),
             new CmsADEConfigurationSequence(Collections.singletonList(configDataInternal)));
         assertFalse(configData.isModuleConfiguration());
@@ -1021,6 +1114,7 @@ public class TestConfig extends OpenCmsTestCase {
                 new HashMap<CmsUUID, CmsADEConfigDataInternal>(),
                 new ArrayList<CmsADEConfigDataInternal>(),
                 new HashMap<CmsUUID, CmsElementView>(),
+                new HashMap<>(),
                 new HashMap<>()),
             new CmsADEConfigurationSequence(Collections.singletonList(configDataInternal)));
         assertTrue(configData.isModuleConfiguration());
@@ -1048,6 +1142,19 @@ public class TestConfig extends OpenCmsTestCase {
         assertEquals("ruletype1", prop1.getPropertyData().getRuleType());
         assertEquals("error1", prop1.getPropertyData().getError());
         assertEquals(true, prop1.getPropertyData().isPreferFolder());
+    }
+
+    /**
+     * Tests setting translation parsing.
+     */
+    public void testParseSettingTranslation() {
+
+        Map<String, String> map = CmsSettingTranslator.parseSettingTranslationMap(
+            "  foo:bar  |\nbaz:qux\n|qoo  :  xyzzy");
+        assertEquals(3, map.size());
+        assertEquals("foo", map.get("bar"));
+        assertEquals("baz", map.get("qux"));
+        assertEquals("qoo", map.get("xyzzy"));
     }
 
     /**
@@ -1202,6 +1309,75 @@ public class TestConfig extends OpenCmsTestCase {
         t2.setParent(t1);
         assertNotNull(t2.getResourceType("c"));
         assertNotSame(t1.getResourceType("c"), t2.getResourceType("c"));
+    }
+
+    /**
+     * Tests inheritance of detail page configurations.<p>
+     *
+     * @throws Exception -
+     */
+    public void testUnsetTypeAvailability() throws Exception {
+
+        List<CmsResourceTypeConfig> types = new ArrayList<CmsResourceTypeConfig>();
+        types.add(
+            new CmsResourceTypeConfig(
+                "a",
+                false,
+                null,
+                null,
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                null,
+                null,
+                true,
+                false,
+                1,
+                null));
+
+        List<CmsResourceTypeConfig> childTypes = new ArrayList<CmsResourceTypeConfig>();
+        childTypes.add(
+            new CmsResourceTypeConfig(
+                "a",
+                false,
+                null,
+                null,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                null,
+                null,
+                true,
+                false,
+                1,
+                null));
+
+        CmsTestConfigData config1 = new CmsTestConfigData(
+            "/sites/default",
+            types,
+            NO_PROPERTIES,
+            new ArrayList<>(),
+            NO_MODEL_PAGES);
+        config1.initialize(rootCms());
+
+        CmsTestConfigData config2 = new CmsTestConfigData(
+            "/sites/default/foo",
+            childTypes,
+            NO_PROPERTIES,
+            new ArrayList<>(),
+            NO_MODEL_PAGES);
+        config2.initialize(rootCms());
+        config2.setParent(config1);
+
+        assertTrue(config2.getResourceType("a").isAddDisabled());
+        assertTrue(config2.getResourceType("a").isCreateDisabled());
+
     }
 
     /**

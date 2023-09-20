@@ -185,6 +185,9 @@ public final class CmsStringUtil {
     /** Regex that matches an xml head. */
     private static final Pattern XML_HEAD_REGEX = Pattern.compile("<\\s*\\?.*\\?\\s*>", Pattern.CASE_INSENSITIVE);
 
+    /** Pattern matching sequences of non-slash characters. */
+    private static final Pattern NOT_SLASHES = Pattern.compile("[^/]+");
+
     /**
      * Default constructor (empty), private because this class has only
      * static methods.<p>
@@ -1656,6 +1659,9 @@ public final class CmsStringUtil {
      */
     public static String substitute(Pattern pattern, String text, I_CmsRegexSubstitution sub) {
 
+        if (text == null) {
+            return null;
+        }
         StringBuffer buffer = new StringBuffer();
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
@@ -2099,6 +2105,21 @@ public final class CmsStringUtil {
         newValue = newValue + newBetween.get(newNumber);
         // return the changed value
         return newValue;
+    }
+
+    /**
+     * Translates all consecutive sequences of non-slash characters in a path using the given resource translator.
+     *
+     * @param translator the resource translator
+     * @param path the path to translate
+     * @return the translated path
+     */
+    public static String translatePathComponents(CmsResourceTranslator translator, String path) {
+
+        String result = substitute(NOT_SLASHES, path, (text, matcher) -> {
+            return translator.translateResource(matcher.group());
+        });
+        return result;
     }
 
     /**

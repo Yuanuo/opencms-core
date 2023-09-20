@@ -39,6 +39,7 @@ import org.opencms.gwt.client.ui.I_CmsListItem;
 import org.opencms.gwt.client.ui.I_CmsTruncable;
 import org.opencms.gwt.client.ui.css.I_CmsInputLayoutBundle;
 import org.opencms.gwt.client.ui.css.I_CmsLayoutBundle;
+import org.opencms.gwt.client.ui.input.CmsCategoryField;
 import org.opencms.gwt.client.ui.input.CmsCheckBox;
 import org.opencms.gwt.client.ui.input.CmsSelectBox;
 import org.opencms.gwt.client.ui.input.CmsTextBox;
@@ -241,6 +242,9 @@ public class CmsCategoryTree extends Composite implements I_CmsTruncable, HasVal
     /** Map of categories. */
     protected Map<String, CmsTreeItem> m_categories;
 
+    /** Map from category paths to the paths of their children. */
+    protected Map<String, List<String>> m_childrens;
+
     /** A label for displaying additional information about the tab. */
     protected HasText m_infoLabel;
 
@@ -263,13 +267,14 @@ public class CmsCategoryTree extends Composite implements I_CmsTruncable, HasVal
     /** List of categories. */
     protected CmsList<CmsTreeItem> m_scrollList;
 
-    /** Map from category paths to the paths of their children. */
-    protected Map<String, List<String>> m_childrens;
-
     /** The quick search button. */
     protected CmsPushButton m_searchButton;
 
-    /** List of all selected categories. */
+    /**
+     * List of all selected categories.
+     *
+     * <p>IMPORTANT: This may unfortunately contain either category paths or category site paths.
+     *  */
     protected Collection<String> m_selectedCategories;
 
     /** Result string for single selection. */
@@ -777,55 +782,6 @@ public class CmsCategoryTree extends Composite implements I_CmsTruncable, HasVal
     }
 
     /**
-     * Select a single value and all parents.<p>
-     *
-     * @param item the tree item
-     * @param path The path of the Item that should be selected
-     * @param result the resulting categories
-     *
-     * @return true if this CmsTreeItem is selected or one of its children
-     */
-    protected boolean selectAllParents(CmsTreeItem item, String path, List<String> result) {
-
-        // if this is a list view
-        if (m_listView) {
-            // check if the path contains the item path
-            if (path.contains(item.getId())) {
-                // add it to the list of selected categories
-                if (!result.contains(item.getId())) {
-                    result.add(item.getId());
-                }
-                return true;
-            }
-
-        }
-        // if this is a tree view
-        else {
-            // check if the pach contains the item path
-            if (item.getId().equals(path)) {
-                // add it to the list of selected categories
-                if (!result.contains(item.getId())) {
-                    result.add(item.getId());
-                }
-                return true;
-            } else {
-                // iterate about all children of this item
-                Iterator<Widget> it = item.getChildren().iterator();
-                while (it.hasNext()) {
-                    if (selectAllParents((CmsTreeItem)it.next(), path, result)) {
-                        if (!result.contains(item.getId())) {
-                            result.add(item.getId());
-                        }
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Sorts a list of tree items according to the sort parameter.<p>
      *
      * @param items the items to sort
@@ -937,13 +893,7 @@ public class CmsCategoryTree extends Composite implements I_CmsTruncable, HasVal
         CmsCheckBox checkBox = new CmsCheckBox();
         // if it has to be selected, select it
         boolean isPartofPath = false;
-        Iterator<String> it = selectedCategories.iterator();
-        while (it.hasNext()) {
-            String path = it.next();
-            if (path.startsWith(category.getPath()) || path.contains("/" + category.getPath())) {
-                isPartofPath = true;
-            }
-        }
+        isPartofPath = CmsCategoryField.isParentCategoryOfSelected(category.getPath(), selectedCategories);
         if (isPartofPath) {
             checkBox.setChecked(true);
         }

@@ -86,6 +86,7 @@ public final class AllTests {
         suite.addTest(org.opencms.setup.AllTests.suite());
         suite.addTest(org.opencms.ade.configuration.AllTests.suite());
         suite.addTest(org.opencms.ade.containerpage.inherited.AllTests.suite());
+        suite.addTest(org.opencms.ade.contenteditor.AllTests.suite());
         suite.addTest(org.opencms.ade.sitemap.AllTests.suite());
         suite.addTest(org.opencms.cache.AllTests.suite());
         suite.addTest(org.opencms.configuration.AllTests.suite());
@@ -101,6 +102,7 @@ public final class AllTests {
         suite.addTest(org.opencms.jsp.search.AllTests.suite());
         suite.addTest(org.opencms.jsp.search.config.AllTests.suite());
         suite.addTest(org.opencms.jsp.search.config.parser.AllTests.suite());
+        suite.addTest(org.opencms.jsp.search.config.parser.simplesearch.preconfiguredrestrictions.AllTests.suite());
         suite.addTest(org.opencms.jsp.util.AllTests.suite());
         suite.addTest(org.opencms.loader.AllTests.suite());
         suite.addTest(org.opencms.mail.AllTests.suite());

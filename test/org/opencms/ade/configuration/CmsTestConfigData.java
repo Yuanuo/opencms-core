@@ -127,6 +127,8 @@ public class CmsTestConfigData extends CmsADEConfigData {
             /*String basePath*/basePath,
             /*List<CmsUUID> masterConfigs*/new ArrayList<>(),
             /*List<CmsResourceTypeConfig> resourceTypeConfig*/new ArrayList<>(),
+            /*CmsGalleriesDisabledTypeMode*/null,
+            /*CmsGalleriesDisabledTypeMode*/null,
             /*boolean discardInheritedTypes*/false,
             /*List<CmsPropertyConfig> propertyConfig*/new ArrayList<>(),
             /*DiscardPropertiesMode discardPropertiesMode*/null,
@@ -150,6 +152,7 @@ public class CmsTestConfigData extends CmsADEConfigData {
             CmsAddContentRestriction.EMPTY,
             /*CmsUUID sharedSettingsOverride */ null,
             /*boolean removeAllSharedSettingsOverrides*/false,
+            /*CmsUUID attributeEditorConfigId*/null,
             /*Map<String, String> attributes*/new HashMap<>());
         return new CmsTestConfigData(internal);
 
