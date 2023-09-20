@@ -53,6 +53,10 @@ import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.IndexSchemaFactory;
 
+import org.opencms.xml.CmsXmlException;
+import org.opencms.xml.CmsXmlUtils;
+import org.xml.sax.InputSource;
+
 /**
  * The Solr configuration class.<p>
  *

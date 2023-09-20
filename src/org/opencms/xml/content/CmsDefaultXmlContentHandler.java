@@ -399,6 +399,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** Constant for the "invalidate" appinfo attribute name. */
     public static final String APPINFO_ATTR_INVALIDATE = "invalidate";
 
+    /** Constant for the "joinby" appinfo attribute name. */
+    public static final String APPINFO_ATTR_JOINBY = "joinby";
+
     /** Constant for the "key" appinfo attribute name. */
     public static final String APPINFO_ATTR_KEY = "key";
 
