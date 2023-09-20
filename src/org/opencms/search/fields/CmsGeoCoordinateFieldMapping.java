@@ -243,7 +243,6 @@ public class CmsGeoCoordinateFieldMapping implements I_CmsSearchFieldMapping {
 
     @Override
     public void setJoinby(String joinby) {
-
     }
 
     @Override

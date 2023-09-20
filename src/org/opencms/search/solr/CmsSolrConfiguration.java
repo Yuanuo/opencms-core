@@ -31,9 +31,6 @@
 
 package org.opencms.search.solr;
 
-import org.apache.solr.common.ConfigNode;
-import org.apache.solr.core.ConfigSetService;
-import org.apache.solr.util.DOMConfigNode;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -52,10 +49,6 @@ import org.apache.solr.core.SolrConfig;
 import org.apache.solr.core.SolrResourceLoader;
 import org.apache.solr.schema.IndexSchema;
 import org.apache.solr.schema.IndexSchemaFactory;
-
-import org.opencms.xml.CmsXmlException;
-import org.opencms.xml.CmsXmlUtils;
-import org.xml.sax.InputSource;
 
 /**
  * The Solr configuration class.<p>

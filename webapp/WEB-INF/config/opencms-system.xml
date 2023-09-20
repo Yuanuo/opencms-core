@@ -37,7 +37,6 @@
             <requesthandler class="org.opencms.main.CmsStaticResourceHandler" />
             <requesthandler class="org.opencms.main.OpenCmsSolrHandler" />
             <requesthandler class="org.opencms.main.OpenCmsSpellcheckHandler" />
-            <requesthandler class="org.opencms.main.OpenCmsApiHandler" />
         </requesthandlers>
         <passwordhandler class="org.opencms.security.CmsDefaultPasswordHandler">
             <encoding>UTF-8</encoding>
