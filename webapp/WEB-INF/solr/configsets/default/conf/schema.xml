@@ -252,6 +252,27 @@
   </fieldType>
 
 
+    <!-- CJK bigram (see text_ja for a Japanese configuration using morphological analysis) -->
+    <fieldType name="text_zh" class="solr.TextField" positionIncrementGap="100">
+      <analyzer type="index">
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <!-- normalize width before bigram, as e.g. half-width dakuten combine  -->
+        <filter class="solr.CJKWidthFilterFactory"/>
+        <!-- for any non-CJK -->
+        <filter class="solr.LowerCaseFilterFactory"/>
+        <filter class="solr.CJKBigramFilterFactory"/>
+      </analyzer>
+      <analyzer type="query">
+        <tokenizer class="solr.StandardTokenizerFactory"/>
+        <!-- normalize width before bigram, as e.g. half-width dakuten combine  -->
+        <filter class="solr.CJKWidthFilterFactory"/>
+        <!-- for any non-CJK -->
+        <filter class="solr.LowerCaseFilterFactory"/>
+        <filter class="solr.CJKBigramFilterFactory"/>
+        <filter class="solr.SynonymGraphFilterFactory" synonyms="synonyms.txt" expand="true" ignoreCase="true"/>
+      </analyzer>
+    </fieldType>
+
     <!-- Spell-checking / Suggestion field, using maxShingleSize=2 -->
     <fieldType name="spell" class="solr.TextField" positionIncrementGap="100">
       <analyzer>
@@ -333,6 +354,7 @@
     <field name="text_fr"             type="text_fr"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for French text fields -->
     <field name="text_hu"             type="text_hu"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Hungarian text fields -->
     <field name="text_it"             type="text_it"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Italian text fields -->
+    <field name="text_zh"             type="text_zh"      indexed="true"  stored="false" multiValued="true"/><!-- Catchall for Chinese text fields -->
     <field name="serial-date"         type="date"         indexed="true"  stored="true" />
     <field name="serial-date-dates"   type="date"         indexed="true"  stored="true"  multiValued="true"/>
 
@@ -365,6 +387,7 @@
     <dynamicField name="*_fr"         type="text_fr"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_hu"         type="text_hu"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_it"         type="text_it"      indexed="true"  stored="true" multiValued="true"/>
+    <dynamicField name="*_zh"         type="text_zh"      indexed="true"  stored="true" multiValued="true"/>
     <dynamicField name="*_b"          type="boolean"      indexed="true"  stored="true"/>
     <dynamicField name="*_coordinate" type="pdouble"      indexed="true"  stored="false"/>
     <dynamicField name="*_loc"        type="location"     indexed="true"  stored="true"/>
@@ -384,6 +407,7 @@
     <copyField source="*_fr"      dest="text_fr"/>
     <copyField source="*_hu"      dest="text_hu"/>
     <copyField source="*_it"      dest="text_it"/>
+    <copyField source="*_zh"      dest="text_zh"/>
     <copyField source="text_*"    dest="text"/>
     <copyField source="*_prop"    dest="text" />
     <copyField source="content"   dest="text" />

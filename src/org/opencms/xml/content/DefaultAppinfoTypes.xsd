@@ -160,6 +160,7 @@
                 <xsd:attribute name="type" type="OpenCmsDefaultAppinfoMappingType" use="required" />
                 <xsd:attribute name="default" type="xsd:string" use="optional" />
                 <xsd:attribute name="class" type="xsd:string" use="optional" />
+                <xsd:attribute name="joinby" type="xsd:string" use="optional" />
             </xsd:extension>
         </xsd:simpleContent>
     </xsd:complexType>
