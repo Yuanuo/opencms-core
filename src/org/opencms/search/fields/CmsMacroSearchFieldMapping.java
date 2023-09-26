@@ -209,13 +209,4 @@ public class CmsMacroSearchFieldMapping implements I_CmsSearchFieldMapping {
 
     }
 
-    @Override
-    public void setJoinby(String joinby) {
-    }
-
-    @Override
-    public String getJoinby() {
-        return null;
-    }
-
 }

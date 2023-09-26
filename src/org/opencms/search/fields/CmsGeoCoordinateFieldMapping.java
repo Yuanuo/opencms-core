@@ -241,15 +241,6 @@ public class CmsGeoCoordinateFieldMapping implements I_CmsSearchFieldMapping {
         // not used
     }
 
-    @Override
-    public void setJoinby(String joinby) {
-    }
-
-    @Override
-    public String getJoinby() {
-        return null;
-    }
-
     /**
      * At first, we search for a coordinates value in the best matching locale of the extraction
      * result. If not available, search for a coordinates value in other locales. In the case of
