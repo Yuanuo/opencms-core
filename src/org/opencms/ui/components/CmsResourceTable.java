@@ -28,6 +28,7 @@
 package org.opencms.ui.components;
 
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_CACHE;
+import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_CATEGORIES;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_COPYRIGHT;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_DATE_CREATED;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_DATE_EXPIRED;
@@ -65,10 +66,14 @@ import org.opencms.i18n.CmsEncoder;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.relations.CmsCategory;
+import org.opencms.relations.CmsCategoryService;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsCssIcon;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.util.I_CmsItemSorter;
+import org.opencms.util.CmsColorContrastCalculator;
+import org.opencms.util.CmsPath;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplaceMessages;
@@ -78,20 +83,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+import org.apache.commons.collections4.ComparatorUtils;
 import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.logging.Log;
 
+import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.vaadin.event.dd.DropHandler;
 import com.vaadin.ui.Component;
+import com.vaadin.ui.Composite;
 import com.vaadin.ui.CustomComponent;
 import com.vaadin.v7.data.Item;
 import com.vaadin.v7.data.Property;
@@ -109,6 +119,241 @@ import com.vaadin.v7.ui.Table.TableDragMode;
  */
 @SuppressWarnings("deprecation")
 public class CmsResourceTable extends CustomComponent {
+
+    /**
+     * Comparator used for sorting the categories column.
+     */
+    public static class CategoryComparator implements Comparator<String> {
+
+        /** The collator used. */
+        private final com.ibm.icu.text.Collator m_collator = com.ibm.icu.text.Collator.getInstance(
+            com.ibm.icu.util.ULocale.ROOT);
+
+        /**
+         * @see java.util.Comparator#compare(java.lang.Object, java.lang.Object)
+         */
+        @Override
+        public int compare(String c1, String c2) {
+
+            // We want empty strings to come last, but otherwise just use case insensitive string order
+            if ("".equals(c1) && "".equals(c2)) {
+                return 0;
+            }
+            if ("".equals(c1)) {
+                // "" "foo"
+                return 1;
+            }
+            if ("".equals(c2)) {
+                // "foo" ""
+                return -1;
+            }
+            return m_collator.compare(c1, c2);
+        }
+
+    }
+
+    /**
+     * Widget for displaying a resource's categories in a table column.
+     *
+     * <p>For user experience reasons, this widget only loads the category data when needed, which is either when it is attached,
+     * or when other operations (sorting, filtering) need it.
+     */
+    public static class CategoryLabel extends Composite implements Comparable<CategoryLabel> {
+
+        /**
+         * Holds the data to display for a single category.
+         */
+        class CategoryItem {
+
+            /** The background color. */
+            private String m_background;
+
+            /** The title to display. */
+            private String m_title;
+
+            /**
+             * Creates a new instance.
+             *
+             * @param title the title
+             * @param background the background color
+             */
+            public CategoryItem(String title, String background) {
+
+                super();
+                m_title = title;
+                m_background = background;
+            }
+
+            /**
+             * Gets the background color.
+             *
+             * @return the background color
+             */
+            public String getBackground() {
+
+                return m_background;
+            }
+
+            /**
+             * Gets the title.
+             *
+             * @return the title
+             */
+            public String getTitle() {
+
+                return m_title;
+            }
+        }
+
+        /** Serial version id. */
+        private static final long serialVersionUID = 1L;
+
+        /** True if the widget has been initialized. */
+        private boolean m_initialized;
+
+        /** The label used to display the categories. */
+        private Label m_label = new Label();
+
+        /** The locale. */
+        private Locale m_locale;
+
+        /** The resource utility wrapper. */
+        private CmsResourceUtil m_resUtil;
+
+        /** The categories value as a string, for tooltips, sorting and filtering. */
+        private String m_value = "";
+
+        /**
+         * Creates a new instance.
+         *
+         * @param resUtil the resource utility wrapper
+         * @param locale the workplace locale
+         */
+        public CategoryLabel(CmsResourceUtil resUtil, Locale locale) {
+
+            m_locale = locale;
+            m_resUtil = resUtil;
+            setCompositionRoot(m_label);
+            addStyleName("o-category-label");
+        }
+
+        /**
+         * @see com.vaadin.ui.AbstractComponent#attach()
+         */
+        @Override
+        public void attach() {
+
+            // Attach is only called when the user scrolls near the row in which this widget is located.
+            init();
+            super.attach();
+        }
+
+        /**
+         * @see java.lang.Comparable#compareTo(java.lang.Object)
+         */
+        @Override
+        public int compareTo(CategoryLabel o) {
+
+            // getValue() calls init()
+            return CATEGORY_COMPARATOR.compare(getValue(), o.getValue());
+
+        }
+
+        /**
+         * Gets the categories as a string (for tooltips, sorting and filtering).
+         *
+         * @return the category values
+         */
+        public String getValue() {
+
+            init();
+            return m_value;
+        }
+
+        /**
+         * Needed for filtering.
+         *
+         * @see java.lang.Object#toString()
+         */
+        @Override
+        public String toString() {
+
+            // getValue() calls init
+            return getValue();
+        }
+
+        /**
+         * Initializes the category data and the actual widget, unless it has already been initialized.
+         */
+        protected synchronized void init() {
+
+            if (!m_initialized) {
+                // We definitely don't want to repeatedly try to initialize the widget, since performance is the whole point.
+                // Even failure should count as being initialized. So we might as well set m_initialized right here, at the start.
+                m_initialized = true;
+                try {
+                    CmsObject cms = m_resUtil.getCms();
+                    CmsCategoryService catService = CmsCategoryService.getInstance();
+                    List<CmsCategory> categories = catService.readResourceCategories(cms, m_resUtil.getResource());
+                    categories = catService.localizeCategories(cms, categories, m_locale);
+
+                    Map<CmsPath, CmsCategory> categoriesByPath = categories.stream().collect(
+                        Collectors.toMap(cat -> new CmsPath(cat.getPath()), cat -> cat, (a, b) -> b));
+                    Set<CmsPath> parents = categories.stream().map(
+                        cat -> CmsResource.getParentFolder(cat.getPath())).filter(path -> path != null).map(
+                            path -> new CmsPath(path)).collect(Collectors.toSet());
+
+                    boolean removeParents = OpenCms.getWorkplaceManager().isExplorerCategoriesLeavesOnly();
+                    boolean fullPath = OpenCms.getWorkplaceManager().isExplorerCategoriesWithPath();
+                    List<CmsCategory> categoriesToDisplay = new ArrayList<>(categories);
+                    if (removeParents) {
+                        categoriesToDisplay.removeIf(cat -> parents.contains(new CmsPath(cat.getPath())));
+                    }
+
+                    List<CategoryItem> items = categoriesToDisplay.stream().map(
+                        cat -> new CategoryItem(
+                            fullPath ? getCompositeCategoryTitle(categoriesByPath, cat) : cat.getTitle(),
+                            cat.getBackground())).collect(Collectors.toList());
+                    // Use same comparison criteria for individual category titles as for the complete column.
+                    Comparator<CategoryItem> comparator = ComparatorUtils.transformedComparator(
+                        CATEGORY_COMPARATOR,
+                        item -> item.getTitle());
+                    Collections.sort(items, comparator);
+                    // Comma-separated list of titles, for tooltip, sorting and filtering
+                    m_value = items.stream().map(item -> item.getTitle()).collect(Collectors.joining(", "));
+                    m_label.setDescription(m_value);
+
+                    // Assemble HTML based on the titles and fill the widget with it.
+                    String html = items.stream().flatMap(item -> {
+                        String colorStyle = "";
+                        String bg = item.getBackground();
+                        if (!CmsStringUtil.isEmptyOrWhitespaceOnly(bg)) {
+                            bg = bg.trim();
+                            String fgSuffix = "";
+                            try {
+                                fgSuffix = " color: " + m_contrastCalculator.getForeground(bg) + " !important;";
+                            } catch (Exception e) {
+                                LOG.error(e.getLocalizedMessage(), e);
+                            }
+                            colorStyle = " style='background-color: " + bg + " !important; " + fgSuffix + "' ";
+                        }
+                        return Arrays.asList(
+                            "<div class='o-category-label-category' ",
+                            colorStyle,
+                            ">",
+                            CmsEncoder.escapeXml(item.getTitle()),
+                            "</div>").stream();
+                    }).collect(Collectors.joining(""));
+
+                    m_label.setContentMode(ContentMode.HTML);
+                    m_label.setValue(html);
+
+                } catch (Exception e) {
+                    LOG.error(e.getLocalizedMessage(), e);
+                }
+            }
+        }
+    }
 
     /**
      * Helper class for easily configuring a set of columns to display, together with their visibility / collapsed status.<p>
@@ -136,7 +381,8 @@ public class CmsResourceTable extends CustomComponent {
                 }
             }
             m_fileTable.setVisibleColumns(visible.toArray(new Object[0]));
-            setCollapsedColumns(collapsed.toArray(new Object[0]));
+            Object[] collapsedColumnsArray = collapsed.toArray(new Object[0]);
+            setCollapsedColumns(collapsedColumnsArray);
             for (CmsResourceTableProperty visibleProp : visible) {
                 String headerKey = visibleProp.getHeaderKey();
                 if (!CmsStringUtil.isEmptyOrWhitespaceOnly(headerKey)) {
@@ -250,6 +496,23 @@ public class CmsResourceTable extends CustomComponent {
             m_flags = flags;
         }
 
+        @Override
+        public String toString() {
+
+            return "ColumnEntry[" + getColumn().getId() + "," + m_flags + "]";
+        }
+
+    }
+
+    /**
+     * Interfaces for getting notified of column visibility/sort setting changes.
+     */
+    public interface ColumnSettingChangeHandler {
+
+        /**
+         * Called when column visibility or sorting is changed by the user.
+         */
+        void onColumnSettingsChanged();
     }
 
     /**
@@ -348,8 +611,14 @@ public class CmsResourceTable extends CustomComponent {
     /** Flag to mark columns as invisible. */
     public static final int INVISIBLE = 2;
 
+    /** Static instance of the comparator used for categories. */
+    private static final CategoryComparator CATEGORY_COMPARATOR = new CategoryComparator();
+
     /** The logger instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsResourceTable.class);
+
+    /** Used for calculating foreground colors for categories. */
+    private static final CmsColorContrastCalculator m_contrastCalculator = new CmsColorContrastCalculator();
 
     /** Serial version id. */
     private static final long serialVersionUID = 1L;
@@ -358,10 +627,57 @@ public class CmsResourceTable extends CustomComponent {
     protected ItemContainer m_container = new ItemContainer();
 
     /** The table used to display the resource data. */
-    protected Table m_fileTable = new Table();
+    protected Table m_fileTable = new Table() {
+
+        /** If greater than 0, we are in a changeVariables call - which means that column changes probably are the direct result of user interaction with the table rather than automatic/programmatic changes. */
+        private long m_changingVariables;
+
+        /**
+         * @see com.vaadin.v7.ui.Table#changeVariables(java.lang.Object, java.util.Map)
+         */
+        public void changeVariables(Object source, java.util.Map<String, Object> variables) {
+
+            m_changingVariables += 1;
+            try {
+                super.changeVariables(source, variables);
+            } finally {
+                m_changingVariables -= 1;
+            }
+        }
+
+        /**
+         * @see com.vaadin.v7.ui.Table#setColumnCollapsed(java.lang.Object, boolean)
+         */
+        public void setColumnCollapsed(Object propertyId, boolean collapsed) throws IllegalStateException {
+
+            super.setColumnCollapsed(propertyId, collapsed);
+            if (m_changingVariables > 0) {
+                if (m_columnSettingChangeHandler != null) {
+                    m_columnSettingChangeHandler.onColumnSettingsChanged();
+                }
+            }
+
+        };
+
+        /**
+         * @see com.vaadin.v7.ui.Table#sort(java.lang.Object[], boolean[])
+         */
+        public void sort(Object[] propertyId, boolean[] ascending) throws UnsupportedOperationException {
+
+            super.sort(propertyId, ascending);
+            if (m_changingVariables > 0) {
+                if (m_columnSettingChangeHandler != null) {
+                    m_columnSettingChangeHandler.onColumnSettingsChanged();
+                }
+            }
+        }
+    };
 
     /** Property provider for additional columns. */
     protected List<I_ResourcePropertyProvider> m_propertyProviders;
+
+    /** Handles column setting changes. */
+    private ColumnSettingChangeHandler m_columnSettingChangeHandler;
 
     /**
      * Creates a new instance.<p>
@@ -576,6 +892,11 @@ public class CmsResourceTable extends CustomComponent {
         if (resourceItem.getItemProperty(PROPERTY_USER_LOCKED) != null) {
             resourceItem.getItemProperty(PROPERTY_USER_LOCKED).setValue(resUtil.getLockedByName());
         }
+
+        if (resourceItem.getItemProperty(PROPERTY_CATEGORIES) != null) {
+            CategoryLabel l = new CategoryLabel(resUtil, locale);
+            resourceItem.getItemProperty(PROPERTY_CATEGORIES).setValue(l);
+        }
     }
 
     /**
@@ -597,6 +918,28 @@ public class CmsResourceTable extends CustomComponent {
             }
         }
         return stateStyle;
+    }
+
+    /**
+     * Assembles the full title of a category from the title of its parents.
+     *
+     * @param categories the map of applicable categories by path
+     * @param category the category for which to build the title
+     *
+     * @return the combined title
+     */
+    private static String getCompositeCategoryTitle(Map<CmsPath, CmsCategory> categories, CmsCategory category) {
+
+        ArrayList<String> components = new ArrayList<>();
+        CmsCategory currentCategory = category;
+        while (currentCategory != null) {
+            components.add(currentCategory.getTitle());
+            CmsPath parentPath = new CmsPath(CmsResource.getParentFolder(currentCategory.getPath()));
+            currentCategory = categories.get(parentPath);
+        }
+        // The while loop iterated "up" the category tree, we want the category titles in "down" direction
+        Collections.reverse(components);
+        return Joiner.on(" / ").join(components);
     }
 
     /**
@@ -650,13 +993,43 @@ public class CmsResourceTable extends CustomComponent {
      */
     public void fillTable(CmsObject cms, List<CmsResource> resources, boolean clearFilter, boolean sort) {
 
+        fillTable(cms, resources, clearFilter, true, false);
+    }
+
+    /**
+     * Fills the resource table.<p>
+     *
+     * @param cms the current CMS context
+     * @param resources the resources which should be displayed in the table
+     * @param clearFilter <code>true</code> to clear the search filter
+     * @param sort <code>true</code> to sort the table entries
+     * @param distinctResources whether to only show distinct resources
+     */
+    public void fillTable(
+        CmsObject cms,
+        List<CmsResource> resources,
+        boolean clearFilter,
+        boolean sort,
+        boolean distinctResources) {
+
         Locale wpLocale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
         m_container.removeAllItems();
         if (clearFilter) {
             m_container.removeAllContainerFilters();
         }
-        for (CmsResource resource : resources) {
-            fillItem(cms, resource, wpLocale);
+        if (distinctResources) {
+            Map<String, String> ids = new HashMap<String, String>();
+            for (CmsResource resource : resources) {
+                String id = resource.getStructureId().getStringValue();
+                if (!ids.containsKey(id)) {
+                    fillItem(cms, resource, wpLocale);
+                    ids.put(id, "");
+                }
+            }
+        } else {
+            for (CmsResource resource : resources) {
+                fillItem(cms, resource, wpLocale);
+            }
         }
         if (sort) {
             m_fileTable.sort();
@@ -740,8 +1113,18 @@ public class CmsResourceTable extends CustomComponent {
             collapsedSet.add(collapsed);
         }
         for (Object key : m_fileTable.getVisibleColumns()) {
-            m_fileTable.setColumnCollapsed(key, collapsedSet.contains(key));
+            boolean isCollapsed = collapsedSet.contains(key);
+            internalSetColumnCollapsed(key, isCollapsed);
         }
+    }
+
+    /**
+     * Sets the column setting change handler.
+     * @param columnSettingChangeHandler the handler instance
+     */
+    public void setColumnSettingChangeHandler(ColumnSettingChangeHandler columnSettingChangeHandler) {
+
+        m_columnSettingChangeHandler = columnSettingChangeHandler;
     }
 
     /**
@@ -791,6 +1174,11 @@ public class CmsResourceTable extends CustomComponent {
         for (I_ResourcePropertyProvider provider : m_propertyProviders) {
             provider.addItemProperties(resourceItem, cms, resource, locale);
         }
+    }
+
+    protected void internalSetColumnCollapsed(Object key, boolean collapsed) {
+
+        m_fileTable.setColumnCollapsed(key, collapsed);
     }
 
     /**

@@ -81,6 +81,7 @@ import org.opencms.jsp.jsonpart.CmsJsonPartFilter;
 import org.opencms.jsp.userdata.CmsUserDataRequestManager;
 import org.opencms.jsp.util.CmsJspStandardContextBean;
 import org.opencms.letsencrypt.CmsLetsEncryptConfiguration;
+import org.opencms.loader.CmsJspLoader;
 import org.opencms.loader.CmsResourceManager;
 import org.opencms.loader.CmsTemplateContextManager;
 import org.opencms.loader.I_CmsFlexCacheEnabledLoader;
@@ -136,7 +137,6 @@ import org.opencms.xml.xml2json.I_CmsApiAuthorizationHandler;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.security.Security;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -153,7 +153,6 @@ import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
@@ -169,7 +168,6 @@ import org.antlr.stringtemplate.StringTemplate;
 
 import com.google.common.base.Optional;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.gwt.user.client.rpc.core.java.util.LinkedHashMap_CustomFieldSerializer;
 
 /**
  * The internal implementation of the core OpenCms "operating system" functions.<p>
@@ -365,6 +363,9 @@ public final class OpenCmsCore {
     /** The VFS bundle manager. */
     private CmsVfsBundleManager m_vfsBundleManager;
 
+    /** The default memory object cache instance. */
+    private CmsVfsMemoryObjectCache m_vfsMemoryObjectCache;
+
     /** The workflow manager instance. */
     private I_CmsWorkflowManager m_workflowManager;
 
@@ -376,9 +377,6 @@ public final class OpenCmsCore {
 
     /** The XML content type manager that contains the initialized XML content types. */
     private CmsXmlContentTypeManager m_xmlContentTypeManager;
-
-    /** The default memory object cache instance. */
-    private CmsVfsMemoryObjectCache m_vfsMemoryObjectCache;
 
     /**
      * Protected constructor that will initialize the singleton OpenCms instance
@@ -488,7 +486,7 @@ public final class OpenCmsCore {
             LOG.warn(
                 Messages.get().getBundle().key(
                     Messages.LOG_INIT_INVALID_ERROR_2,
-                    new Integer(m_instance.getRunLevel()),
+                    Integer.valueOf(m_instance.getRunLevel()),
                     errorCondition.key()));
         }
     }
@@ -2324,7 +2322,9 @@ public final class OpenCmsCore {
                             Messages.INIT_SHUTDOWN_START_1,
                             getSystemInfo().getVersionNumber() + " [" + getSystemInfo().getVersionId() + "]"));
                     CmsLog.INIT.info(
-                        Messages.get().getBundle().key(Messages.INIT_CURRENT_RUNLEVEL_1, new Integer(getRunLevel())));
+                        Messages.get().getBundle().key(
+                            Messages.INIT_CURRENT_RUNLEVEL_1,
+                            Integer.valueOf(getRunLevel())));
                     CmsLog.INIT.info(
                         Messages.get().getBundle().key(
                             Messages.INIT_SHUTDOWN_TIME_1,
@@ -2567,8 +2567,8 @@ public final class OpenCmsCore {
                 CmsLog.INIT.error(
                     Messages.get().getBundle().key(
                         Messages.LOG_WRONG_INIT_SEQUENCE_2,
-                        new Integer(3),
-                        new Integer(getRunLevel())));
+                        Integer.valueOf(3),
+                        Integer.valueOf(getRunLevel())));
                 return m_instance;
             }
 
@@ -2607,8 +2607,8 @@ public final class OpenCmsCore {
                 CmsLog.INIT.error(
                     Messages.get().getBundle().key(
                         Messages.LOG_WRONG_INIT_SEQUENCE_2,
-                        new Integer(4),
-                        new Integer(getRunLevel())));
+                        Integer.valueOf(4),
+                        Integer.valueOf(getRunLevel())));
                 return m_instance;
             }
 
@@ -2737,19 +2737,6 @@ public final class OpenCmsCore {
             CmsLog.INIT.error(e.getLocalizedMessage(), e);
         }
 
-        try {
-            // Workaround: The GWT serializer for LinkedHashMaps uses reflection on java.util.LinkedHashMap that is disallowed in newer Java versions that use modules.
-            // This can be bypassed by setting a private 'reflectionHasFailed' field in the serializer class. *This* reflective access is OK, because it does not access a different module.
-            // GWT should really handle that problem, but as of version 2.9.0 it does not. This workaround can be removed if a newer GWT version handles the problem correctly.
-            // (See https://github.com/gwtproject/gwt/issues/9584)
-
-            Field field = LinkedHashMap_CustomFieldSerializer.class.getDeclaredField("reflectionHasFailed");
-            field.setAccessible(true);
-            ((AtomicBoolean)field.get(null)).set(true);
-        } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException e) {
-            CmsLog.INIT.error(e.getLocalizedMessage(), e);
-        }
-
     }
 
     /**
@@ -2804,7 +2791,11 @@ public final class OpenCmsCore {
             if (s.getRootCause() != null) {
                 t = s.getRootCause();
             }
-            LOG.error(t.getLocalizedMessage() + " rendering URL " + req.getRequestURL(), t);
+            if (CmsJspLoader.isJasperCompilerException(t)) {
+                LOG.error(t.getLocalizedMessage());
+            } else {
+                LOG.error(t.getLocalizedMessage(), t);
+            }
         } else if (t instanceof CmsSecurityException) {
             LOG.warn(t.getLocalizedMessage() + " rendering URL " + req.getRequestURL(), t);
             // access error - display login dialog
@@ -2945,8 +2936,13 @@ public final class OpenCmsCore {
                 // resource to read it from
                 CmsResource alternativeResource = null;
                 try {
-                    // use null as the response to avoid side effects like redirects, etc.
-                    alternativeResource = initResource(adminCms, path, req, null);
+
+                    try {
+                        // use null as the response to avoid side effects like redirects, etc.
+                        alternativeResource = initResource(adminCms, path, req, null);
+                    } catch (Exception e) {
+                        LOG.warn(e.getLocalizedMessage(), e);
+                    }
                     if (alternativeResource != null) {
                         propertyLoginForm = adminCms.readPropertyObject(
                             adminCms.getSitePath(alternativeResource),
@@ -3390,8 +3386,8 @@ public final class OpenCmsCore {
                     CmsLog.INIT.info(
                         Messages.get().getBundle().key(
                             Messages.INIT_RUNLEVEL_CHANGE_2,
-                            new Integer(m_instance.m_runLevel),
-                            new Integer(level)));
+                            Integer.valueOf(m_instance.m_runLevel),
+                            Integer.valueOf(level)));
                 }
             }
             m_instance.m_runLevel = level;

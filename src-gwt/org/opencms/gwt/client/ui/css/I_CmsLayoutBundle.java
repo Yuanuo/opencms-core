@@ -102,6 +102,7 @@ public interface I_CmsLayoutBundle extends ClientBundle {
     }
 
     /** Button CSS. */
+    @Shared
     @ImportedWithPrefix("buttons")
     interface I_CmsButtonCss extends I_CmsStateCss {
 
@@ -132,6 +133,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          * @return the CSS class name
          */
         String cmsButtonSmall();
+
+        /**
+         *  Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String cmsError();
 
         /**
          *  Access method.<p>
@@ -174,6 +182,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          * @return the CSS class name
          */
         String cmsTransparentButton();
+
+        /**
+         *  Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String cmsWarning();
 
         /**
          *  Access method.<p>
@@ -823,6 +838,34 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          *
          * @return the CSS class name
          */
+        String headerLeftBlock();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String headerPathButtons();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String headerPathSection();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String headerTextSection();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
         String hideOverlay();
 
         /**
@@ -1061,6 +1104,13 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          * @return the CSS class name
          */
         String highlightBox();
+
+        /**
+         * Access method.<p>
+         *
+         * @return the CSS class name
+         */
+        String midpointSeparator();
     }
 
     /** Link warning panel CSS. */
@@ -2257,6 +2307,8 @@ public interface I_CmsLayoutBundle extends ClientBundle {
          */
         String toolbarLogo();
 
+        String toolbarPlacementMode();
+
         /**
          * Access method.<p>
          *
@@ -2434,13 +2486,6 @@ public interface I_CmsLayoutBundle extends ClientBundle {
      */
     @Source("contextmenu.gss")
     I_CmsContextmenuCss contextmenuCss();
-
-    /**
-     * Access method.<p>
-     *
-     * @return the CSS class name
-     */
-    I_CmsImageBundle coreImages();
 
     /**
      * Access method.<p>

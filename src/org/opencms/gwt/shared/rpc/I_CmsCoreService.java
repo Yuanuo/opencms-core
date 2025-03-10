@@ -97,22 +97,8 @@ public interface I_CmsCoreService extends RemoteService {
      * @param includeSubCats if to include all categories, or first level child categories only
      * @param refVfsPath the reference path (site-relative path according to which the available category repositories are determined),
      *        can be <code>null</code> to only use the system repository
-     *
-     * @return the resource categories
-     *
-     * @throws CmsRpcException if something goes wrong
-     */
-    List<CmsCategoryTreeEntry> getCategories(String fromCatPath, boolean includeSubCats, String refVfsPath)
-    throws CmsRpcException;
-
-    /**
-     * Returns the categories for the given search parameters.<p>
-     *
-     * @param fromCatPath the category path to start with, can be <code>null</code> or empty to use the root
-     * @param includeSubCats if to include all categories, or first level child categories only
-     * @param refVfsPath the reference path (site-relative path according to which the available category repositories are determined),
-     *        can be <code>null</code> to only use the system repository
      * @param withRepositories flag, indicating if also the category repositories should be returned as category
+     * @param selected a set of paths of currently selected categories (which should be included in the result even if they are marked as hidden)
      *
      * @return the resource categories
      *
@@ -122,7 +108,8 @@ public interface I_CmsCoreService extends RemoteService {
         String fromCatPath,
         boolean includeSubCats,
         String refVfsPath,
-        boolean withRepositories)
+        boolean withRepositories,
+        Set<String> selected)
     throws CmsRpcException;
 
     /**
@@ -158,6 +145,24 @@ public interface I_CmsCoreService extends RemoteService {
      * @throws CmsRpcException if something goes wrong
      */
     List<CmsContextMenuEntryBean> getContextMenuEntries(CmsUUID structureId, AdeContext context) throws CmsRpcException;
+
+    /**
+     * Returns the context menu entries for the given URI.<p>
+     *
+     * @param structureId the currently requested structure id
+     * @param context the ade context (sitemap or containerpage)
+     * @param params additional context information the server side can use to determine menu item availability
+     *
+     * @return the context menu entries
+     *
+     * @throws CmsRpcException if something goes wrong
+     */
+
+    List<CmsContextMenuEntryBean> getContextMenuEntries(
+        CmsUUID structureId,
+        AdeContext context,
+        Map<String, String> params)
+    throws CmsRpcException;
 
     /**
      * Given a return code, returns the link to the page which corresponds to the return code.<p>
@@ -290,6 +295,15 @@ public interface I_CmsCoreService extends RemoteService {
      * @throws CmsRpcException if something goes wrong
      */
     CmsCoreData prefetch() throws CmsRpcException;
+
+    /**
+     * Saves a category used by the current user.
+     *
+     * @param category the category
+     *
+     * @throws CmsRpcException if something goes wrong
+     */
+    void saveUsedCategory(String category) throws CmsRpcException;
 
     /**
      * Saves the user settings for the current user.<p>

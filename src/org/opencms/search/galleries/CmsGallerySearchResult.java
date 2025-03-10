@@ -70,9 +70,6 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
     /** List of Solr fields that are read during the initialization of the search result. */
     private static String[] m_requiredSolrFields;
 
-    /** The additional information for the gallery search index. */
-    protected String m_additonalInfo;
-
     /** The supported container types of this search result. */
     protected List<String> m_containerTypes;
 
@@ -275,14 +272,6 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
 
         m_userLastModified = doc.getFieldValueAsString(CmsSearchField.FIELD_USER_LAST_MODIFIED);
 
-        m_additonalInfo = doc.getFieldValueAsString(CmsSearchField.FIELD_ADDITIONAL_INFO);
-        final String s_containerTypes = doc.getFieldValueAsString(CmsSearchField.FIELD_CONTAINER_TYPES);
-        if (s_containerTypes != null) {
-            m_containerTypes = CmsStringUtil.splitAsList(s_containerTypes, ' ');
-        } else {
-            m_containerTypes = new ArrayList<String>(0);
-        }
-
         final String s_locales = doc.getFieldValueAsString(CmsSearchField.FIELD_RESOURCE_LOCALES);
         if (null != s_locales) {
             m_locales = CmsStringUtil.splitAsList(s_locales, ' ');
@@ -316,8 +305,6 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
             m_requiredSolrFields[count++] = CmsSearchField.FIELD_USER_CREATED;
             m_requiredSolrFields[count++] = CmsSearchField.FIELD_ID;
             m_requiredSolrFields[count++] = CmsSearchField.FIELD_USER_LAST_MODIFIED;
-            m_requiredSolrFields[count++] = CmsSearchField.FIELD_ADDITIONAL_INFO;
-            m_requiredSolrFields[count++] = CmsSearchField.FIELD_CONTAINER_TYPES;
             m_requiredSolrFields[count++] = CmsSearchField.FIELD_RESOURCE_LOCALES;
             for (Locale locale : locales) {
                 m_requiredSolrFields[count++] = CmsSearchFieldConfiguration.getLocaleExtendedName(
@@ -373,16 +360,6 @@ public class CmsGallerySearchResult implements Comparable<CmsGallerySearchResult
             return m_path.equals(other.m_path);
         }
         return false;
-    }
-
-    /**
-     * Returns the additional information stored for this search result in the gallery search index.<p>
-     *
-     * @return the additional information stored for this search result in the gallery search index
-     */
-    public String getAdditonalInfo() {
-
-        return m_additonalInfo;
     }
 
     /**

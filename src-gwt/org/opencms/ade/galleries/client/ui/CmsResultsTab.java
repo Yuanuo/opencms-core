@@ -626,7 +626,7 @@ public class CmsResultsTab extends A_CmsListTab {
 
         return super.getRequiredHeight()
             + (m_searchBar.getOffsetHeight())
-            + (m_params.isVisible() ? m_params.getOffsetHeight() + 5 : 21);
+            + (m_params.isVisible() ? m_params.getOffsetHeight() + 10 : 26);
     }
 
     /**
@@ -969,8 +969,8 @@ public class CmsResultsTab extends A_CmsListTab {
 
         String message = Messages.get().key(
             Messages.GUI_LABEL_NUM_RESULTS_2,
-            new Integer(displayed),
-            new Integer(total));
+            Integer.valueOf(displayed),
+            Integer.valueOf(total));
         m_infoLabel.setText(message);
     }
 

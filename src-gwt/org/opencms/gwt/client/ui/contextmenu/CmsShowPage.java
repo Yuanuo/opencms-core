@@ -34,7 +34,7 @@ import org.opencms.gwt.shared.CmsContextMenuEntryBean;
 import org.opencms.gwt.shared.CmsPreviewInfo;
 import org.opencms.util.CmsUUID;
 
-import com.google.gwt.user.client.Window;
+import elemental2.dom.DomGlobal;
 
 /**
  * Context menu entry to show a container page.<p>
@@ -52,9 +52,11 @@ public class CmsShowPage implements I_CmsHasContextMenuCommand, I_CmsContextMenu
     }
 
     /**
-     * @see org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuCommand#execute(org.opencms.util.CmsUUID, org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuHandler, org.opencms.gwt.shared.CmsContextMenuEntryBean)
+     * Execute method for use outside of the context menu.
+     *
+     * @param structureId the structure id to open
      */
-    public void execute(final CmsUUID structureId, I_CmsContextMenuHandler handler, CmsContextMenuEntryBean bean) {
+    public void execute(final CmsUUID structureId) {
 
         CmsRpcAction<CmsPreviewInfo> previewAction = new CmsRpcAction<CmsPreviewInfo>() {
 
@@ -70,7 +72,7 @@ public class CmsShowPage implements I_CmsHasContextMenuCommand, I_CmsContextMenu
 
                 stop(false);
                 if (result.getPreviewUrl() != null) {
-                    Window.Location.assign(result.getPreviewUrl());
+                    DomGlobal.top.location.assign(result.getPreviewUrl());
                 } else {
                     CmsNotification.get().sendAlert(CmsNotification.Type.ERROR, result.getPreviewContent());
                 }
@@ -78,6 +80,14 @@ public class CmsShowPage implements I_CmsHasContextMenuCommand, I_CmsContextMenu
             }
         };
         previewAction.execute();
+    }
+
+    /**
+     * @see org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuCommand#execute(org.opencms.util.CmsUUID, org.opencms.gwt.client.ui.contextmenu.I_CmsContextMenuHandler, org.opencms.gwt.shared.CmsContextMenuEntryBean)
+     */
+    public void execute(final CmsUUID structureId, I_CmsContextMenuHandler handler, CmsContextMenuEntryBean bean) {
+
+        execute(structureId);
     }
 
     /**

@@ -60,6 +60,7 @@ import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.types.I_CmsXmlContentValue;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -305,7 +306,7 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                 report.println(
                     Messages.get().container(
                         Messages.RPT_SOURCESEARCH_NR_OF_FILES_TO_SEARCH_IN_1,
-                        new Integer(resources.size())),
+                        Integer.valueOf(resources.size())),
                     I_CmsReport.FORMAT_NOTE);
                 if (m_replace) {
                     // start searching and replacing
@@ -720,29 +721,29 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
         report.println(
             Messages.get().container(
                 Messages.RPT_SOURCESEARCH_NR_OF_FILES_TO_SEARCH_IN_1,
-                new Integer(nrOfFiles).toString()),
+                Integer.valueOf(nrOfFiles).toString()),
             I_CmsReport.FORMAT_NOTE);
         report.println(
             Messages.get().container(
                 Messages.RPT_SOURCESEARCH_NR_OF_FILES_MATCHED_1,
-                new Integer(m_matchedResources.size()).toString()),
+                Integer.valueOf(m_matchedResources.size()).toString()),
             I_CmsReport.FORMAT_NOTE);
         report.println(
             Messages.get().container(
                 Messages.RPT_SOURCESEARCH_SEARCH_ERROR_COUNT_1,
-                new Integer(m_errorSearch).toString()),
+                Integer.valueOf(m_errorSearch).toString()),
             I_CmsReport.FORMAT_NOTE);
         if (m_replace) {
             // replace report entries
             report.println(
                 Messages.get().container(
                     Messages.RPT_SOURCESEARCH_REPLACE_ERROR_COUNT_1,
-                    new Integer(m_errorUpdate).toString()),
+                    Integer.valueOf(m_errorUpdate).toString()),
                 I_CmsReport.FORMAT_NOTE);
             report.println(
                 Messages.get().container(
                     Messages.RPT_SOURCESEARCH_LOCKED_FILES_1,
-                    new Integer(m_lockedFiles).toString()),
+                    Integer.valueOf(m_lockedFiles).toString()),
                 I_CmsReport.FORMAT_NOTE);
             if (m_matchedResources.size() == 0) {
                 report.println(
@@ -859,10 +860,12 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                     rootPaths.add(path.startsWith(siteRoot) ? path : getCms().addSiteRoot(path));
                 }
                 query.setSearchRoots(rootPaths);
-                if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
+                if (CmsSourceSearchForm.RESOURCE_TYPES_ALL_NON_BINARY.equals(m_settings.getTypes())) {
+                    query.addFilterQuery("type:-(\"image\" OR \"binary\")");
+                } else if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
                     query.setResourceTypes(m_settings.getTypesArray());
                 }
-                query.setRows(new Integer(MAX_PROCESSED_SOLR_RESULTS));
+                query.setRows(Integer.valueOf(MAX_PROCESSED_SOLR_RESULTS));
                 query.ensureParameters();
                 try {
                     resources.addAll(
@@ -875,7 +878,18 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
             CmsResourceFilter filter = CmsResourceFilter.ALL.addExcludeState(
                 CmsResource.STATE_DELETED).addRequireVisible();
             List<CmsResourceFilter> filterList = new ArrayList<CmsResourceFilter>();
-            if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
+            List<Integer> filterByExcludeType = null;
+            if (CmsSourceSearchForm.RESOURCE_TYPES_ALL_NON_BINARY.equals(m_settings.getTypes())) {
+                try {
+                    int typeBinary = OpenCms.getResourceManager().getResourceType("binary").getTypeId();
+                    int typeImage = OpenCms.getResourceManager().getResourceType("image").getTypeId();
+                    filterByExcludeType = Arrays.asList(Integer.valueOf(typeBinary), Integer.valueOf(typeImage));
+                } catch (CmsLoaderException e) {
+                    // noop
+                } catch (NullPointerException e) {
+                    // noop
+                }
+            } else if ((m_settings.getTypesArray() != null) && (m_settings.getTypesArray().length > 0)) {
                 for (String resTypeName : m_settings.getTypesArray()) {
                     try {
                         int typeId = OpenCms.getResourceManager().getResourceType(resTypeName).getTypeId();
@@ -920,7 +934,9 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                         while (iterator.hasNext()) {
                             CmsResource r = iterator.next();
                             boolean remove = true;
-                            if (filterList.size() > 1) {
+                            if (null != filterByExcludeType) {
+                                remove = filterByExcludeType.contains(Integer.valueOf(r.getTypeId()));
+                            } else if (filterList.size() > 1) {
                                 for (CmsResourceFilter f : filterList) {
                                     if (f.isValid(getCms().getRequestContext(), r)) {
                                         remove = false;
@@ -934,6 +950,10 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                                     OpenCms.getADEManager().getSubSiteRoot(getCms(), r.getRootPath()))) {
                                     remove = true;
                                 }
+                            }
+                            if (!remove && m_settings.getType().isContentValuesOnly()) {
+                                remove = !(OpenCms.getResourceManager().getResourceType(
+                                    r) instanceof CmsResourceTypeXmlContent);
                             }
                             if (remove) {
                                 iterator.remove();

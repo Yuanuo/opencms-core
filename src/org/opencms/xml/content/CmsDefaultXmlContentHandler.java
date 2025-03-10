@@ -28,6 +28,7 @@
 package org.opencms.xml.content;
 
 import org.opencms.ade.configuration.CmsConfigurationReader;
+import org.opencms.ade.contenteditor.CmsAccessRestrictionInfo;
 import org.opencms.ade.contenteditor.CmsWidgetUtil;
 import org.opencms.configuration.CmsConfigurationManager;
 import org.opencms.configuration.CmsParameterConfiguration;
@@ -50,6 +51,7 @@ import org.opencms.i18n.CmsMessages;
 import org.opencms.i18n.CmsMultiMessages;
 import org.opencms.i18n.CmsMultiMessages.I_KeyFallbackHandler;
 import org.opencms.i18n.CmsResourceBundleLoader;
+import org.opencms.jsp.util.CmsKeyDummyMacroResolver;
 import org.opencms.lock.CmsLock;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
@@ -76,6 +78,7 @@ import org.opencms.util.CmsDefaultSet;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsHtmlConverter;
 import org.opencms.util.CmsMacroResolver;
+import org.opencms.util.CmsPair;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.util.I_CmsMacroResolver;
@@ -98,6 +101,7 @@ import org.opencms.xml.containerpage.I_CmsFormatterBean;
 import org.opencms.xml.content.CmsGeoMappingConfiguration.Entry;
 import org.opencms.xml.content.CmsGeoMappingConfiguration.EntryType;
 import org.opencms.xml.content.CmsMappingResolutionContext.AttributeType;
+import org.opencms.xml.types.CmsXmlAccessRestrictionValue;
 import org.opencms.xml.types.CmsXmlCategoryValue;
 import org.opencms.xml.types.CmsXmlDisplayFormatterValue;
 import org.opencms.xml.types.CmsXmlDynamicCategoryValue;
@@ -114,6 +118,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -127,6 +132,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
 import javax.servlet.ServletRequest;
 
@@ -561,9 +567,6 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** Constant for the "parameters" appinfo element name. */
     public static final String APPINFO_PARAMETERS = "parameters";
 
-    /** version-transformation node name. */
-    public static final String APPINFO_VERSION_TRANSFORMATION = "versiontransformation";
-
     /** Constant for the "preview" appinfo element name. */
     public static final String APPINFO_PREVIEW = "preview";
 
@@ -649,6 +652,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
 
     /** Constant for the "page" value of the appinfo attribute "addto". */
     public static final String APPINFO_VALUE_ADD_TO_PAGE = "page";
+
+    /** version-transformation node name. */
+    public static final String APPINFO_VERSION_TRANSFORMATION = "versiontransformation";
 
     /** Constant for the "visibilities" appinfo element name. */
     public static final String APPINFO_VISIBILITIES = "visibilities";
@@ -773,6 +779,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** The set of allowed templates. */
     protected CmsDefaultSet<String> m_allowedTemplates = new CmsDefaultSet<String>();
 
+    /** The cached map of combined synchronization information. */
+    protected LinkedHashMap<String, SynchronizationMode> m_combinedSynchronizations;
+
     /** The configuration values for the element widgets (as defined in the annotations). */
     protected Map<String, String> m_configurationValues;
 
@@ -833,11 +842,8 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     /** The configured settings for the formatters (as defined in the annotations). */
     protected Map<String, CmsXmlContentProperty> m_settings;
 
-    /** Path to XSL transform in VFS to use for version transformation. */
-    protected String m_versionTransformation;
-
     /** The configured locale synchronization elements. */
-    protected List<String> m_synchronizations;
+    protected LinkedHashMap<String, SynchronizationMode> m_synchronizations = new LinkedHashMap<>();
 
     /** The configured tabs. */
     protected List<CmsXmlContentTab> m_tabs;
@@ -859,6 +865,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
 
     /** The validation rules that cause a warning (as defined in the annotations). */
     protected Map<String, String> m_validationWarningRules;
+
+    /** Path to XSL transform in VFS to use for version transformation. */
+    protected String m_versionTransformation;
 
     /** Change handler configurations. */
     private List<CmsChangeHandlerConfig> m_changeHandlerConfigs = new ArrayList<>();
@@ -1103,6 +1112,67 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
 
         MappingInfo info = getAttributeMapping(attr);
         return info.canBeUsedForReverseAvailabilityMapping();
+
+    }
+
+    /**
+     * We clear all potential property mappings.
+     *
+     * @see org.opencms.xml.content.I_CmsXmlContentHandler#clearMappings(org.opencms.file.CmsObject, org.opencms.xml.content.CmsXmlContent)
+     */
+    @Override
+    public void clearMappings(CmsObject cms, CmsXmlContent content) throws CmsException {
+
+        CmsObject rootCms = createRootCms(cms);
+        Set<String> mappings = new HashSet<>();
+        getMappings().values().forEach(mps -> mappings.addAll(mps));
+        CmsFile f = content.getFile();
+        String filename = f.getRootPath();
+        Collection<Locale> locales = OpenCms.getLocaleManager().getAvailableLocales();
+
+        for (String mapping : mappings) {
+            CmsPair<String, Boolean> propertyInfo = getMapToProperty(mapping);
+            if (null != propertyInfo) {
+                String prop = propertyInfo.getFirst();
+                Set<String> propNames = new HashSet<>(locales.size());
+                // We do not delete the property itself - would be cleaner, but may cause backward compatibility issues
+                //propNames.add(prop);
+                propNames.addAll(
+                    locales.stream().map(l -> CmsProperty.getLocaleSpecificPropertyName(prop, l)).collect(
+                        Collectors.toSet()));
+                boolean isShared = propertyInfo.getSecond().booleanValue();
+                for (String propName : propNames) {
+                    try {
+                        rootCms.readPropertyDefinition(propName);
+                        CmsProperty p = rootCms.readPropertyObject(f, propName, false);
+                        if (!p.isNullProperty()) {
+                            String v = isShared ? p.getResourceValue() : p.getStructureValue();
+                            if ((null != v) && !v.isEmpty()) {
+                                // make sure the file is locked
+                                CmsLock lock = rootCms.getLock(filename);
+                                if (lock.isUnlocked()) {
+                                    rootCms.lockResource(filename);
+                                } else if (!lock.isDirectlyOwnedInProjectBy(rootCms)) {
+                                    rootCms.changeLock(filename);
+                                }
+                                rootCms.writePropertyObject(
+                                    filename,
+                                    createProperty(propName, CmsProperty.DELETE_VALUE, isShared));
+                            }
+                        }
+                    } catch (CmsException e) {
+                        // property not defined, do nothing.
+                    }
+                }
+            }
+        }
+        // make sure the original is locked
+        CmsLock lock = rootCms.getLock(f);
+        if (lock.isUnlocked()) {
+            rootCms.lockResource(f.getRootPath());
+        } else if (!lock.isExclusiveOwnedBy(rootCms.getRequestContext().getCurrentUser())) {
+            rootCms.changeLock(f.getRootPath());
+        }
 
     }
 
@@ -1705,11 +1775,20 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     }
 
     /**
-     * @see org.opencms.xml.content.I_CmsXmlContentHandler#getSynchronizations()
+     * @see org.opencms.xml.content.I_CmsXmlContentHandler#getSynchronizations(boolean)
      */
-    public List<String> getSynchronizations() {
+    public CmsSynchronizationSpec getSynchronizations(boolean recursive) {
 
-        return Collections.unmodifiableList(m_synchronizations);
+        if (!recursive) {
+            return new CmsSynchronizationSpec(m_synchronizations);
+        } else {
+            if (m_combinedSynchronizations == null) {
+                LinkedHashMap<String, SynchronizationMode> combinedSynchronizations = new LinkedHashMap<>();
+                combineSynchronizations(m_contentDefinition, "", combinedSynchronizations);
+                m_combinedSynchronizations = combinedSynchronizations;
+    }
+            return new CmsSynchronizationSpec(m_combinedSynchronizations);
+        }
     }
 
     /**
@@ -1754,11 +1833,86 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     }
 
     /**
+     * Gets the validation error message configured in the schema for the element.
+     *
+     * @param elementName the name of the element
+     * @return the validation message
+     */
+    public String getValidationError(String elementName) {
+
+        return m_validationErrorMessages.get(elementName);
+    }
+
+    /**
+     * Gets the validation warning message configured in the schema for the element.
+     *
+     * @param elementName the name of the element
+     * @return the validation message
+     */
+    public String getValidationWarning(String elementName) {
+
+        return m_validationWarningMessages.get(elementName);
+    }
+
+    /**
+     * Helper method for reading a validation message or the corresponding message key.
+     *
+     * @param cms the current CMS context
+     * @param locale the locale
+     * @param elementName the element name
+     * @param isWarning true if we want the warning message, false for the error message
+     * @param keyOnly true if we want the key rather than the message
+     *
+     * @return the message or message key
+     */
+    public String getValidationWarningOrErrorMessage(
+        CmsObject cms,
+        Locale locale,
+        String elementName,
+        boolean isWarning,
+        boolean keyOnly) {
+
+        String rawValue = (isWarning ? m_validationWarningMessages : m_validationErrorMessages).get(elementName);
+        if (rawValue == null) {
+            return null;
+        }
+        CmsMacroResolver resolver = CmsMacroResolver.newInstance().setCmsObject(cms).setMessages(getMessages(locale));
+        if (keyOnly) {
+            resolver = new CmsKeyDummyMacroResolver(resolver);
+        }
+        String resolved = resolver.resolveMacros(rawValue);
+        if (keyOnly) {
+            return CmsKeyDummyMacroResolver.getKey(resolved);
+        } else {
+            return resolved;
+        }
+    }
+
+    /**
      * @see org.opencms.xml.content.I_CmsXmlContentHandler#getVersionTransformation()
      */
     public String getVersionTransformation() {
 
         return m_versionTransformation;
+    }
+
+    /**
+     * Returns the configured visibility parameter string for the given field if the content handler itself is the
+     * visibility handler, and null otherwise.
+     *
+     * @param field a field name
+     * @return the visibility parameter
+     */
+    public String getVisibilityConfigString(String field) {
+
+        VisibilityConfiguration visConfig = m_visibilityConfigurations.get(field);
+        if (visConfig == null) {
+            return null;
+        }
+        if (visConfig.getHandler() == this) {
+            return visConfig.getParams();
+        }
+        return null;
     }
 
     /**
@@ -2124,6 +2278,15 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         String valuePath,
         CmsResource resource,
         Locale contentLocale) {
+
+        if (contentValue instanceof CmsXmlAccessRestrictionValue) {
+            CmsAccessRestrictionInfo restrictionInfo = CmsAccessRestrictionInfo.getRestrictionInfo(
+                cms,
+                m_contentDefinition);
+            if (restrictionInfo == null) {
+                return false;
+            }
+        }
 
         if (hasVisibilityHandlers() && m_visibilityConfigurations.containsKey(valuePath)) {
             VisibilityConfiguration config = m_visibilityConfigurations.get(valuePath);
@@ -2914,7 +3077,6 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         m_allowedTemplates = new CmsDefaultSet<String>();
         m_allowedTemplates.setDefaultMembership(true);
         m_displayTypes = new HashMap<String, DisplayType>();
-        m_synchronizations = new ArrayList<String>();
         m_editorChangeHandlers = new ArrayList<I_CmsXmlContentEditorChangeHandler>();
         m_nestedFormatterElements = new HashSet<String>();
         try (
@@ -3043,6 +3205,12 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         }
         if (!CmsStringUtil.isEmptyOrWhitespaceOnly(ruleRegex)) {
             addValidationRule(contentDef, name, ruleRegex, error, "warning".equalsIgnoreCase(ruleType));
+        } else if (!CmsStringUtil.isEmptyOrWhitespaceOnly(error)) {
+            if ("warning".equalsIgnoreCase(ruleType)) {
+                m_validationWarningMessages.put(name, error);
+            } else {
+                m_validationErrorMessages.put(name, error);
+        }
         }
 
         String defaultValue = elem.elementText(CmsConfigurationReader.N_DEFAULT);
@@ -3085,9 +3253,18 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             }
         }
         String synchronization = elem.elementTextTrim(FieldSettingElems.Synchronization.name());
-        if (Boolean.parseBoolean(synchronization)) {
-            m_synchronizations.add(name);
+        if (synchronization != null) {
+            if ("strong".equals(synchronization)) {
+                m_synchronizations.put(name, SynchronizationMode.strong);
+            } else if (Boolean.parseBoolean(synchronization)) {
+                m_synchronizations.put(name, SynchronizationMode.standard);
+            } else {
+                // we use a distinct value rather than just leaving it empty because we want to be able to override the synchronization
+                // definition in a nested schema with the one in the top-level schema
+                m_synchronizations.put(name, SynchronizationMode.none);
         }
+        }
+
         for (Element relElem : elem.elements(FieldSettingElems.Relation.name())) {
             String type = relElem.elementTextTrim(FieldSettingElems.Type.name());
             String invalidate = relElem.elementTextTrim(FieldSettingElems.Invalidate.name());
@@ -3582,11 +3759,16 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                     && (localeNames.equals("none") || localeNames.equals("null") || localeNames.trim().equals(""))) {
                     localized = false;
                 }
-                List<Locale> locales = OpenCms.getLocaleManager().getAvailableLocales(localeNames);
+                List<Locale> locales = null;
+                if (localized) {
+                    locales = OpenCms.getLocaleManager().getAvailableLocales(localeNames);
                 if (localized && ((locales == null) || locales.isEmpty())) {
                     locales = OpenCms.getLocaleManager().getAvailableLocales();
                 } else if (locales.isEmpty()) {
                     locales.add(CmsLocaleManager.getDefaultLocale());
+                }
+                } else {
+                    locales = Collections.singletonList(null);
                 }
                 for (Locale locale : locales) {
                     String targetField = solrElement.attributeValue(APPINFO_ATTR_TARGET_FIELD);
@@ -3611,13 +3793,18 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                     Iterator<Element> ite = CmsXmlGenericWrapper.elementIterator(solrElement, APPINFO_ATTR_MAPPING);
                     while (ite.hasNext()) {
                         Element mappingElement = ite.next();
-                        field.addMapping(createSearchFieldMapping(contentDefinition, mappingElement, locale));
+                        field.addMapping(
+                            createSearchFieldMapping(contentDefinition, mappingElement, locale, elementName));
                     }
 
                     // if no mapping was defined yet, create a mapping for the element itself
                     if ((field.getMappings() == null) || field.getMappings().isEmpty()) {
-                        String param = localized ? (locale.toString() + "|" + elementName) : elementName;
-                        CmsSearchFieldMapping map = new CmsSearchFieldMapping(CmsSearchFieldMappingType.ITEM, param);
+                        CmsSearchFieldMapping map = new CmsSearchFieldMapping(
+                            CmsSearchFieldMappingType.ITEM,
+                            elementName);
+                        if (localized) {
+                            map.setLocale(locale);
+                        }
                         field.addMapping(map);
                     }
                     Set<I_CmsXmlContentHandler.MappingType> mappingTypes = parseSearchMappingTypes(solrElement);
@@ -3670,7 +3857,8 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         List<Element> elements = new ArrayList<Element>(CmsXmlGenericWrapper.elements(root, APPINFO_SYNCHRONIZATION));
         for (Element element : elements) {
             String elementName = element.attributeValue(APPINFO_ATTR_ELEMENT);
-            m_synchronizations.add(elementName);
+            // 'strong' not supported in the old notation
+            m_synchronizations.put(elementName, SynchronizationMode.standard);
         }
     }
 
@@ -4197,7 +4385,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                         // generate warning message
                         errorHandler.addWarning(
                             value,
-                            Messages.get().getBundle(value.getLocale()).key(
+                            Messages.get().getBundle(OpenCms.getWorkplaceManager().getWorkplaceLocale(cms)).key(
                                 Messages.GUI_XMLCONTENT_CHECK_WARNING_NOT_RELEASED_0));
                     }
                     return true;
@@ -4214,10 +4402,13 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             }
         } catch (CmsException e) {
             if (errorHandler != null) {
+                String message = getErrorMessage(cms, value.getName());
+                if (message == null) {
+                    message = Messages.get().getBundle(OpenCms.getWorkplaceManager().getWorkplaceLocale(cms)).key(
+                        Messages.GUI_XMLCONTENT_CHECK_ERROR_0);
+                }
                 // generate error message
-                errorHandler.addError(
-                    value,
-                    Messages.get().getBundle(value.getLocale()).key(Messages.GUI_XMLCONTENT_CHECK_ERROR_0));
+                errorHandler.addError(value, message);
             }
             return true;
         }
@@ -4307,7 +4498,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                 : new Exception(stackOverflowInfoMessage);
                 errorHandler.addError(
                     value,
-                    Messages.get().getBundle(value.getLocale()).key(
+                    Messages.get().getBundle(OpenCms.getWorkplaceManager().getWorkplaceLocale(cms)).key(
                         Messages.GUI_EDITOR_XMLCONTENT_CANNOT_VALIDATE_ERROR_3,
                         ticket,
                         regex,
@@ -4315,7 +4506,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             } else {
                 errorHandler.addError(
                     value,
-                    Messages.get().getBundle(value.getLocale()).key(
+                    Messages.get().getBundle(OpenCms.getWorkplaceManager().getWorkplaceLocale(cms)).key(
                         Messages.GUI_EDITOR_XMLCONTENT_INVALID_RULE_3,
                         ticket,
                         regex,
@@ -4517,6 +4708,55 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     }
 
     /**
+     * Helper method to combine synchronizations from a content definition and its nested content definitions.
+     *
+     * @param contentDefinition the content definition to start with
+     * @param path the the path to this content definition
+     * @param combinedSynchronizations the map in which the combined synchronizations should be stored
+     */
+    private void combineSynchronizations(
+        CmsXmlContentDefinition contentDefinition,
+        String path,
+        LinkedHashMap<String, SynchronizationMode> combinedSynchronizations) {
+
+        // put the synchronization definitions from nested contents in the map before the definitions from the current content definition,
+        // so the latter can override the former
+
+        for (String name : contentDefinition.getSchemaTypes()) {
+            I_CmsXmlSchemaType type = contentDefinition.getSchemaType(name);
+            if (type instanceof CmsXmlNestedContentDefinition) {
+                CmsXmlContentDefinition nestedDef = ((CmsXmlNestedContentDefinition)type).getNestedContentDefinition();
+                String subPath = "".equals(path) ? name : path + "/" + name;
+                combineSynchronizations(nestedDef, subPath, combinedSynchronizations);
+            }
+        }
+        CmsSynchronizationSpec synchs = contentDefinition.getContentHandler().getSynchronizations(false);
+        for (Map.Entry<String, SynchronizationMode> entry : synchs.asMap().entrySet()) {
+            String subPath = "".equals(path) ? entry.getKey() : path + "/" + entry.getKey();
+            combinedSynchronizations.put(subPath, entry.getValue());
+        }
+    }
+
+    /**
+     * Creates a property object.
+     *
+     * @param propertyName name of the property
+     * @param value value to set for the property
+     * @param mapToShared flag, indicating if the value should be set as shared property (in contrast to an individual property)
+     *
+     * @return the created property object.
+     */
+    private CmsProperty createProperty(String propertyName, String value, boolean mapToShared) {
+
+        if (mapToShared) {
+            // map to shared value
+            return new CmsProperty(propertyName, null, value);
+        }
+        // map to individual value
+        return new CmsProperty(propertyName, value, null);
+    }
+
+    /**
      * Creates a search field mapping for the given mapping element and the locale.<p>
      *
      * @param contentDefinition the content definition
@@ -4530,33 +4770,25 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
     private I_CmsSearchFieldMapping createSearchFieldMapping(
         CmsXmlContentDefinition contentDefinition,
         Element element,
-        Locale locale)
+        Locale locale,
+        String defaultParamValue)
     throws CmsXmlException {
 
         I_CmsSearchFieldMapping fieldMapping = null;
         String typeAsString = element.attributeValue(APPINFO_ATTR_TYPE);
         CmsSearchFieldMappingType type = CmsSearchFieldMappingType.valueOf(typeAsString);
-        switch (type.getMode()) {
-            case 0: // content
-            case 3: // item
-                // localized
-                String param = locale.toString() + "|" + element.getStringValue();
-                fieldMapping = new CmsSearchFieldMapping(type, param);
-                break;
-            case 1: // property
-            case 2: // property-search
-            case 5: // attribute
-                // not localized
-                fieldMapping = new CmsSearchFieldMapping(type, element.getStringValue());
-                break;
-            case 4: // dynamic
+        if (type == null) {
+            throw new CmsXmlException(
+                Messages.get().container(
+                    Messages.ERR_XML_SCHEMA_MAPPING_TYPE_NOT_EXIST_3,
+                    typeAsString,
+                    contentDefinition.getTypeName(),
+                    contentDefinition.getSchemaLocation()));
+        }
                 String mappingClass = element.attributeValue(APPINFO_ATTR_CLASS);
                 if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(mappingClass)) {
                     try {
                         fieldMapping = (I_CmsSearchFieldMapping)Class.forName(mappingClass).newInstance();
-                        fieldMapping.setType(CmsSearchFieldMappingType.DYNAMIC);
-                        fieldMapping.setParam(element.getStringValue());
-                        fieldMapping.setLocale(locale);
                     } catch (Exception e) {
                         throw new CmsXmlException(
                             Messages.get().container(
@@ -4565,19 +4797,35 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                                 contentDefinition.getTypeName(),
                                 contentDefinition.getSchemaLocation()));
                     }
-
+        } else {
+            fieldMapping = new CmsSearchFieldMapping();
                 }
-                break;
-            default:
-                // NOOP
+        fieldMapping.setType(type);
+        String paramValue = element.getStringValue();
+        if ((paramValue == null) || paramValue.isEmpty()) {
+            paramValue = defaultParamValue;
         }
-        if (fieldMapping != null) {
+        fieldMapping.setParam(paramValue);
+        fieldMapping.setLocale(locale);
             fieldMapping.setDefaultValue(element.attributeValue(APPINFO_ATTR_DEFAULT));
             if (fieldMapping instanceof CmsSearchFieldMapping) {
                 ((CmsSearchFieldMapping) fieldMapping).joinBy = element.attributeValue("joinby", "\n");
             }
         }
         return fieldMapping;
+    }
+
+    /**
+     * Gets the localized error message for a specific field.
+     * @param cms the CMS context
+     * @param element the field name
+     */
+    private String getErrorMessage(CmsObject cms, String element) {
+
+        String configuredMessage = m_validationErrorMessages.get(element);
+        CmsMacroResolver resolver = CmsMacroResolver.newInstance().setCmsObject(cms).setMessages(
+            getMessages(OpenCms.getWorkplaceManager().getWorkplaceLocale(cms)));
+        return resolver.resolveMacros(configuredMessage);
     }
 
     /**
@@ -4594,6 +4842,66 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
             }
         }
         return null;
+    }
+
+    /**
+     * Returns the name of the property to map to in case of a property or property list mapping,
+     * combined with the information if the mapping is to the shared property.
+     * Otherwise null is returned.
+     *
+     * @param mapping the mapping to get the property for.
+     *
+     * @return the property to map to, combined with the information if the mapping is for the shared property version,
+     *  or null if the provided mapping was not for properties.
+     */
+    private CmsPair<String, Boolean> getMapToProperty(String mapping) {
+
+        if (mapping.startsWith(MAPTO_PROPERTY)) {
+            if (mapping.startsWith(MAPTO_PROPERTY_INDIVIDUAL)) {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY_INDIVIDUAL.length()), Boolean.FALSE);
+            } else if (mapping.startsWith(MAPTO_PROPERTY_SHARED)) {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY_SHARED.length()), Boolean.TRUE);
+            } else {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY.length()), Boolean.FALSE);
+            }
+        } else if (mapping.startsWith(MAPTO_PROPERTY_LIST)) {
+            if (mapping.startsWith(MAPTO_PROPERTY_LIST_INDIVIDUAL)) {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY_LIST_INDIVIDUAL.length()), Boolean.FALSE);
+            } else if (mapping.startsWith(MAPTO_PROPERTY_LIST_SHARED)) {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY_LIST_SHARED.length()), Boolean.TRUE);
+            } else {
+                return new CmsPair<>(mapping.substring(MAPTO_PROPERTY_LIST.length()), Boolean.FALSE);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the value to map for property list mappings.
+     * @param rootCms the context
+     * @param content the content
+     * @param valuePath the value path (to the value list) to map
+     * @param locale the locale to map
+     * @return the value to map for property list mappings.
+     */
+    private String getPropertyListMappingValue(
+        CmsObject rootCms,
+        CmsXmlContent content,
+        String valuePath,
+        Locale locale) {
+
+        String path = CmsXmlUtils.removeXpathIndex(valuePath);
+        List<I_CmsXmlContentValue> values = content.getValues(path, locale);
+        Iterator<I_CmsXmlContentValue> j = values.iterator();
+        StringBuffer result = new StringBuffer(values.size() * 64);
+        while (j.hasNext()) {
+            I_CmsXmlContentValue val = j.next();
+            result.append(val.getStringValue(rootCms));
+            if (j.hasNext()) {
+                result.append(CmsProperty.VALUE_LIST_DELIMITER);
+            }
+        }
+        return result.toString();
     }
 
     /**
@@ -4697,6 +5005,95 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         } catch (Exception e) {
             LOG.error(e.getLocalizedMessage(), e);
         }
+    }
+
+    /**
+     * Checks if the locale specific value would be the same as the fallback
+     * @param rootCms the context
+     * @param content the content
+     * @param mapping the mapping to resolve
+     * @param valuePath the path to the value (sequence) to map
+     * @param valueIndex the index of the value
+     * @param valueLocale the locale to map the value
+     * @param defaultLocale the default locale
+     * @param isSequence flag, indicating if a sequence should be mapped
+     * @param stringValueToMap the value that would be mapped to the locale specific property
+     * @return true iff the value would be the same as its fallback.
+     */
+    private boolean isLocalePropertyValueEqualToFallback(
+        CmsObject rootCms,
+        CmsXmlContent content,
+        String mapping,
+        String valuePath,
+        int valueIndex,
+        Locale valueLocale,
+        Locale defaultLocale,
+        boolean isSequence,
+        String stringValueToMap) {
+
+        String valueLocaleString = valueLocale.toString();
+        Locale fallbackLocale = null;
+        String fallbackValue = null;
+        List<String> localeStrings = new ArrayList<>(4);
+        while (valueLocaleString.contains("_")) {
+            valueLocaleString = valueLocaleString.substring(0, valueLocaleString.lastIndexOf('_'));
+            localeStrings.add(valueLocaleString);
+        }
+        localeStrings.add(defaultLocale.toString());
+        Iterator<String> localeIterator = localeStrings.iterator();
+        while ((fallbackLocale == null) && localeIterator.hasNext()) {
+            valueLocaleString = localeIterator.next();
+            Locale l = CmsLocaleManager.getLocale(valueLocaleString);
+            if (content.hasLocale(l)
+                && (content.hasValue(valuePath, l)
+                    || (isSequence && content.hasValue(CmsXmlUtils.removeXpathIndex(valuePath), l)))) {
+                fallbackLocale = l;
+            } else if (isMappingUsingDefault(valuePath, mapping)) {
+                String potentialFallbackValue = getDefault(rootCms, content.getFile(), null, valuePath, l);
+                if ((potentialFallbackValue != null) && !potentialFallbackValue.isEmpty()) {
+                    if (isSequence) {
+                        fallbackLocale = l;
+                        fallbackValue = potentialFallbackValue;
+                    } else {
+                        CmsGalleryNameMacroResolver resolver = new CmsGalleryNameMacroResolver(rootCms, content, l);
+                        resolver.setKeepEmptyMacros(true);
+                        potentialFallbackValue = resolver.resolveMacros(potentialFallbackValue);
+                        if ((null != potentialFallbackValue) && !potentialFallbackValue.isEmpty()) {
+                            fallbackLocale = l;
+                            fallbackValue = potentialFallbackValue;
+                        }
+                    }
+                }
+            }
+        }
+        if (null != fallbackLocale) {
+            String fallbackStringValue = null;
+            if (isSequence) {
+                fallbackStringValue = fallbackValue != null
+                ? fallbackValue
+                : getPropertyListMappingValue(rootCms, content, valuePath, fallbackLocale);
+            } else {
+                if (null != fallbackValue) {
+                    // This is already resolved.
+                    fallbackStringValue = fallbackValue;
+                } else {
+                    String originalFallbackStringValue = content.getValue(valuePath, fallbackLocale).getStringValue(
+                        rootCms);
+                    CmsGalleryNameMacroResolver resolver = new CmsGalleryNameMacroResolver(
+                        rootCms,
+                        content,
+                        fallbackLocale);
+                    resolver.setKeepEmptyMacros(true);
+                    fallbackStringValue = resolver.resolveMacros(originalFallbackStringValue);
+                }
+            }
+            if (null != fallbackStringValue) {
+                fallbackStringValue = fallbackStringValue.trim();
+            }
+            return stringValueToMap.equals(fallbackStringValue);
+        }
+
+        return false;
     }
 
     /**
@@ -4812,6 +5209,26 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                     continue; // skip to next mapping
                 }
 
+                // Get the property to map to in case we have a property (list) mapping
+                CmsPair<String, Boolean> mapToPropertyInfo = getMapToProperty(mapping);
+                String mapToProperty = mapToPropertyInfo == null ? null : mapToPropertyInfo.getFirst();
+                // We need to determine if locale specific property mappings are necessary
+                // If not, we can skip much code
+                boolean needsLocaleSpecificMapping = false;
+                if ((null != mapToProperty) && !mapToProperty.isBlank()) {
+                    // We check if the locale specific property is defined.
+                    // Only for defined properties we do mappings.
+                    String localeSpecificProperty = CmsProperty.getLocaleSpecificPropertyName(
+                        mapToProperty,
+                        valueLocale);
+                    try {
+                        needsLocaleSpecificMapping = null != rootCms.readPropertyDefinition(localeSpecificProperty);
+                    } catch (CmsException e) {
+                        // Do nothing, this is thrown if the property definition does not exist and in this case we
+                        // do not want to perform the mapping.
+                    }
+                }
+
                 // for multiple language mappings, we need to ensure
                 // a) all siblings are handled
                 // b) only the "right" locale is mapped to a sibling
@@ -4824,8 +5241,10 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                     }
 
                     Locale locale = OpenCms.getLocaleManager().getDefaultLocale(rootCms, filename);
-                    if (!locale.equals(valueLocale)) {
-                        // only map property if the locale fits
+                    boolean localeIsValueLocale = locale.equals(valueLocale);
+
+                    if (!(localeIsValueLocale || needsLocaleSpecificMapping)) {
+                        // only map if the locale fits, but for properties map to locale-specific properties, even if it does not fit.
                         continue;
                     }
 
@@ -4837,7 +5256,7 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                         rootCms.changeLock(filename);
                     }
 
-                    if (mapping.startsWith(MAPTO_PERMISSION) && (valueIndex == 0)) {
+                    if (localeIsValueLocale && mapping.startsWith(MAPTO_PERMISSION) && (valueIndex == 0)) {
 
                         // map value to a permission
                         // example of a mapping: mapto="permission:GROUP:+r+v|GROUP.ALL_OTHERS:|GROUP.Projectmanagers:+r+v+w+c"
@@ -4940,45 +5359,32 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
                         i = 0;
                     } else if (mapping.startsWith(MAPTO_PROPERTY_LIST) && (valueIndex == 0)) {
 
-                        boolean mapToShared;
-                        int prefixLength;
                         // check which mapping is used (shared or individual)
-                        if (mapping.startsWith(MAPTO_PROPERTY_LIST_SHARED)) {
-                            mapToShared = true;
-                            prefixLength = MAPTO_PROPERTY_LIST_SHARED.length();
-                        } else if (mapping.startsWith(MAPTO_PROPERTY_LIST_INDIVIDUAL)) {
-                            mapToShared = false;
-                            prefixLength = MAPTO_PROPERTY_LIST_INDIVIDUAL.length();
-                        } else {
-                            mapToShared = false;
-                            prefixLength = MAPTO_PROPERTY_LIST.length();
-                        }
+                        boolean mapToShared = mapping.startsWith(MAPTO_PROPERTY_LIST_SHARED);
 
-                        // this is a property list mapping
-                        String property = mapping.substring(prefixLength);
-
-                        String path = CmsXmlUtils.removeXpathIndex(valuePath);
-                        List<I_CmsXmlContentValue> values = content.getValues(path, valueLocale);
-                        Iterator<I_CmsXmlContentValue> j = values.iterator();
-                        StringBuffer result = new StringBuffer(values.size() * 64);
-                        while (j.hasNext()) {
-                            I_CmsXmlContentValue val = j.next();
-                            result.append(val.getStringValue(rootCms));
-                            if (j.hasNext()) {
-                                result.append(CmsProperty.VALUE_LIST_DELIMITER);
+                        String result = getPropertyListMappingValue(rootCms, content, valuePath, valueLocale).trim();
+                        if (localeIsValueLocale) {
+                            rootCms.writePropertyObject(filename, createProperty(mapToProperty, result, mapToShared));
                             }
+                        if (needsLocaleSpecificMapping) {
+                            boolean removePropertyValue = localeIsValueLocale
+                                || isLocalePropertyValueEqualToFallback(
+                                    rootCms,
+                                    content,
+                                    mapping,
+                                    valuePath,
+                                    valueIndex,
+                                    valueLocale,
+                                    locale,
+                                    true,
+                                    result);
+                            rootCms.writePropertyObject(
+                                filename,
+                                createProperty(
+                                    CmsProperty.getLocaleSpecificPropertyName(mapToProperty, valueLocale),
+                                    removePropertyValue ? CmsProperty.DELETE_VALUE : result,
+                                    mapToShared));
                         }
-
-                        CmsProperty p;
-                        if (mapToShared) {
-                            // map to shared value
-                            p = new CmsProperty(property, null, result.toString());
-                        } else {
-                            // map to individual value
-                            p = new CmsProperty(property, result.toString(), null);
-                        }
-                        // write the created list string value in the selected property
-                        rootCms.writePropertyObject(filename, p);
                         if (mapToShared) {
                             // special case: shared mappings must be written only to one sibling, end loop
                             i = 0;
@@ -4986,38 +5392,42 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
 
                     } else if (mapping.startsWith(MAPTO_PROPERTY)) {
 
-                        boolean mapToShared;
-                        int prefixLength;
                         // check which mapping is used (shared or individual)
-                        if (mapping.startsWith(MAPTO_PROPERTY_SHARED)) {
-                            mapToShared = true;
-                            prefixLength = MAPTO_PROPERTY_SHARED.length();
-                        } else if (mapping.startsWith(MAPTO_PROPERTY_INDIVIDUAL)) {
-                            mapToShared = false;
-                            prefixLength = MAPTO_PROPERTY_INDIVIDUAL.length();
-                        } else {
-                            mapToShared = false;
-                            prefixLength = MAPTO_PROPERTY.length();
+                        boolean mapToShared = mapping.startsWith(MAPTO_PROPERTY_SHARED);
+
+                        if (null != stringValue) {
+                            stringValue = stringValue.trim();
                         }
 
-                        // this is a property mapping
-                        String property = mapping.substring(prefixLength);
-
-                        CmsProperty p;
-                        if (mapToShared) {
-                            // map to shared value
-                            p = new CmsProperty(property, null, stringValue);
-                        } else {
-                            // map to individual value
-                            p = new CmsProperty(property, stringValue, null);
+                        if (localeIsValueLocale) {
+                            rootCms.writePropertyObject(
+                                filename,
+                                createProperty(mapToProperty, stringValue, mapToShared));
                         }
-                        // just store the string value in the selected property
-                        rootCms.writePropertyObject(filename, p);
+                        if (needsLocaleSpecificMapping) {
+                            boolean removePropertyValue = localeIsValueLocale
+                                || isLocalePropertyValueEqualToFallback(
+                                    rootCms,
+                                    content,
+                                    mapping,
+                                    valuePath,
+                                    valueIndex,
+                                    valueLocale,
+                                    locale,
+                                    false,
+                                    stringValue);
+                            rootCms.writePropertyObject(
+                                filename,
+                                createProperty(
+                                    CmsProperty.getLocaleSpecificPropertyName(mapToProperty, valueLocale),
+                                    removePropertyValue ? CmsProperty.DELETE_VALUE : stringValue,
+                                    mapToShared));
+                        }
                         if (mapToShared) {
                             // special case: shared mappings must be written only to one sibling, end loop
                             i = 0;
                         }
-                    } else if (mapping.startsWith(MAPTO_URLNAME)) {
+                    } else if (localeIsValueLocale && mapping.startsWith(MAPTO_URLNAME)) {
                         // we write the actual mappings later
                         urlNameMappingResources.add(siblings.get(i));
                     }

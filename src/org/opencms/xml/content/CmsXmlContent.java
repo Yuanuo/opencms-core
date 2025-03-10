@@ -51,6 +51,7 @@ import org.opencms.xml.CmsXmlContentDefinition;
 import org.opencms.xml.CmsXmlException;
 import org.opencms.xml.CmsXmlGenericWrapper;
 import org.opencms.xml.CmsXmlUtils;
+import org.opencms.xml.content.I_CmsXmlContentHandler.SynchronizationMode;
 import org.opencms.xml.types.CmsXmlNestedContentDefinition;
 import org.opencms.xml.types.I_CmsXmlContentValue;
 import org.opencms.xml.types.I_CmsXmlSchemaType;
@@ -65,6 +66,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.logging.Log;
@@ -301,7 +303,7 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                 throw new CmsRuntimeException(
                     Messages.get().container(
                         Messages.ERR_XMLCONTENT_ADD_ELEM_INVALID_IDX_CHOICE_3,
-                        new Integer(index),
+                        Integer.valueOf(index),
                         elementName,
                         parentElement.getUniquePath()));
             }
@@ -320,7 +322,7 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                         Messages.get().container(
                             Messages.ERR_XMLCONTENT_ELEM_MAXOCCURS_2,
                             elementName,
-                            new Integer(type.getMaxOccurs())));
+                            Integer.valueOf(type.getMaxOccurs())));
                 }
 
                 if (index > siblings.size()) {
@@ -328,8 +330,8 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                     throw new CmsRuntimeException(
                         Messages.get().container(
                             Messages.ERR_XMLCONTENT_ADD_ELEM_INVALID_IDX_3,
-                            new Integer(index),
-                            new Integer(siblings.size())));
+                            Integer.valueOf(index),
+                            Integer.valueOf(siblings.size())));
                 }
 
                 // check for offset required to append beyond last position
@@ -346,7 +348,7 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                     throw new CmsRuntimeException(
                         Messages.get().container(
                             Messages.ERR_XMLCONTENT_ADD_ELEM_INVALID_IDX_2,
-                            new Integer(index),
+                            Integer.valueOf(index),
                             elementName));
                 }
 
@@ -780,7 +782,7 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                     Messages.get().container(
                         Messages.ERR_XMLCONTENT_ELEM_MINOCCURS_2,
                         name,
-                        new Integer(value.getMinOccurs())));
+                        Integer.valueOf(value.getMinOccurs())));
             }
         }
 
@@ -798,6 +800,18 @@ public class CmsXmlContent extends A_CmsXmlDocument {
      */
     public void resolveMappings(CmsObject cms) {
 
+        // clear formerly mapped values
+        try {
+            getHandler().clearMappings(cms, this);
+        } catch (CmsException e) {
+            String message = "Failed to clean mappings for content "
+                + (this.getFile() == null ? "<unknown>" : this.getFile().getRootPath());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug(message, e);
+            } else {
+                LOG.error(message);
+            }
+        }
         // iterate through all initialized value nodes in this XML content
         CmsXmlContentMappingVisitor visitor = new CmsXmlContentMappingVisitor(cms, this);
         visitAllValuesWith(visitor);
@@ -823,8 +837,14 @@ public class CmsXmlContent extends A_CmsXmlDocument {
     public void synchronizeLocaleIndependentValues(CmsObject cms, Collection<String> skipPaths, Locale sourceLocale) {
 
         if (getContentDefinition().getContentHandler().hasSynchronizedElements() && (getLocales().size() > 1)) {
-            for (String elementPath : getContentDefinition().getContentHandler().getSynchronizations()) {
-                synchronizeElement(cms, elementPath, skipPaths, sourceLocale);
+            for (Map.Entry<String, SynchronizationMode> syncEntry : getContentDefinition().getContentHandler().getSynchronizations(
+                true).asMap().entrySet()) {
+                String elementPath = syncEntry.getKey();
+                SynchronizationMode syncMode = syncEntry.getValue();
+                if (syncMode == SynchronizationMode.none) {
+                    continue;
+                }
+                synchronizeElement(cms, elementPath, skipPaths, sourceLocale, syncMode);
             }
         }
     }
@@ -1135,6 +1155,16 @@ public class CmsXmlContent extends A_CmsXmlDocument {
         }
     }
 
+    private void removePreviousPropertyMappings(CmsObject cms) {
+
+        Set<String> mappings = new HashSet<>();
+        getHandler().getMappings().values().stream().forEach(mps -> mappings.addAll(mps));
+        Set<String> properties = new HashSet<>();
+        for (String mapping : mappings) {
+
+        }
+    }
+
     /**
      * Removes all surplus values of locale independent fields in the other locales.<p>
      *
@@ -1211,12 +1241,18 @@ public class CmsXmlContent extends A_CmsXmlDocument {
      * @param elementPath the element path
      * @param skipPaths the paths to skip
      * @param sourceLocale the source locale
+     * @param syncMode the synchronization mode
      */
     private void synchronizeElement(
         CmsObject cms,
         String elementPath,
         Collection<String> skipPaths,
-        Locale sourceLocale) {
+        Locale sourceLocale,
+        SynchronizationMode syncMode) {
+
+        if (syncMode == SynchronizationMode.none) {
+            return;
+        }
 
         if (elementPath.contains("/")) {
             String parentPath = CmsXmlUtils.removeLastXpathElement(elementPath);
@@ -1237,7 +1273,12 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                         removeSurplusValuesInOtherLocales(elementPath, subValues.size(), sourceLocale);
                         for (I_CmsXmlContentValue value : subValues) {
                             if (value.isSimpleType()) {
-                                setValueForOtherLocales(cms, value, CmsXmlUtils.removeLastXpathElement(valuePath));
+                                setValueForOtherLocales(
+                                    cms,
+                                    value,
+                                    syncMode == SynchronizationMode.strong
+                                    ? null // strong -> auto-create parent values
+                                    : CmsXmlUtils.removeLastXpathElement(valuePath));
                             } else {
                                 List<I_CmsXmlContentValue> simpleValues = getAllSimpleSubValues(value);
                                 for (I_CmsXmlContentValue simpleValue : simpleValues) {
@@ -1266,6 +1307,41 @@ public class CmsXmlContent extends A_CmsXmlDocument {
                 }
             } else {
                 removeValuesInOtherLocales(elementPath, sourceLocale);
+            }
+        }
+
+        // this handles the case where a elementPath is missing in the source locale because its parent value is missing
+        if (syncMode == SynchronizationMode.strong) {
+            if (getValuesByPath(elementPath, sourceLocale).size() == 0) {
+                boolean minOccursWarning = false;
+                boolean changed = false;
+                for (Locale locale : getLocales()) {
+                    if (!locale.equals(sourceLocale)) {
+                        List<I_CmsXmlContentValue> candidatesForRemoval = getValuesByPath(elementPath, locale);
+                        for (I_CmsXmlContentValue candidate : candidatesForRemoval) {
+                            if (candidate.getMinOccurs() > 0) {
+                                // it makes no sense to remove only part of the values
+                                minOccursWarning = true;
+                                break;
+                            } else {
+                                candidate.getElement().detach();
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+                if (changed) {
+                    initDocument(m_document, m_encoding, m_contentDefinition);
+                }
+                if (minOccursWarning) {
+                    String schema = getContentDefinition().getSchemaLocation();
+                    LOG.warn(
+                        " synchronization setting 'strong' for '"
+                            + elementPath
+                            + "' in '"
+                            + schema
+                            + "' is incorrect because it is a required value in an optional nested content.");
+                }
             }
         }
     }

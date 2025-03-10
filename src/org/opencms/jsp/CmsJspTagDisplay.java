@@ -38,6 +38,7 @@ import org.opencms.file.collectors.I_CmsCollectorPostCreateHandler;
 import org.opencms.flex.CmsFlexController;
 import org.opencms.jsp.util.CmsJspContentAccessValueWrapper;
 import org.opencms.jsp.util.CmsJspStandardContextBean;
+import org.opencms.loader.CmsJspLoader;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
@@ -60,6 +61,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Collectors;
 
 import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
@@ -96,6 +98,9 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
 
     /** Flag, indicating if the delete option should be displayed. */
     private boolean m_canDelete;
+
+    /** The container type used to select a formatter. */
+    private String m_containerType;
 
     /** The tag attribute's value, specifying the path to the (sub)sitemap where new content should be created. */
     private String m_creationSiteMap;
@@ -176,7 +181,7 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
             Locale locale = cms.getRequestContext().getLocale();
             boolean isOnline = cms.getRequestContext().getCurrentProject().isOnlineProject();
             CmsJspStandardContextBean contextBean = CmsJspStandardContextBean.getInstance(request);
-            CmsContainerElementBean parentElement = contextBean.getElement();
+            CmsContainerElementBean parentElement = contextBean.getRawElement();
 
             try {
                 if (formatter != null) {
@@ -221,7 +226,11 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
                             request,
                             response);
                     } catch (Exception e) {
-                        LOG.error(e.getLocalizedMessage(), e);
+                        if (CmsJspLoader.isJasperCompilerException(e)) {
+                            LOG.error(e.getLocalizedMessage());
+                        } else {
+                            LOG.error(e.getLocalizedMessage(), e);
+                        }
                     }
                     if (openedEditable) {
                         CmsJspTagEdit.insertDirectEditEnd(context);
@@ -354,6 +363,17 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     public void addDisplayFormatter(String type, String path) {
 
         m_displayFormatterPaths.put(type, path);
+    }
+
+    /**
+     * Adds a display formatter key for a type.
+     *
+     * @param type the resource type
+     * @param key the display formatter key
+     */
+    public void addDisplayFormatterKey(String type, String key) {
+
+        m_displayFormatterIds.put(type, key);
     }
 
     /**
@@ -531,6 +551,16 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
     public void setCacheable(boolean cacheable) {
 
         m_cacheable = Boolean.valueOf(cacheable);
+    }
+
+    /**
+     * Sets the container type used to select a formatter.
+     *
+     * @param containerType the container type
+     */
+    public void setContainerType(String containerType) {
+
+        m_containerType = containerType;
     }
 
     /** Setter for the "create" attribute of the tag.
@@ -720,9 +750,16 @@ public class CmsJspTagDisplay extends BodyTagSupport implements I_CmsJspTagParam
             result = config.findFormatter(m_displayFormatterIds.get(typeName));
         } else {
             if (config != null) {
-                CmsFormatterConfiguration formatters = config.getFormatters(cms, resource);
-                if (formatters != null) {
-                    result = formatters.getDisplayFormatter();
+                if (m_containerType != null) {
+                    result = config.getActiveFormattersWithContainerType(m_containerType).stream().filter(
+                        formatter -> formatter.getResourceTypeNames().contains(typeName)).collect(
+                            Collectors.maxBy((a, b) -> Integer.compare(a.getRank(), b.getRank()))).orElse(null);
+                }
+                if (result == null) {
+                    CmsFormatterConfiguration formatters = config.getFormatters(cms, resource);
+                    if (formatters != null) {
+                        result = formatters.getDisplayFormatter();
+                    }
                 }
             }
         }

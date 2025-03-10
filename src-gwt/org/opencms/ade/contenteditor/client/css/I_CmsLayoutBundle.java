@@ -45,6 +45,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
         String basePanel();
 
         /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String currentLocaleLabel();
+
+        /** Access method.<p>
          *
          * @return the CSS class name
          */
@@ -56,6 +62,12 @@ public interface I_CmsLayoutBundle extends org.opencms.gwt.client.ui.css.I_CmsLa
          * @return the CSS class name
          */
         String integratedEditor();
+
+        /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
+        String localeButtons();
 
         /** Access method.<p>
          *

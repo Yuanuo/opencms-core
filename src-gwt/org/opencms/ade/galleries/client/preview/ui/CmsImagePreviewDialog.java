@@ -29,12 +29,14 @@ package org.opencms.ade.galleries.client.preview.ui;
 
 import org.opencms.ade.galleries.client.Messages;
 import org.opencms.ade.galleries.client.preview.CmsImagePreviewHandler;
+import org.opencms.ade.galleries.client.preview.CmsImagePreviewHandler.PreviewImageUpdate;
 import org.opencms.ade.galleries.client.ui.css.I_CmsLayoutBundle;
 import org.opencms.ade.galleries.shared.CmsImageInfoBean;
 import org.opencms.ade.galleries.shared.I_CmsGalleryProviderConstants.GalleryMode;
 import org.opencms.gwt.client.CmsCoreProvider;
 import org.opencms.gwt.client.util.CmsClientStringUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
+import org.opencms.gwt.shared.CmsGwtLog;
 
 import java.util.Map;
 
@@ -48,6 +50,9 @@ import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.FlowPanel;
 import com.google.gwt.user.client.ui.Image;
 import com.google.gwt.user.client.ui.Widget;
+
+import elemental2.dom.HTMLImageElement;
+import jsinterop.base.Js;
 
 /**
  * Provides a widget for the image preview dialog .<p>
@@ -135,7 +140,9 @@ public class CmsImagePreviewDialog extends A_CmsPreviewDialog<CmsImageInfoBean> 
         FlowPanel panel = new FlowPanel();
         panel.addStyleName(I_CmsLayoutBundle.INSTANCE.previewDialogCss().imagePanel());
         m_previewImage = new Image();
+        boolean isSvg = false;
         if (CmsClientStringUtil.checkIsPathOrLinkToSvg(infoBean.getResourcePath())) {
+            isSvg = true;
             m_previewImage.getElement().getStyle().setWidth(100, Unit.PCT);
             m_previewImage.getElement().getStyle().setHeight(100, Unit.PCT);
             m_previewImage.getElement().getStyle().setProperty("objectFit", "contain");
@@ -147,11 +154,8 @@ public class CmsImagePreviewDialog extends A_CmsPreviewDialog<CmsImageInfoBean> 
         urlScaled.append(src);
         m_previewPanel.setWidget(panel); // Need to already attach it here so we can measure the dimensions
         m_handler.setImageContainerSize(panel.getOffsetWidth(), panel.getOffsetHeight());
-        String scalingParams = m_handler.getPreviewScaleParam(infoBean.getHeight(), infoBean.getWidth());
-        urlScaled.append("?").append(scalingParams);
-        // add time stamp to override image caching
-        urlScaled.append("&time=").append(System.currentTimeMillis());
-        m_previewImage.setUrl(urlScaled.toString());
+        PreviewImageUpdate previewUpdate = m_handler.getPreviewImageUpdate(infoBean.getHeight(), infoBean.getWidth());
+        previewUpdate.applyToImage(m_previewImage, src, isSvg, panel);
         getHandler().getFocalPointController().updateImage(panel, m_previewImage);
         panel.add(m_previewImage);
     }
@@ -190,6 +194,16 @@ public class CmsImagePreviewDialog extends A_CmsPreviewDialog<CmsImageInfoBean> 
     public int getPreviewHeight() {
 
         return m_previewHeight;
+    }
+
+    /**
+     * Gets the current preview image.
+     *
+     * @return the preview image
+     */
+    public Image getPreviewImage() {
+
+        return m_previewImage;
     }
 
     /**
@@ -251,9 +265,15 @@ public class CmsImagePreviewDialog extends A_CmsPreviewDialog<CmsImageInfoBean> 
      *
      * @param path the image path including scale parameter
      */
-    public void resetPreviewImage(String path) {
+    public void resetPreviewImage(String path, String highResPath) {
 
         m_previewImage.setUrl(path);
+        HTMLImageElement img = Js.cast(m_previewImage.getElement());
+        img.removeAttribute("srcset");
+        if (highResPath != null) {
+            CmsGwtLog.trace(highResPath);
+            img.srcset = highResPath + " " + "2x";
+        }
     }
 
     /**

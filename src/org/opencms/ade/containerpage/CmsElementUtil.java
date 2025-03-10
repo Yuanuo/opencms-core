@@ -57,7 +57,9 @@ import org.opencms.file.types.CmsResourceTypeXmlContent;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.CmsDefaultResourceStatusProvider;
 import org.opencms.gwt.CmsIconUtil;
+import org.opencms.gwt.CmsVfsService;
 import org.opencms.gwt.shared.CmsAdditionalInfoBean;
+import org.opencms.gwt.shared.CmsListInfoBean;
 import org.opencms.gwt.shared.CmsPermissionInfo;
 import org.opencms.i18n.CmsMessageContainer;
 import org.opencms.i18n.CmsMessages;
@@ -106,6 +108,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -114,14 +117,16 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.logging.Log;
+
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.select.Elements;
 
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
@@ -296,6 +301,13 @@ public class CmsElementUtil {
         return !Sets.intersection(CmsContainer.splitType(containerType), groupContainer.getTypes()).isEmpty();
     }
 
+    /**
+     * Converts a client container bean to a server container bean.
+     *
+     * @param container the client container
+     * @param elements the elements of the container
+     * @return the server container bean
+     */
     public static CmsContainerBean clientToServerContainer(
         CmsContainer container,
         List<CmsContainerElementBean> elements) {
@@ -400,6 +412,25 @@ public class CmsElementUtil {
             formatter = getStartFormatter(cms, container, config, element, cache);
         }
         return formatter;
+    }
+
+    /**
+     * Gets the ids for the current page and potentially detail-only containers.
+     * @param cms the CMS context
+     * @param pageId the id for the current page
+     * @param detailContent the current detail content
+     * @return the set of ids for the current page and detail-only containers
+     */
+    public static Set<CmsUUID> getPageAndDetailOnlyIds(CmsObject cms, CmsUUID pageId, CmsResource detailContent) {
+
+        Set<CmsUUID> result = new HashSet<>();
+        result.add(pageId);
+        if (detailContent != null) {
+            for (CmsResource detailOnlyRes : CmsDetailOnlyContainerUtil.getDetailOnlyResources(cms, detailContent)) {
+                result.add(detailOnlyRes.getStructureId());
+            }
+        }
+        return result;
     }
 
     /**
@@ -618,7 +649,6 @@ public class CmsElementUtil {
             elementData.setInheritanceInfos(inheritanceInfos);
             elementData.setInheritanceName(name);
         } else {
-
             for (CmsContainer cnt : containers) {
                 boolean missesFormatterSetting = !elementData.getSettings().containsKey(
                     CmsFormatterConfig.getSettingsKeyForContainer(cnt.getName()));
@@ -642,7 +672,6 @@ public class CmsElementUtil {
                             cnt.getWidth());
                         for (Entry<String, I_CmsFormatterBean> formatterEntry : formatterSelection.entrySet()) {
                             I_CmsFormatterBean formatter = formatterEntry.getValue();
-                            String id = formatterEntry.getKey();
                             if (element.getFormatterId().equals(formatter.getJspStructureId())) {
                                 elementData.getSettings().put(
                                     CmsFormatterConfig.getSettingsKeyForContainer(cnt.getName()),
@@ -657,6 +686,8 @@ public class CmsElementUtil {
             Map<String, String> contentsByName = getContentsByContainerName(element, containers);
             contents = contentsByName;
         }
+        CmsListInfoBean listInfo = CmsVfsService.getPageInfo(m_cms, element.getResource());
+        elementData.setListInfo(listInfo);
         elementData.setContents(contents);
         m_cms.getRequestContext().setLocale(requestLocale);
         return elementData;
@@ -683,6 +714,7 @@ public class CmsElementUtil {
 
         Locale wpLocale = OpenCms.getWorkplaceManager().getWorkplaceLocale(m_cms);
         CmsADEConfigData adeConfig = OpenCms.getADEManager().lookupConfigurationWithCache(m_cms, page.getRootPath());
+        boolean isCopyGroup = CmsResourceTypeXmlContainerPage.isModelCopyGroup(m_cms, page);
         Locale requestLocale = m_cms.getRequestContext().getLocale();
         m_cms.getRequestContext().setLocale(m_locale);
         element.initResource(m_cms);
@@ -890,7 +922,7 @@ public class CmsElementUtil {
         }
 
         CmsResourceState state = element.getResource().getState();
-        return new CmsElementSettingsConfig(elementData, state, infos, schema);
+        return new CmsElementSettingsConfig(elementData, state, infos, schema, isCopyGroup);
     }
 
     /**
@@ -997,9 +1029,17 @@ public class CmsElementUtil {
 
         result.setCreateNew(elementBean.isCreateNew());
         CmsResourceTypeConfig typeConfig = getConfigData().getResourceType(typeName);
-        if (typeConfig != null) {
+        if (!elementBean.isInMemoryOnly() && (typeConfig != null)) {
             result.setCopyInModels(typeConfig.isCopyInModels());
+            if (typeConfig.isCheckReuse()) {
+                final Set<CmsUUID> pageAndAttachments = getPageAndDetailOnlyIds();
+                boolean reused = OpenCms.getADEManager().isElementReused(
+                    resource,
+                    res -> pageAndAttachments.contains(res.getStructureId()));
+                result.setReused(reused);
+            }
         }
+
         Map<CmsUUID, CmsElementView> viewMap = OpenCms.getADEManager().getElementViews(m_cms);
 
         boolean isModelGroupEditing = CmsModelGroupHelper.isModelGroupResource(m_page);
@@ -1255,6 +1295,25 @@ public class CmsElementUtil {
     }
 
     /**
+     * Gets the ids for the current page and potentially detail-only containers.
+     *
+     * @return the set of ids for the current page and detail-only containers
+     */
+    private Set<CmsUUID> getPageAndDetailOnlyIds() {
+
+        Set<CmsUUID> result = new HashSet<>();
+        result.add(m_page.getStructureId());
+        CmsResource detailContent = (CmsResource)m_req.getAttribute(
+            CmsDetailPageResourceHandler.ATTR_DETAIL_CONTENT_RESOURCE);
+        if (detailContent != null) {
+            for (CmsResource detailOnlyRes : CmsDetailOnlyContainerUtil.getDetailOnlyResources(m_cms, detailContent)) {
+                result.add(detailOnlyRes.getStructureId());
+            }
+        }
+        return result;
+    }
+
+    /**
      * Helper method for checking whether there are properties defined for a given content element.<p>
      *
      * @param cms the CmsObject to use for VFS operations
@@ -1320,8 +1379,13 @@ public class CmsElementUtil {
      */
     private String removeScriptTags(String input) {
 
-        Pattern removePattern = Pattern.compile("<script[^>]*?>[\\s\\S]*?<\\/script>");
-        Matcher match = removePattern.matcher(input);
-        return match.replaceAll("");
+        Document doc = Jsoup.parseBodyFragment(input);
+        Elements scriptTags = doc.select("script");
+        String output = input;
+        if (scriptTags.size() > 0) {
+            scriptTags.remove();
+            output = doc.body().html();
+        }
+        return output;
     }
 }

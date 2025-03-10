@@ -30,8 +30,10 @@ package org.opencms.gwt;
 import org.opencms.ade.configuration.CmsADEConfigData;
 import org.opencms.ade.configuration.CmsGalleryDisabledTypesMode;
 import org.opencms.db.CmsResourceState;
+import org.opencms.db.CmsUserSettings;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
+import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
@@ -87,6 +89,7 @@ import org.opencms.util.CmsTreeNode;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.CmsWorkplaceLoginHandler;
+import org.opencms.workplace.CmsWorkplaceSettings;
 import org.opencms.xml.containerpage.CmsADESessionCache;
 
 import java.util.ArrayList;
@@ -94,12 +97,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -132,6 +137,9 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     /** Serialization uid. */
     private static final long serialVersionUID = 5915848952948986278L;
 
+    /** The workplace settings. */
+    private CmsWorkplaceSettings m_workplaceSettings;
+
     /**
      * Builds the tree structure for the given categories.<p>
      *
@@ -143,8 +151,13 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     public static List<CmsCategoryTreeEntry> buildCategoryTree(CmsObject cms, List<CmsCategory> categories) {
 
         List<CmsCategoryTreeEntry> result = new ArrayList<CmsCategoryTreeEntry>();
+        CmsUser user = cms.getRequestContext().getCurrentUser();
+        CmsUsedCategoriesList usedCategoriesBean = CmsUsedCategoriesList.fromJson(
+            (String)user.getAdditionalInfo(CmsUsedCategoriesList.ADDINFO_USED_CATEGORIES));
+        Set<String> usedCategories = usedCategoriesBean.getCategories();
         for (CmsCategory category : categories) {
             CmsCategoryTreeEntry current = new CmsCategoryTreeEntry(category);
+            current.setUsed(usedCategories.contains(category.getPath()));
             current.setSitePath(cms.getRequestContext().removeSiteRoot(category.getRootPath()));
             String parentPath = CmsResource.getParentFolder(current.getPath());
             CmsCategoryTreeEntry parent = null;
@@ -213,7 +226,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             List<CmsCategoryTreeEntry> localCategories = buildCategoryTree(cms, categories);
             result.addAll(localCategories);
         }
-
+        removeHiddenCategories(cms, result, entry -> false);
         return result;
     }
 
@@ -223,13 +236,15 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
      * @param cms the cms context
      * @param structureId the currently requested structure id
      * @param context the ade context (sitemap or containerpage)
+     * @param params the additional parameters
      *
      * @return the context menu entries
      */
     public static List<CmsContextMenuEntryBean> getContextMenuEntries(
         final CmsObject cms,
         CmsUUID structureId,
-        final AdeContext context) {
+        final AdeContext context,
+        Map<String, String> params) {
 
         Map<String, CmsContextMenuEntryBean> entries = new LinkedHashMap<String, CmsContextMenuEntryBean>();
         try {
@@ -243,6 +258,7 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
                 resources = Collections.singletonList(resource);
             }
             Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
+            final Map<String, String> paramsFinal = params != null ? params : new HashMap<>();
             // context to check item visibility
             I_CmsDialogContext dcontext = new I_CmsDialogContextWithAdeContext() {
 
@@ -301,6 +317,11 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
                             type = ContextType.fileTable;
                     }
                     return type;
+                }
+
+                public Map<String, String> getParameters() {
+
+                    return paramsFinal;
                 }
 
                 public List<CmsResource> getResources() {
@@ -386,14 +407,14 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
                         : OpenCms.getWorkplaceManager().getMessages(locale).getString(visibility.getMessageKey()),
                         false,
                         null);
-                    Map<String, String> params = ((I_CmsADEAction)item).getParams();
-                    if (params != null) {
-                        params = new HashMap<String, String>(params);
-                        for (Entry<String, String> param : params.entrySet()) {
+                    Map<String, String> clientParams = ((I_CmsADEAction)item).getParams();
+                    if (clientParams != null) {
+                        clientParams = new HashMap<String, String>(clientParams);
+                        for (Entry<String, String> param : clientParams.entrySet()) {
                             String value = CmsVfsService.prepareFileNameForEditor(cms, resource, param.getValue());
                             param.setValue(value);
                         }
-                        itemBean.setParams(params);
+                        itemBean.setParams(clientParams);
                     }
                     entries.put(item.getId(), itemBean);
                     if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(item.getParentId())) {
@@ -640,6 +661,30 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     }
 
     /**
+     * Recursively checks forced visibility for the entry and all its subentries.
+     *
+     * <p>A category is considered to have forced visibility if any of its subcategories match 'selectedCheck'.
+     *
+     * @param entry the category tree entry to check
+     * @param selectedCheck a predicate that checks whether the parents of a category tree entry should be forced to be visible
+     * @return
+     */
+    private static boolean checkForcedVisibility(
+        CmsCategoryTreeEntry entry,
+        Predicate<CmsCategoryTreeEntry> selectedCheck) {
+
+        if (entry.getForcedVisible() == null) {
+            boolean forcedVisible = selectedCheck.test(entry);
+            for (CmsCategoryTreeEntry child : entry.getChildren()) {
+                forcedVisible |= checkForcedVisibility(child, selectedCheck);
+                // don't break out of the loop, we need to call checkForcedVisibility on everything
+            }
+            entry.setForcedVisible(Boolean.valueOf(forcedVisible));
+        }
+        return entry.getForcedVisible().booleanValue();
+    }
+
+    /**
      * FInds a category in the given tree.<p>
      *
      * @param tree the the tree to search in
@@ -674,6 +719,51 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             }
         }
         return null;
+    }
+
+    /**
+     * Removes hidden category tree entries.
+     *
+     *  <p>A category entry is considered hidden if one of its ancestors has the 'category.hidden' property with a value of 'true', and none of its subcategories have a structure id that
+     *  is in 'selected'.
+     *
+     * @param cms the current CMS context
+     * @param entries the entries to filter
+     * @param selected the set of structure ids of categories whose ancestors should not be filtered (usually a set of categories already assigned to a resource)
+     */
+    private static void removeHiddenCategories(
+        CmsObject cms,
+        List<CmsCategoryTreeEntry> entries,
+        Predicate<CmsCategoryTreeEntry> selectedCheck) {
+
+        Iterator<CmsCategoryTreeEntry> iter = entries.iterator();
+        while (iter.hasNext()) {
+            CmsCategoryTreeEntry entry = iter.next();
+            if (checkForcedVisibility(entry, selectedCheck)) {
+                // this node is forced visible by one of the descendants, but there could still be other hidden children
+                removeHiddenCategories(cms, entry.getChildren(), selectedCheck);
+            } else {
+                boolean hidden = false;
+                try {
+                    CmsResource resource = cms.readResource(entry.getId(), CmsResourceFilter.IGNORE_EXPIRATION);
+                    CmsProperty hiddenProp = cms.readPropertyObject(
+                        resource,
+                        CmsPropertyDefinition.PROPERTY_CATEGORY_HIDDEN,
+                        true);
+                    hidden = Boolean.parseBoolean(hiddenProp.getValue());
+                } catch (CmsVfsResourceNotFoundException | CmsSecurityException e) {
+                    LOG.debug(e.getLocalizedMessage(), e);
+                } catch (Exception e) {
+                    LOG.error(e.getLocalizedMessage(), e);
+                }
+                if (hidden) {
+                    iter.remove();
+                } else {
+                    removeHiddenCategories(cms, entry.getChildren(), selectedCheck);
+                }
+
+            }
+        }
     }
 
     /**
@@ -768,48 +858,35 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
     }
 
     /**
-     * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getCategories(java.lang.String, boolean, java.lang.String)
-     */
-    public List<CmsCategoryTreeEntry> getCategories(String fromPath, boolean includeSubCats, String refPath)
-    throws CmsRpcException {
-
-        return getCategories(fromPath, includeSubCats, refPath, false);
-    }
-
-    /**
      * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getCategories(java.lang.String, boolean, java.lang.String, boolean)
      */
     public List<CmsCategoryTreeEntry> getCategories(
         String fromPath,
         boolean includeSubCats,
         String refPath,
-        boolean showWithRepositories)
+        boolean showWithRepositories,
+        Set<String> selected)
     throws CmsRpcException {
 
         CmsObject cms = getCmsObject();
-        CmsCategoryService catService = CmsCategoryService.getInstance();
+        Set<CmsUUID> selectedIds = new HashSet<>();
+        for (String path : selected) {
+            try {
+                CmsResource catResource = cms.readResource(path, CmsResourceFilter.IGNORE_EXPIRATION);
+                selectedIds.add(catResource.getStructureId());
+            } catch (CmsVfsResourceNotFoundException | CmsSecurityException e) {
+                LOG.debug(e.getLocalizedMessage(), e);
+            } catch (Exception e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
 
-        List<String> repositories = new ArrayList<String>();
-        repositories.addAll(catService.getCategoryRepositories(getCmsObject(), refPath));
-
-        List<CmsCategoryTreeEntry> result = null;
-        try {
-            // get the categories
-            List<CmsCategory> categories = catService.readCategoriesForRepositories(
-                cms,
-                fromPath,
-                includeSubCats,
-                repositories,
-                showWithRepositories);
-            categories = catService.localizeCategories(
-                cms,
-                categories,
-                OpenCms.getWorkplaceManager().getWorkplaceLocale(cms));
-            result = buildCategoryTree(cms, categories);
-        } catch (Throwable e) {
-            error(e);
         }
-        return result;
+        return getCategoriesInternal(
+            fromPath,
+            includeSubCats,
+            refPath,
+            showWithRepositories,
+            entry -> selectedIds.contains(entry.getId()));
     }
 
     /**
@@ -838,18 +915,22 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             CmsResource resource = cms.readResource(structureId, CmsResourceFilter.ignoreExpirationOffline(cms));
             List<CmsCategory> categories = catService.readResourceCategories(cms, resource);
             List<String> currentCategories = new ArrayList<String>();
+            Set<CmsUUID> selected = new HashSet<>();
+
             for (CmsCategory category : categories) {
                 currentCategories.add(category.getPath());
+                selected.add(category.getId());
             }
             return new CmsResourceCategoryInfo(
                 structureId,
                 CmsVfsService.getPageInfoWithLock(cms, resource),
                 currentCategories,
-                getCategories(
+                getCategoriesInternal(
                     null,
                     true,
                     cms.getSitePath(resource),
-                    OpenCms.getWorkplaceManager().isDisplayCategoriesByRepository()));
+                    OpenCms.getWorkplaceManager().isDisplayCategoriesByRepository(),
+                    entry -> selected.contains(entry.getId())));
         } catch (CmsException e) {
             error(e);
         }
@@ -864,7 +945,25 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
 
         List<CmsContextMenuEntryBean> result = null;
         try {
-            result = getContextMenuEntries(getCmsObject(), structureId, context);
+            result = getContextMenuEntries(getCmsObject(), structureId, context, new HashMap<>());
+        } catch (Throwable e) {
+            error(e);
+        }
+        return result;
+    }
+
+    /**
+     * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#getContextMenuEntries(org.opencms.util.CmsUUID, org.opencms.gwt.shared.CmsCoreData.AdeContext)
+     */
+    public List<CmsContextMenuEntryBean> getContextMenuEntries(
+        CmsUUID structureId,
+        AdeContext context,
+        Map<String, String> params)
+    throws CmsRpcException {
+
+        List<CmsContextMenuEntryBean> result = null;
+        try {
+            result = getContextMenuEntries(getCmsObject(), structureId, context, params);
         } catch (Throwable e) {
             error(e);
         }
@@ -1193,13 +1292,16 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             getCmsObject(),
             "/system/workplace/commons/about.jsp");
         String tinyMCE = CmsWorkplace.getStaticResourceUri("/editors/tinymce/jscripts/tinymce/tinymce.min.js");
-        boolean uploadDisabled = !OpenCms.getRoleManager().hasRole(cms, CmsRole.EDITOR);
+        boolean uploadDisabled = OpenCms.getWorkplaceManager().isAdeGalleryUploadDisabled(cms);
         CmsUploadRestrictionInfo uploadRestrictionInfo = OpenCms.getWorkplaceManager().getUploadRestriction().getUploadRestrictionInfo(
             cms);
         String categoryBaseFolder = CmsCategoryService.getInstance().getRepositoryBaseFolderName(cms);
         CmsGalleryDisabledTypesMode disabledTypesMode = sitemapConfig.getDisabledTypeMode(
             CmsGalleryDisabledTypesMode.mark);
         boolean hideDisabledTypes = disabledTypesMode == CmsGalleryDisabledTypesMode.hide;
+        getWorkplaceSettings().getUserSettings();
+        String checkReuseWarning = CmsUserSettings.getAdditionalPreference(cms, "checkReuseWarning", true);
+        boolean warnWhenEditingReusedElement = Boolean.parseBoolean(checkReuseWarning);
 
         CmsCoreData data = new CmsCoreData(
             EDITOR_URI,
@@ -1231,11 +1333,28 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
             OpenCms.getADEManager().getParameters(getCmsObject()),
             uploadRestrictionInfo,
             categoryBaseFolder,
-            hideDisabledTypes);
+            hideDisabledTypes,
+            warnWhenEditingReusedElement);
         CmsTinyMCEData tinyMCEData = new CmsTinyMCEData();
         tinyMCEData.setLink(tinyMCE);
         data.setTinymce(tinyMCEData);
+        data.setMaxLocaleButtons(OpenCms.getWorkplaceManager().getEditorMaxLocaleButtons());
         return data;
+    }
+
+    /**
+     * @see org.opencms.gwt.shared.rpc.I_CmsCoreService#saveUsedCategory(java.lang.String)
+     */
+    @Override
+    public void saveUsedCategory(String category) throws CmsRpcException {
+
+        try {
+            CmsObject cms = getCmsObject();
+            CmsUsedCategoriesList.addUsedCategoryForCurrentUser(cms, category);
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+            error(e);
+        }
     }
 
     /**
@@ -1443,6 +1562,72 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
         }
         CmsUser owner = cms.readUser(lock.getUserId());
         return CmsLockInfo.forLockedResource(owner.getName());
+    }
+
+    /**
+     * Helper method for reading and filtering categories.
+     *
+     * @param fromCatPath the category path to start with, can be <code>null</code> or empty to use the root
+     * @param includeSubCats if to include all categories, or first level child categories only
+     * @param refVfsPath the reference path (site-relative path according to which the available category repositories are determined),  can be <code>null</code> to only use the system repository
+     * @param withRepositories flag, indicating if also the category repositories should be returned as category
+     * @param selectedCheck a predicate that checks for categories whose ancestors should be included even if they are marked as hidden
+     *
+     * @return the resource categories
+     *
+     * @throws CmsRpcException if something goes wrong
+    
+     *
+     * @return
+     * @throws CmsRpcException
+     */
+    private List<CmsCategoryTreeEntry> getCategoriesInternal(
+        String fromPath,
+        boolean includeSubCats,
+        String refPath,
+        boolean showWithRepositories,
+        Predicate<CmsCategoryTreeEntry> selectedCheck)
+    throws CmsRpcException {
+
+        CmsObject cms = getCmsObject();
+        CmsCategoryService catService = CmsCategoryService.getInstance();
+
+        List<String> repositories = new ArrayList<String>();
+        repositories.addAll(catService.getCategoryRepositories(getCmsObject(), refPath));
+
+        List<CmsCategoryTreeEntry> result = null;
+        try {
+            // get the categories
+            List<CmsCategory> categories = catService.readCategoriesForRepositories(
+                cms,
+                fromPath,
+                includeSubCats,
+                repositories,
+                showWithRepositories);
+            categories = catService.localizeCategories(
+                cms,
+                categories,
+                OpenCms.getWorkplaceManager().getWorkplaceLocale(cms));
+            result = buildCategoryTree(cms, categories);
+            removeHiddenCategories(cms, result, selectedCheck);
+
+        } catch (Throwable e) {
+            error(e);
+        }
+        return result;
+    }
+
+    /**
+     * Returns the workplace settings of the current user.<p>
+     *
+     * @return the workplace settings
+     */
+    private CmsWorkplaceSettings getWorkplaceSettings() {
+
+        if (m_workplaceSettings == null) {
+            m_workplaceSettings = CmsWorkplace.getWorkplaceSettings(getCmsObject(), getRequest());
+        }
+        return m_workplaceSettings;
     }
 
     /**

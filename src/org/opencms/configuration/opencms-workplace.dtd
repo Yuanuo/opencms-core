@@ -18,6 +18,7 @@
 	editoraction,
 	editorcsshandlers?,
 	editorpreconditions?,
+	editor-max-locale-buttons?,
 	directeditprovider?,
 	exportpoints,
 	autolock?,
@@ -28,6 +29,7 @@
 	enableadvancedpropertytabs,
 	categoryfolder?,
 	categorydisplayoptions?,
+	display-categories-in-explorer?,
 	group-translation?,
 	maxfileuploadsize?,
 	labeledfolders?,
@@ -47,7 +49,9 @@
 	additional-log-folders?,
 	use-formatter-keys-for-new-sites?,
 	upload-restriction?,
-	sitemap-config-edit-role?
+	virus-scanner?,
+	sitemap-config-edit-role?,
+	allow-element-author-to-work-in-galleries?
 	)>
 
 <!--
@@ -116,6 +120,9 @@
 # a macro for the display name of the given root.
 -->
 <!ELEMENT name (#PCDATA) >
+
+<!-- Maximum number of locale buttons to display in content editor. -->
+<!ELEMENT editor-max-locale-buttons (#PCDATA)>
 
 <!--
 # a macro for the helptext of the given root.
@@ -318,6 +325,22 @@
 <!ATTLIST categorydisplayoptions
     displayByRepository (true|false) "false"
     displayCollapsed (true|false) "false"
+>
+
+<!--
+Options related to the 'Categories' column in the file explorer. 
+-->
+<!ELEMENT display-categories-in-explorer EMPTY>
+
+<!--
+enabled: Enables/disables the column
+leaves-only: If true, categories are omitted if any of their child categories are assigned to the same resource. 
+with-path: If true, categories' displayed labels are assembled into a path from the titles of their ancestor categories. Otherwise, just the title of the category itself is used. 
+-->
+<!ATTLIST display-categories-in-explorer
+	enabled (true|false) "false"
+	leaves-only (true|false) "true"
+	with-path (true|false) "false"
 >
 
 <!--
@@ -895,13 +918,18 @@
 <!ELEMENT upload-restriction (param*)>
 <!ATTLIST upload-restriction class CDATA #REQUIRED>
 
+<!ELEMENT virus-scanner (param*)>
+<!ATTLIST virus-scanner class CDATA #IMPLIED enabled CDATA #IMPLIED>
+
 <!-- 
 # Element containing the role necessary to edit sitemap configurations
 -->
 <!ELEMENT sitemap-config-edit-role (#PCDATA)>
 
-
-
+<!-- 
+# Boolean flag (true/false) which allows element authors to upload in galleries and gives some additional permissions in gallery context menus if set.
+-->
+<!ELEMENT allow-element-author-to-work-in-galleries (#PCDATA)>
 
 <!--
 # Include the explorer types DTD.

@@ -67,6 +67,7 @@ import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
+import org.opencms.file.CmsVfsResourceAlreadyExistsException;
 import org.opencms.file.CmsVfsResourceNotFoundException;
 import org.opencms.file.history.CmsHistoryResourceHandler;
 import org.opencms.file.types.CmsResourceTypeFolder;
@@ -127,6 +128,7 @@ import org.opencms.ui.apps.CmsQuickLaunchLocationCache;
 import org.opencms.util.CmsDateUtil;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsMacroResolver;
+import org.opencms.util.CmsPath;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplaceManager;
@@ -1016,7 +1018,8 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                 CmsCoreService.getContextMenuEntries(
                     cms,
                     configData.getResource().getStructureId(),
-                    AdeContext.sitemapeditor),
+                    AdeContext.sitemapeditor,
+                    new HashMap<>()),
                 parentProperties,
                 allPropNames,
                 exportRfsPrefix,
@@ -1049,6 +1052,9 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             CmsUUID rootId = cms.readResource("/", CmsResourceFilter.ALL).getStructureId();
             result.setSiteRootId(rootId);
             result.setLocaleComparisonEnabled(showLocaleComparison);
+            boolean allowCreateNestedGalleries = Boolean.parseBoolean(
+                "" + OpenCms.getRuntimeProperty("ade.sitemap.allowCreateNestedGalleries"));
+            result.setAllowCreateNestedGalleries(allowCreateNestedGalleries);
         } catch (Throwable e) {
             error(e);
         }
@@ -1154,7 +1160,9 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                     String newPath = CmsStringUtil.joinPaths(parent, newUrlName);
                     CmsObject rootCms = OpenCms.initCmsObject(cms);
                     rootCms.getRequestContext().setSiteRoot("");
-                    rootCms.moveResource(ownRes.getRootPath(), newPath);
+                    if (!CmsPath.equal(ownRes.getRootPath(), newPath)) {
+                        rootCms.moveResource(ownRes.getRootPath(), newPath);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -1330,34 +1338,6 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
         }
         setClipboardData(change.getClipBoardData());
         return change;
-    }
-
-    /**
-     * Removes unnecessary locales from a container page.<p>
-     *
-     * @param containerPage the container page which should be changed
-     * @param localeRes the resource used to determine the locale
-     *
-     * @throws CmsException if something goes wrong
-     */
-    void ensureSingleLocale(CmsXmlContainerPage containerPage, CmsResource localeRes) throws CmsException {
-
-        CmsObject cms = getCmsObject();
-        Locale mainLocale = CmsLocaleManager.getMainLocale(cms, localeRes);
-        OpenCms.getLocaleManager();
-        Locale defaultLocale = CmsLocaleManager.getDefaultLocale();
-        if (containerPage.hasLocale(mainLocale)) {
-            removeAllLocalesExcept(containerPage, mainLocale);
-            // remove other locales
-        } else if (containerPage.hasLocale(defaultLocale)) {
-            containerPage.copyLocale(defaultLocale, mainLocale);
-            removeAllLocalesExcept(containerPage, mainLocale);
-        } else if (containerPage.getLocales().size() > 0) {
-            containerPage.copyLocale(containerPage.getLocales().get(0), mainLocale);
-            removeAllLocalesExcept(containerPage, mainLocale);
-        } else {
-            containerPage.addLocale(cms, mainLocale);
-        }
     }
 
     /**
@@ -1957,7 +1937,6 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                         cms.readFile(copyPage),
                         true,
                         true);
-                    ensureSingleLocale(page, entryFolder);
                     CmsContainerPageWrapper wrapper = new CmsContainerPageWrapper(cms, page);
                     if (isFunctionDetail) {
                         String functionDetailContainer = getFunctionDetailContainerName(parentFolder);
@@ -3031,10 +3010,8 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                 entryFolder = entryPage;
             }
 
-            updateProperties(cms, ownRes, defaultFileRes, change.getPropertyChanges());
-            if (change.hasChangedPosition()) {
-                updateNavPos(ownRes, change);
-            }
+            String moveSrc = null;
+            String moveDest = null;
 
             if (entryFolder != null) {
                 if (change.hasNewParent() || change.hasChangedName()) {
@@ -3055,13 +3032,28 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                     // only if the site-path has really changed
                     if (!CmsFileUtil.removeTrailingSeparator(cms.getSitePath(entryFolder)).equals(
                         CmsFileUtil.removeTrailingSeparator(destinationPath))) {
-                        cms.moveResource(cms.getSitePath(entryFolder), destinationPath);
+                        moveSrc = cms.getSitePath(entryFolder);
+                        moveDest = CmsFileUtil.removeTrailingSeparator(destinationPath);
                     }
-                    entryFolder = cms.readResource(
-                        entryFolder.getStructureId(),
-                        CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
                 }
             }
+            if ((moveDest != null) && cms.existsResource(moveDest, CmsResourceFilter.IGNORE_EXPIRATION)) {
+                throw new CmsVfsResourceAlreadyExistsException(
+                    org.opencms.db.generic.Messages.get().container(
+                        org.opencms.db.generic.Messages.ERR_RESOURCE_WITH_NAME_ALREADY_EXISTS_1,
+                        moveDest));
+            }
+
+            updateProperties(cms, ownRes, defaultFileRes, change.getPropertyChanges());
+            if (change.hasChangedPosition()) {
+                updateNavPos(ownRes, change);
+            }
+
+            if (moveDest != null) {
+                cms.moveResource(moveSrc, moveDest);
+            }
+            entryFolder = cms.readResource(entryFolder.getStructureId(), CmsResourceFilter.ONLY_VISIBLE_NO_DELETED);
+
         } finally {
             if (entryPage != null) {
                 tryUnlock(entryPage);
@@ -3235,6 +3227,37 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             || ((properties.get(CmsPropertyDefinition.PROPERTY_NAVTEXT) != null)
                 && properties.get(CmsPropertyDefinition.PROPERTY_TITLE).getValue().equals(
                     properties.get(CmsPropertyDefinition.PROPERTY_NAVTEXT).getValue()));
+    }
+
+    /**
+     * Synchronizes the title from the NavText for a specific resource after properties have been edited, if NavText isn't empty and the title isn't already set to a different non-empty value.
+     *
+     * @param resource the resource
+     * @param oldNavText the NavText before editing the properties
+     * @param newNavText the NavText after editing the properties (may be the same as oldNavText)
+     * @throws CmsException if something goes wrong
+     */
+    private void synchTitleFromNavText(CmsResource resource, String oldNavText, String newNavText) throws CmsException {
+
+        CmsObject cms = getCmsObject();
+
+        if (CmsStringUtil.isEmpty(newNavText)) {
+            return;
+        }
+        CmsProperty titleProp = cms.readPropertyObject(resource, CmsPropertyDefinition.PROPERTY_TITLE, false);
+        String title = titleProp.getValue();
+        if (title == null) {
+            title = "";
+        }
+        // We don't check if oldNavText is different from newNavText, because we also want the synchronization to happen
+        // when we don't actually change the NavText, but e.g. when we change the title to an empty string.
+        if (CmsStringUtil.isEmpty(title) || title.equals(oldNavText)) {
+            if (!newNavText.equals(title)) {
+                cms.writePropertyObjects(
+                    resource,
+                    Arrays.asList(new CmsProperty(CmsPropertyDefinition.PROPERTY_TITLE, newNavText, null)));
+            }
+        }
     }
 
     /**
@@ -3425,46 +3448,39 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
     throws CmsException {
 
         Map<String, CmsProperty> ownProps = getPropertiesByName(cms.readPropertyObjects(ownRes, false));
-        // determine if the title property should be changed in case of a 'NavText' change
-        boolean changeOwnTitle = shouldChangeTitle(ownProps);
-
-        boolean changeDefaultFileTitle = false;
+        String oldNavText = null;
+        if (ownProps.containsKey(CmsPropertyDefinition.PROPERTY_NAVTEXT)) {
+            oldNavText = ownProps.get(CmsPropertyDefinition.PROPERTY_NAVTEXT).getValue();
+        }
+        if (oldNavText == null) {
+            oldNavText = "";
+        }
         Map<String, CmsProperty> defaultFileProps = Maps.newHashMap();
         if (defaultFileRes != null) {
             defaultFileProps = getPropertiesByName(cms.readPropertyObjects(defaultFileRes, false));
-            // determine if the title property of the default file should be changed
-            changeDefaultFileTitle = shouldChangeDefaultFileTitle(
-                defaultFileProps,
-                ownProps.get(CmsPropertyDefinition.PROPERTY_NAVTEXT));
         }
-        String hasNavTextChange = null;
+        String newNavText = oldNavText;
         List<CmsProperty> ownPropertyChanges = new ArrayList<CmsProperty>();
         List<CmsProperty> defaultFilePropertyChanges = new ArrayList<CmsProperty>();
         for (CmsPropertyModification propMod : propertyModifications) {
             CmsProperty propToModify = null;
+            Map<String, CmsProperty> propMap = null;
+            List<CmsProperty> changeList = null;
+
             if (ownRes.getStructureId().equals(propMod.getId())) {
-
                 if (CmsPropertyDefinition.PROPERTY_NAVTEXT.equals(propMod.getName())) {
-                    hasNavTextChange = propMod.getValue();
-                } else if (CmsPropertyDefinition.PROPERTY_TITLE.equals(propMod.getName())) {
-                    changeOwnTitle = false;
+                    newNavText = propMod.getValue();
                 }
-                propToModify = ownProps.get(propMod.getName());
-                if (propToModify == null) {
-                    propToModify = new CmsProperty(propMod.getName(), null, null);
-                }
-                ownPropertyChanges.add(propToModify);
+                propMap = ownProps;
+                changeList = ownPropertyChanges;
             } else {
-                if (CmsPropertyDefinition.PROPERTY_TITLE.equals(propMod.getName())) {
-                    changeDefaultFileTitle = false;
-                }
-                propToModify = defaultFileProps.get(propMod.getName());
-                if (propToModify == null) {
-                    propToModify = new CmsProperty(propMod.getName(), null, null);
-                }
-                defaultFilePropertyChanges.add(propToModify);
+                propMap = defaultFileProps;
+                changeList = defaultFilePropertyChanges;
             }
-
+            propToModify = propMap.get(propMod.getName());
+            if (propToModify == null) {
+                propToModify = new CmsProperty(propMod.getName(), null, null);
+            }
             String newValue = propMod.getValue();
             if (newValue == null) {
                 newValue = "";
@@ -3474,30 +3490,18 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
             } else {
                 propToModify.setResourceValue(newValue);
             }
+            changeList.add(propToModify);
         }
-        if (hasNavTextChange != null) {
-            if (changeOwnTitle) {
-                CmsProperty titleProp = ownProps.get(CmsPropertyDefinition.PROPERTY_TITLE);
-                if (titleProp == null) {
-                    titleProp = new CmsProperty(CmsPropertyDefinition.PROPERTY_TITLE, null, null);
-                }
-                titleProp.setStructureValue(hasNavTextChange);
-                ownPropertyChanges.add(titleProp);
-            }
-            if (changeDefaultFileTitle) {
-                CmsProperty titleProp = defaultFileProps.get(CmsPropertyDefinition.PROPERTY_TITLE);
-                if (titleProp == null) {
-                    titleProp = new CmsProperty(CmsPropertyDefinition.PROPERTY_TITLE, null, null);
-                }
-                titleProp.setStructureValue(hasNavTextChange);
-                defaultFilePropertyChanges.add(titleProp);
-            }
-        }
+
         if (!ownPropertyChanges.isEmpty()) {
             cms.writePropertyObjects(ownRes, ownPropertyChanges);
         }
         if (!defaultFilePropertyChanges.isEmpty() && (defaultFileRes != null)) {
             cms.writePropertyObjects(defaultFileRes, defaultFilePropertyChanges);
+        }
+        synchTitleFromNavText(ownRes, oldNavText, newNavText);
+        if (defaultFileRes != null) {
+            synchTitleFromNavText(defaultFileRes, oldNavText, newNavText);
         }
     }
 

@@ -32,6 +32,7 @@ import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
 import org.opencms.ade.galleries.shared.CmsGallerySearchScope;
 import org.opencms.ade.upload.CmsDefaultUploadRestriction;
 import org.opencms.ade.upload.I_CmsUploadRestriction;
+import org.opencms.ade.upload.I_CmsVirusScanner;
 import org.opencms.configuration.CmsAdditionalLogFolderConfig;
 import org.opencms.configuration.CmsDefaultUserSettings;
 import org.opencms.db.CmsExportPoint;
@@ -70,6 +71,7 @@ import org.opencms.security.CmsPermissionSet;
 import org.opencms.security.CmsPermissionViolationException;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
+import org.opencms.security.CmsSecurityException;
 import org.opencms.security.I_CmsPrincipal;
 import org.opencms.util.CmsRfsFileViewer;
 import org.opencms.util.CmsStringUtil;
@@ -213,6 +215,9 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The admin cms context. */
     private CmsObject m_adminCms;
 
+    /** If enabled, gives element authors more gallery-related permissions (mostly upload/replace). */
+    private boolean m_allowElementAuthorToWorkInGalleries;
+
     /** Indicates if auto-locking of resources is enabled or disabled. */
     private boolean m_autoLockResources;
 
@@ -267,6 +272,15 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The configured encoding of the workplace. */
     private String m_encoding;
 
+    /** Categories column enabled? */
+    private boolean m_explorerCategoriesEnabled;
+
+    /** Show only leaf categories in explorer? */
+    private boolean m_explorerCategoriesLeavesOnly;
+
+    /** Show categories with their path in the explorer? */
+    private boolean m_explorerCategoriesWithPath;
+
     /** The explorer type settings. */
     private List<CmsExplorerTypeSettings> m_explorerTypeSettings;
 
@@ -318,6 +332,9 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The additional log folder configuration. */
     private CmsAdditionalLogFolderConfig m_logFolderConfig = new CmsAdditionalLogFolderConfig();
 
+    /** Max number of locale buttons to display in the editor. */
+    private int m_maxLocaleButtons = 5;
+
     /** The workplace localized messages (mapped to the locales). */
     private Map<Locale, CmsWorkplaceMessages> m_messages;
 
@@ -332,6 +349,9 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
 
     /** Indicates if the user management icon should be displayed in the workplace. */
     private boolean m_showUserGroupIcon;
+
+    /** The role required for editing the sitemap configuration. */
+    private String m_sitemapConfigEditRole;
 
     /** Exclude patterns for synchronization. */
     private ArrayList<Pattern> m_synchronizeExcludePatterns;
@@ -357,14 +377,17 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     /** The configured workplace views. */
     private List<CmsWorkplaceView> m_views;
 
+    /** The configured virus scanner. */
+    private I_CmsVirusScanner m_virusScanner;
+
+    /** True if the virus scanner is enabled. */
+    private boolean m_virusScannerEnabled;
+
     /** Expiring cache used to limit the number of notifications sent because of invalid workplace server names. */
     private Cache<String, String> m_workplaceServerUserChecks;
 
     /** The XML content auto correction flag. */
     private boolean m_xmlContentAutoCorrect;
-
-    /** The role required for editing the sitemap configuration. */
-    private String m_sitemapConfigEditRole;
 
     /**
      * Creates a new instance for the workplace manager, will be called by the workplace configuration manager.<p>
@@ -676,6 +699,17 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     public boolean autoLockResources() {
 
         return m_autoLockResources;
+    }
+
+    /**
+     * Checks if the user in the given context has permissions for uploading.
+     *
+     * @param cms a CMS context
+     * @throws CmsSecurityException if the user doesn't have permission
+     */
+    public void checkAdeGalleryUpload(CmsObject cms) throws CmsSecurityException {
+
+        OpenCms.getRoleManager().checkRole(cms, getUploadRole());
     }
 
     /**
@@ -1007,6 +1041,14 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     public I_CmsEditorHandler getEditorHandler() {
 
         return m_editorHandler;
+    }
+
+    /**
+     * Gets the maximum number of locale buttons to display in the content editor.
+     */
+    public int getEditorMaxLocaleButtons() {
+
+        return m_maxLocaleButtons;
     }
 
     /**
@@ -1550,6 +1592,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Gets the configured virus scanner (may be null).
+     *
+     * @return the configured virus scanner
+     */
+    public I_CmsVirusScanner getVirusScanner() {
+
+        return m_virusScanner;
+    }
+
+    /**
      * Returns the instantiated workplace editor manager class.<p>
      *
      * @return the instantiated workplace editor manager class
@@ -1749,6 +1801,28 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Returns true if gallery upload is disabled for the user in the given context.
+     *
+     * @param cms a CMS context
+     * @return true if the upload is disabled
+     */
+    public boolean isAdeGalleryUploadDisabled(CmsObject cms) {
+
+        return !OpenCms.getRoleManager().hasRole(cms, getUploadRole());
+
+    }
+
+    /**
+     * Checks if element authors have special permission to work in galleries (upload/replace).
+     * @return true in the case above
+     */
+
+    public boolean isAllowElementAuthorToWorkInGalleries() {
+
+        return m_allowElementAuthorToWorkInGalleries;
+    }
+
+    /**
      * Returns the default property editing mode on resources.<p>
      *
      * @return the default property editing mode on resources
@@ -1789,6 +1863,36 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Checks if the 'Categories' column in the explorer should be enabled
+     *
+     * @return true if the categories column in the explorer should be enabled
+     */
+    public boolean isExplorerCategoriesEnabled() {
+
+        return m_explorerCategoriesEnabled;
+    }
+
+    /**
+     * Checks if only 'leaf' categories should be shown in the explorer 'Categories' column, i.e. only those which don't have child categories assigned to the same resource.
+     *
+     * @return true if only 'leaf' categories should be shown
+     */
+    public boolean isExplorerCategoriesLeavesOnly() {
+
+        return m_explorerCategoriesLeavesOnly;
+    }
+
+    /**
+     * Checks if categories should be shown with their path in the explorer 'Categories' column.
+     *
+     * @return true if categories should be shown with their path
+     */
+    public boolean isExplorerCategoriesWithPath() {
+
+        return m_explorerCategoriesWithPath;
+    }
+
+    /**
      * Returns true if "keep alive" mode is active.
      *
      * @return true if the session should be kept alive
@@ -1816,6 +1920,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
             return null;
         }
 
+    }
+
+    /**
+     * Checks if the virus scanner is enabled.
+     *
+     * @return true if the virus scanner is enabled
+     */
+    public boolean isVirusScannerEnabled() {
+
+        return m_virusScannerEnabled;
     }
 
     /**
@@ -1884,6 +1998,15 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     public void setAdditionalLogFolderConfiguration(CmsAdditionalLogFolderConfig logConfig) {
 
         m_logFolderConfig = logConfig;
+    }
+
+    /**
+     * Enables/disables special permissions for element authors to work with galleries (upload/replace).
+     * @param allowElementAuthorToWorkInGalleries true if the special permissions should be enabled for element authors
+      */
+    public void setAllowElementAuthorToWorkInGalleries(boolean allowElementAuthorToWorkInGalleries) {
+
+        m_allowElementAuthorToWorkInGalleries = allowElementAuthorToWorkInGalleries;
     }
 
     /**
@@ -2054,6 +2177,15 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Sets the maximum number of locale buttons to display in the content editor.
+     * @param maxLocaleButtons the number of buttons, as a string
+     */
+    public void setEditorMaxLocaleButtons(String maxLocaleButtons) {
+
+        m_maxLocaleButtons = Math.max(0, Integer.valueOf(maxLocaleButtons));
+    }
+
+    /**
      * Sets the element delete mode.<p>
      *
      * @param deleteMode the element delete mode
@@ -2085,6 +2217,21 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Sets the options related to the 'Categories' column in the file explorer.
+     *
+     * @param enabled 'true' if the column should be enabled
+     * @param leavesOnly 'true' if parent categories should be omitted
+     * @param withPath 'true' if category labels should include the whole path (i.e. the titles of parent categories)
+     */
+    public void setExplorerCategoryOptions(String enabled, String leavesOnly, String withPath) {
+
+        m_explorerCategoriesEnabled = Boolean.parseBoolean(enabled);
+        m_explorerCategoriesLeavesOnly = Boolean.parseBoolean(leavesOnly);
+        m_explorerCategoriesWithPath = Boolean.parseBoolean(withPath);
+
+    }
+
+    /**
      * Sets the value (in kb) for the maximum file upload size.<p>
      *
      * @param value the value (in kb) for the maximum file upload size
@@ -2105,7 +2252,7 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
                 CmsLog.INIT.info(
                     Messages.get().getBundle().key(
                         Messages.INIT_MAX_FILE_UPLOAD_SIZE_1,
-                        new Integer(m_fileMaxUploadSize)));
+                        Integer.valueOf(m_fileMaxUploadSize)));
             } else {
                 CmsLog.INIT.info(Messages.get().getBundle().key(Messages.INIT_MAX_FILE_UPLOAD_SIZE_UNLIMITED_0));
             }
@@ -2265,6 +2412,26 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
     }
 
     /**
+     * Sets the virus scanner.
+     *
+     * @param virusScanner the virus scanner to set
+     */
+    public void setVirusScanner(I_CmsVirusScanner virusScanner) {
+
+        m_virusScanner = virusScanner;
+    }
+
+    /**
+     * Sets the virus scanner to enabled/disabled.
+     *
+     * @param enabled true if the virus scanner should be enabled
+     */
+    public void setVirusScannerEnabled(boolean enabled) {
+
+        m_virusScannerEnabled = enabled;
+    }
+
+    /**
      * Sets the auto correction of XML contents when they are opened with the editor.<p>
      *
      * @param xmlContentAutoCorrect if "true", the content will be corrected without notification, otherwise a confirmation is needed
@@ -2391,6 +2558,16 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
                 return keepOu ? group : CmsOrganizationalUnit.getSimpleName(group);
             }
         };
+    }
+
+    /**
+     * Returns the role required for enabling the upload functionality.
+     *
+     * @return the upload role
+     */
+    private CmsRole getUploadRole() {
+
+        return isAllowElementAuthorToWorkInGalleries() ? CmsRole.ELEMENT_AUTHOR : CmsRole.EDITOR;
     }
 
     /**
@@ -2620,4 +2797,5 @@ public final class CmsWorkplaceManager implements I_CmsLocaleHandler, I_CmsEvent
         Collections.sort(m_views);
         return m_views;
     }
+
 }

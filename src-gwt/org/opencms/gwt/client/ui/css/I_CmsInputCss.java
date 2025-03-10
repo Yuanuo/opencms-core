@@ -44,6 +44,13 @@ public interface I_CmsInputCss extends I_CmsGlobalWidgetCss {
      *
      * @return the css class
      */
+    String categoryEmptyLabel();
+
+    /**
+     * Css class reader.<p>
+     *
+     * @return the css class
+     */
     String categoryItem();
 
     /**
@@ -170,6 +177,20 @@ public interface I_CmsInputCss extends I_CmsGlobalWidgetCss {
      * @return the css class
      */
     String formLabel();
+
+    /**
+     * Css class reader.<p>
+     *
+     * @return the css class
+     */
+    String formLabelBox();
+
+    /**
+     * Css class reader.<p>
+     *
+     * @return the css class
+     */
+    String formLabelTag();
 
     /**
      * Css class reader.<p>

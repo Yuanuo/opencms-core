@@ -52,14 +52,16 @@ import org.opencms.workplace.explorer.CmsExplorerTypeSettings;
 import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 import org.apache.commons.logging.Log;
 
 /**
  * The configuration for a single resource type.<p>
  */
-public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResourceTypeConfig> {
+public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResourceTypeConfig>, Cloneable {
 
     /**
      * Enum used to distinguish the type of menu in which a configured resource type can be displayed.
@@ -93,17 +95,26 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     /** The log instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsResourceTypeConfig.class);
 
+    /** The parameter for setting the default value for 'check reuse'. */
+    private static final Object PARAM_CHECK_REUSE_DEFAULT = "checkReuseDefault";
+
     /** The CMS object used for VFS operations. */
     protected CmsObject m_cms;
 
     /** Flag which controls whether adding elements of this type using ADE is disabled. */
     private boolean m_addDisabled;
 
-    /** Flag which controls whether creating elements of this type using ADE is disabled. */
-    private boolean m_createDisabled;
+    /** True if availability has not been set in the configuration file.*/
+    private boolean m_availabilityNotSet;
+
+    /** 'Check reuse' value (may be null). */
+    private Boolean m_checkReuse;
 
     /** Elements of this type when used in models should be copied instead of reused. */
     private Boolean m_copyInModels;
+
+    /** Flag which controls whether creating elements of this type using ADE is disabled. */
+    private boolean m_createDisabled;
 
     /** The flag for disabling detail pages. */
     private boolean m_detailPagesDisabled;
@@ -111,11 +122,17 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     /** True if this is a disabled configuration. */
     private boolean m_disabled;
 
+    /** True if editing is disabled for container elements of this type. */
+    private boolean m_editDisabled;
+
     /** The element delete mode. */
     private ElementDeleteMode m_elementDeleteMode;
 
     /** The element view id. */
     private CmsUUID m_elementView;
+
+    /** True if this creating/editing for this type should be enabled in lists (e.g. search or contentload tags). */
+    private boolean m_enableInLists;
 
     /** A reference to a folder of folder name. */
     private CmsContentFolderDescriptor m_folderOrName;
@@ -132,17 +149,11 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     /** Flag which controls whether this type should be shown in the 'add' menu in the default view. */
     private Boolean m_showInDefaultView;
 
+    /** The set of template context keys associated with this type via the template=... parameter in master configuration links. */
+    private Set<String> m_templates = new HashSet<>();
+
     /** The name of the resource type. */
     private String m_typeName;
-
-    /** True if availability has not been set in the configuration file.*/
-    private boolean m_availabilityNotSet;
-
-    /** True if editing is disabled for container elements of this type. */
-    private boolean m_editDisabled;
-
-    /** True if this creating/editing for this type should be enabled in lists (e.g. search or contentload tags). */
-    private boolean m_enableInLists;
 
     /**
      * Creates a new resource type configuration.<p>
@@ -170,6 +181,7 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
             null,
             null,
             Integer.valueOf(I_CmsConfigurationObject.DEFAULT_ORDER),
+            null,
             null);
     }
 
@@ -192,7 +204,7 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
      * @param copyInModels if elements of this type when used in models should be copied instead of reused
      * @param order the display order
      * @param elementDeleteMode the element delete mode
-     *
+     * @param checkReuse indicates whether element reuse should be checked for this type
      */
     public CmsResourceTypeConfig(
         String typeName,
@@ -210,7 +222,8 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
         Boolean showInDefaultView,
         Boolean copyInModels,
         Integer order,
-        ElementDeleteMode elementDeleteMode) {
+        ElementDeleteMode elementDeleteMode,
+        Boolean checkReuse) {
 
         m_typeName = typeName;
         m_disabled = disabled;
@@ -228,6 +241,7 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
         m_copyInModels = copyInModels;
         m_order = order;
         m_elementDeleteMode = elementDeleteMode;
+        m_checkReuse = checkReuse;
     }
 
     /**
@@ -468,6 +482,18 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     }
 
     /**
+     * Gets the 'check reuse' value, without applying the default value.
+     *
+     * <p>The return value may be null if this is not set.
+     *
+     * @return the value of the 'check reuse' option
+     */
+    public Boolean getCheckReuseObj() {
+
+        return m_checkReuse;
+    }
+
+    /**
      * Returns the bundle that is configured as workplace bundle for the resource type, or <code>null</code> if none is configured.
      * @return the bundle that is configured as workplace bundle for the resource type, or <code>null</code> if none is configured.
      */
@@ -615,6 +641,36 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     }
 
     /**
+     * Checks if the type can be used for the given template context key.
+     *
+     * <p>If this type isn't specifically associated with one or more template keys, this returns true,
+     * otherwise it will check if the 'template' argument is among the template keys
+     *
+     * @param template the template key to check
+     * @return true if the type should be available for the template
+     */
+    public boolean isAvailableInTemplate(String template) {
+
+        return (template == null) || (m_templates.size() == 0) || m_templates.contains(template);
+    }
+
+    /**
+     * Returns true if reuse should be checked for elements of this type.
+     *
+     * <p>This tries to use the value configured for this type first, and if it doesn't have one, returns the global default.
+     *
+     * @return true if reuse should be checked for this type
+     */
+    public boolean isCheckReuse() {
+
+        if (m_checkReuse != null) {
+            return m_checkReuse.booleanValue();
+        }
+        String defaultStr = OpenCms.getADEManager().getParameters(null).get(PARAM_CHECK_REUSE_DEFAULT);
+        return Boolean.parseBoolean(defaultStr);
+    }
+
+    /**
      * Returns if elements of this type when used in models should be copied instead of reused.<p>
      *
      * @return if elements of this type when used in models should be copied instead of reused
@@ -696,6 +752,30 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
     }
 
     /**
+     * If 'template' is not null, returns a copy of this type bean, but adds 'template' to the
+     * set of supported templates in the copy.
+     *
+     * @param template a template context key
+     * @return a new copy associated with the given template key
+     */
+    public CmsResourceTypeConfig markWithTemplate(String template) {
+
+        try {
+            if (template == null) {
+                return this;
+            }
+            CmsResourceTypeConfig result = (CmsResourceTypeConfig)super.clone();
+            HashSet<String> templates = new HashSet<>();
+            templates.add(template);
+            result.m_templates = templates;
+            return result;
+
+        } catch (CloneNotSupportedException e) {
+            return null;
+        }
+    }
+
+    /**
      * @see org.opencms.ade.configuration.I_CmsConfigurationObject#merge(org.opencms.ade.configuration.I_CmsConfigurationObject)
      */
     public CmsResourceTypeConfig merge(CmsResourceTypeConfig childConfig) {
@@ -722,6 +802,7 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
 
         boolean mergedEnableInLists = childConfig.m_availabilityNotSet ? m_enableInLists : childConfig.m_enableInLists;
         boolean mergedDisableEdit = childConfig.m_availabilityNotSet ? m_editDisabled : childConfig.m_editDisabled;
+        Boolean checkReuse = childConfig.m_checkReuse != null ? childConfig.m_checkReuse : m_checkReuse;
 
         CmsResourceTypeConfig result = new CmsResourceTypeConfig(
             m_typeName,
@@ -740,8 +821,20 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
             showInDefaultView,
             copyInModels,
             order,
-            deleteMode);
+            deleteMode,
+            checkReuse);
+        result.m_templates = new HashSet<>(this.m_templates);
+        result.m_templates.addAll(childConfig.m_templates);
         return result;
+    }
+
+    /**
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString() {
+
+        return getClass().getSimpleName() + "[" + m_typeName + "]";
     }
 
     /**
@@ -763,7 +856,7 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
      */
     protected CmsResourceTypeConfig copy(boolean disabled) {
 
-        return new CmsResourceTypeConfig(
+        CmsResourceTypeConfig result = new CmsResourceTypeConfig(
             m_typeName,
             m_disabled || disabled,
             getFolderOrName(),
@@ -779,7 +872,10 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
             m_showInDefaultView,
             m_copyInModels,
             m_order,
-            m_elementDeleteMode);
+            m_elementDeleteMode,
+            m_checkReuse);
+        result.m_templates = m_templates;
+        return result;
     }
 
     /**

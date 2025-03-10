@@ -89,15 +89,6 @@ public final class CmsTinyMCEHelper {
 				options.imageGalleryConfig = config.imageGalleryConfig;
 			}
 
-			if (config.language) {
-                var languageMap = { "it": "it_IT", "cs": "cs_CZ", "ru": "ru_RU", "zh": "zh_CN"};
-                var translatedLanguage = languageMap[config.language];
-                if (translatedLanguage) {
-                    options.language = translatedLanguage;
-                } else {
-				    options.language = config.language;
-				}
-			}
 			if (config.content_css) {
 				options.content_css = config.content_css;
 			}
@@ -134,7 +125,7 @@ public final class CmsTinyMCEHelper {
 			if (config.cmsGalleryUseThickbox) {
 				options.cmsGalleryUseThickbox = config.cmsGalleryUseThickbox;
 			}
-			options.plugins = "anchor charmap importcss autolink lists pagebreak table save hr codemirror image link emoticons insertdatetime preview media searchreplace print paste directionality fullscreen noneditable visualchars nonbreaking template wordcount advlist spellchecker -opencms";
+			options.plugins = "anchor charmap importcss autolink lists pagebreak table save hr codemirror image link emoticons insertdatetime preview media searchreplace print paste directionality fullscreen noneditable visualchars nonbreaking template wordcount advlist spellchecker typograf -opencms";
 			options.preview_styles="font-family font-size font-weight font-style text-decoration text-transform border border-radius outline text-shadow";
 			if (config.fullpage) {
 				options.plugins += " fullpage";
@@ -188,6 +179,11 @@ public final class CmsTinyMCEHelper {
 				if (contextmenu != "") {
 					options.contextmenu = contextmenu;
 				}
+				options.typograf = {
+				    disableRule: ["*"],
+				    enableRule2: ["common/punctuation/quote"],
+				    locale: [config.typograf_locale, "en-US"]
+				};
 				if (config.pasteOptions) {
 					options.paste_as_text = config.pasteOptions.paste_text_sticky_default ? true
 							: false;

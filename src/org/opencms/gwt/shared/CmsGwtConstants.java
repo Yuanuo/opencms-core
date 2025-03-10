@@ -99,6 +99,9 @@ public final class CmsGwtConstants {
     /** Context menu action id. */
     public static final String ACTION_TEMPLATECONTEXTS = "templatecontexts";
 
+    /** Data URL for 'broken image' image. */
+    public static final String BROKEN_IMAGE = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE3MCIgdmlld0JveD0iMCAwIDIwMCAxNzAiPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJhIiB4MT0iMCIgeDI9IjAiIHkxPSIwIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2RkZCIvPjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2Y4ZjhmOCIvPjwvbGluZWFyR3JhZGllbnQ+CjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9IjAiIHgyPSIwIiB5MT0iMCIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiM5OTkiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNkZGQiLz48L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+CjxyZWN0IGZpbGw9InVybCgjYSkiIHdpZHRoPSIyMDAiIGhlaWdodD0iMTcwIiByeT0iMCIvPgo8cGF0aCBmaWxsPSJ1cmwoI2IpIiBkPSJNNDIuMyAzNS41YTEuNiAxLjYgMCAwIDAtMS42IDEuN3YzaC04LjJjLTEuNSAwLTIuNiAxLTIuNiAyLjNWMTI0YzAgMS41IDEuMSAyLjQgMi42IDIuNEg5NmwuNC0xMS40YTMyLjEgMzIuMSAwIDAgMS0zMS4zLTMyIDMyLjEgMzIuMSAwIDAgMSAzMC41LTMybC00LjgtMTEuMi0zMS4zLjN2LTIuOWMwLTEtLjgtMS42LTEuNi0xLjZINDJabTY0IDUgMS4zIDEyYTMyLjEgMzIuMSAwIDAgMSAyMiAzMC41IDMyLjEgMzIuMSAwIDAgMS0yOSAzMS42TDk3IDEyNi4ybDYwLjQgOC4zYzEuMy4yIDIuNi0uOCAyLjctMmwxMC04MC44Yy4xLTEuNS0uOC0yLjYtMi4xLTIuN2wtNjEuNy04Ljd6bS02NS44IDQuOGgxOC42YzEuMyAwIDIuMyAxIDIuMyAyLjJ2N2MwIDEuMi0xIDIuMi0yLjMgMi4ySDQwLjVjLTEuMyAwLTIuMi0xLTIuMi0yLjN2LTYuOWMwLTEuMSAxLTIuMiAyLjItMi4yek05Ny43IDYxYTIyLjIgMjIuMiAwIDAgMC0xLjYgMGw3LjcgMTYuNy0xMi42IDE1LjYgNi44IDEyYTIyLjIgMjIuMiAwIDAgMCAyMi0yMi4yQTIyLjIgMjIuMiAwIDAgMCA5Ny43IDYxWm0tMTQgNS4xYTIyLjIgMjIuMiAwIDAgMC04IDE3IDIyLjIgMjIuMiAwIDAgMCAxNi44IDIxLjZsLTYuOS0xMC4yTDk1IDc3LjcgODMuNyA2NloiLz4KPC9zdmc+";
+
     /** Context menu action id. */
     public static final String ACTION_TEMPLATECONTEXTS_ADVANCED = "templatecontexts_advanced";
 
@@ -107,6 +110,9 @@ public final class CmsGwtConstants {
 
     /** Attribute for container id. */
     public static final String ATTR_CONTAINER_ID = "ATTR_CONTAINER_ID";
+
+    /** JS property for accessing content editor locale from nested iframes. */
+    public static final String ATTR_CONTENT_EDITOR_LOCALE = "cmsContentEditorLocale";
 
     /** Collector data attribute name. */
     public static final String ATTR_DATA_COLLECTOR = "data-oc-collector";
@@ -126,7 +132,11 @@ public final class CmsGwtConstants {
     /** Entity id data attribute name. */
     public static final String ATTR_DATA_ID = "data-oc-id";
 
+    /** Name for the attribute used to store list-add metadata. */
     public static final String ATTR_DATA_LISTADD = "data-oc-listadd";
+
+    /** Marker attribute for dead links. */
+    public static final String ATTR_DEAD_LINK_MARKER = "data-oc-broken-link";
 
     /** Key for the element id attribute. */
     public static final String ATTR_ELEMENT_ID = "ATTR_ELEMENT_ID";
@@ -198,11 +208,26 @@ public final class CmsGwtConstants {
     /** Sub-path for the session update handler. */
     public static final String HANDLER_UPDATE_SESSION = "/updateSession";
 
+    /** The settings widget name for hidden entries. */
+    public static final String HIDDEN_SETTINGS_WIDGET_NAME = "hidden";
+
     /** Element id for locale comparison view. */
     public static final String ID_LOCALE_COMPARISON = "cmsLocaleComparison";
 
     /** Id of the element ussed to  display the sitemap header from Vaadin code. */
     public static final String ID_LOCALE_HEADER_CONTAINER = "locale-header-container";
+
+    /** Json field name for typograf locale passed to input widget. */
+    public static final String JSON_INPUT_LOCALE = "locale";
+
+    /** Json field name for enabling typograf, passed to input widget. */
+    public static final String JSON_INPUT_TYPOGRAF = "typograf";
+
+    /** Field name for the internal textarea configuration. */
+    public static final String JSON_TEXTAREA_CONFIG = "config";
+
+    /** Field name for the internal textarea configuration. */
+    public static final String JSON_TEXTAREA_LOCALE = "locale";
 
     /**
      * Session storage key for memorizing the last opened container page.
@@ -217,6 +242,9 @@ public final class CmsGwtConstants {
 
     /** Name of the meta tag used to set the editor stylesheet. */
     public static final String META_EDITOR_STYLESHEET = "cms-editor-stylesheet";
+
+    /** Parameter to pass detail id to page editor context menu actions. */
+    public static final String PARAM_ADE_DETAIL_ID = "adeDetailId";
 
     /** Parameter for the button left position. */
     public static final String PARAM_BUTTON_LEFT = "__buttonLeft";
@@ -244,6 +272,12 @@ public final class CmsGwtConstants {
 
     /** Tab id for the preference dialog. */
     public static final String TAB_HIDDEN = "hidden";
+
+    /** Tag name for the edit button bars injected into the page HTML in the container page editor. */
+    public static final String TAG_OC_EDITPOINT = "oc-editpoint";
+
+    /** Tag name for the list-add metadata injected into the page. */
+    public static final String TAG_OC_LISTADD = "oc-listadd";
 
     /** Action placeholder for the template contexts menu option. */
     public static final String TEMPLATECONTEXT_MENU_PLACEHOLDER = "templatecontexts";

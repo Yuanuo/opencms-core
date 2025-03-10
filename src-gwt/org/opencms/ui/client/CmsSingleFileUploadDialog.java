@@ -36,6 +36,7 @@ import org.opencms.gwt.client.ui.CmsErrorDialog;
 import org.opencms.gwt.client.ui.CmsListItemWidget;
 import org.opencms.gwt.client.ui.CmsPopup;
 import org.opencms.gwt.client.ui.CmsPushButton;
+import org.opencms.gwt.client.ui.CmsVirusReport;
 import org.opencms.gwt.client.ui.I_CmsButton;
 import org.opencms.gwt.client.ui.css.I_CmsLayoutBundle;
 import org.opencms.gwt.client.ui.input.upload.CmsFileInfo;
@@ -55,6 +56,7 @@ import org.opencms.util.CmsStringUtil;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.event.dom.client.ClickEvent;
@@ -220,32 +222,24 @@ public class CmsSingleFileUploadDialog extends CmsPopup implements I_CmsUploadDi
             // the content length is unknown. For that reason take the request size to show how
             // much bytes were uploaded.
             double size = jsonObject.get(I_CmsUploadConstants.KEY_REQUEST_SIZE).isNumber().doubleValue();
-            long requestSize = new Double(size).longValue();
+            long requestSize = Double.valueOf(size).longValue();
             if (m_contentLength == 0) {
                 m_contentLength = requestSize;
             }
             if (success) {
                 m_mainPanel.displayDialogInfo(Messages.get().key(Messages.GUI_UPLOAD_INFO_FINISHING_0), false);
                 m_progressInfo.finish();
-                JSONValue uploadedFilesVal = jsonObject.get(I_CmsUploadConstants.KEY_UPLOADED_FILE_NAMES);
-                if (uploadedFilesVal != null) {
-                    JSONArray uploadedFilesArray = uploadedFilesVal.isArray();
-                    if (uploadedFilesArray != null) {
-                        List<String> uploadedFiles = new ArrayList<String>();
-                        if (uploadedFilesArray != null) {
-                            for (int i = 0; i < uploadedFilesArray.size(); i++) {
-                                JSONString entry = uploadedFilesArray.get(i).isString();
-                                if (entry != null) {
-                                    uploadedFiles.add(entry.stringValue());
-                                }
-                            }
-                        }
-                        if (m_context != null) {
-                            m_context.onUploadFinished(uploadedFiles);
-                        }
-                    }
+                Map<String, List<String>> viruses = CmsVirusReport.getVirusWarnings(jsonObject);
+                if (viruses.isEmpty()) {
+                    finishUpload(jsonObject);
+                    closeOnSuccess();
+                } else {
+                    hide();
+                    CmsPopup popup = CmsVirusReport.createPopup(viruses, () -> {
+                        finishUpload(jsonObject);
+                    });
+                    popup.center();
                 }
-                closeOnSuccess();
             } else {
                 String message = jsonObject.get(I_CmsUploadConstants.KEY_MESSAGE).isString().stringValue();
                 String stacktrace = jsonObject.get(I_CmsUploadConstants.KEY_STACKTRACE).isString().stringValue();
@@ -567,6 +561,33 @@ public class CmsSingleFileUploadDialog extends CmsPopup implements I_CmsUploadDi
         m_fileWidget = new CmsListItemWidget(infoBean);
         m_fileWidget.setIcon(CmsCoreProvider.get().getResourceTypeIcon(file));
         return m_fileWidget;
+    }
+
+    /**
+     * Helper method for finishing the upload. 
+     * 
+     * @param jsonObject the JSON received from the server
+     */
+    private void finishUpload(JSONObject jsonObject) {
+
+        JSONValue uploadedFilesVal = jsonObject.get(I_CmsUploadConstants.KEY_UPLOADED_FILE_NAMES);
+        if (uploadedFilesVal != null) {
+            JSONArray uploadedFilesArray = uploadedFilesVal.isArray();
+            if (uploadedFilesArray != null) {
+                List<String> uploadedFiles = new ArrayList<String>();
+                if (uploadedFilesArray != null) {
+                    for (int i = 0; i < uploadedFilesArray.size(); i++) {
+                        JSONString entry = uploadedFilesArray.get(i).isString();
+                        if (entry != null) {
+                            uploadedFiles.add(entry.stringValue());
+                        }
+                    }
+                }
+                if (m_context != null) {
+                    m_context.onUploadFinished(uploadedFiles);
+                }
+            }
+        }
     }
 
     /**

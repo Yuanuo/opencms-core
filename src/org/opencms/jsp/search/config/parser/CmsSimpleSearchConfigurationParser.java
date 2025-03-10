@@ -242,6 +242,48 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
         }
     }
 
+    /** The default field facets.
+     *
+     * @param categoryConjunction flag, indicating if category selections in the facet should be "AND" combined.
+     * @return the default field facets.
+     */
+    public static Map<String, I_CmsSearchConfigurationFacetField> getDefaultFieldFacets(boolean categoryConjunction) {
+
+        Map<String, I_CmsSearchConfigurationFacetField> fieldFacets = new HashMap<String, I_CmsSearchConfigurationFacetField>();
+        fieldFacets.put(
+            FIELD_CATEGORIES,
+            new CmsSearchConfigurationFacetField(
+                FIELD_CATEGORIES,
+                null,
+                Integer.valueOf(1),
+                Integer.valueOf(200),
+                null,
+                "Category",
+                SortOrder.index,
+                null,
+                Boolean.valueOf(categoryConjunction),
+                null,
+                Boolean.TRUE,
+                null));
+        fieldFacets.put(
+            FIELD_PARENT_FOLDERS,
+            new CmsSearchConfigurationFacetField(
+                FIELD_PARENT_FOLDERS,
+                null,
+                Integer.valueOf(1),
+                Integer.valueOf(200),
+                null,
+                "Folders",
+                SortOrder.index,
+                null,
+                Boolean.FALSE,
+                null,
+                Boolean.TRUE,
+                null));
+        return Collections.unmodifiableMap(fieldFacets);
+
+    }
+
     /**
      * Returns the initial SOLR query.<p>
      *
@@ -464,6 +506,14 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
                 + " "
                 + CmsPropertyDefinition.PROPERTY_DESCRIPTION_HTML
                 + CmsSearchField.FIELD_DYNAMIC_PROPERTIES_DIRECT
+                + " "
+                + CmsSearchField.FIELD_DESCRIPTION
+                + "_"
+                + getSearchLocale().toString()
+                + " "
+                + CmsSearchField.FIELD_KEYWORDS
+                + "_"
+                + getSearchLocale().toString()
                 + "\"}%(query)";
         }
         return modifier;
@@ -844,48 +894,6 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
             }
 
         }
-    }
-
-    /** The default field facets.
-     *
-     * @param categoryConjunction flag, indicating if category selections in the facet should be "AND" combined.
-     * @return the default field facets.
-     */
-    private Map<String, I_CmsSearchConfigurationFacetField> getDefaultFieldFacets(boolean categoryConjunction) {
-
-        Map<String, I_CmsSearchConfigurationFacetField> fieldFacets = new HashMap<String, I_CmsSearchConfigurationFacetField>();
-        fieldFacets.put(
-            FIELD_CATEGORIES,
-            new CmsSearchConfigurationFacetField(
-                FIELD_CATEGORIES,
-                null,
-                Integer.valueOf(1),
-                Integer.valueOf(200),
-                null,
-                "Category",
-                SortOrder.index,
-                null,
-                Boolean.valueOf(categoryConjunction),
-                null,
-                Boolean.TRUE,
-                null));
-        fieldFacets.put(
-            FIELD_PARENT_FOLDERS,
-            new CmsSearchConfigurationFacetField(
-                FIELD_PARENT_FOLDERS,
-                null,
-                Integer.valueOf(1),
-                Integer.valueOf(200),
-                null,
-                "Folders",
-                SortOrder.index,
-                null,
-                Boolean.FALSE,
-                null,
-                Boolean.TRUE,
-                null));
-        return Collections.unmodifiableMap(fieldFacets);
-
     }
 
     /**

@@ -28,6 +28,7 @@
 package org.opencms.ui.components;
 
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_CACHE;
+import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_CATEGORIES;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_COPYRIGHT;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_DATE_CREATED;
 import static org.opencms.ui.components.CmsResourceTableProperty.PROPERTY_DATE_EXPIRED;
@@ -103,6 +104,7 @@ import com.vaadin.event.FieldEvents.BlurListener;
 import com.vaadin.event.ShortcutAction.KeyCode;
 import com.vaadin.event.ShortcutListener;
 import com.vaadin.shared.MouseEventDetails.MouseButton;
+import com.vaadin.shared.Registration;
 import com.vaadin.ui.Component;
 import com.vaadin.ui.themes.ValoTheme;
 import com.vaadin.v7.data.Container;
@@ -168,26 +170,33 @@ public class CmsFileTable extends CmsResourceTable {
                 result.addValidator(m_editHandler);
                 if (result instanceof TextField) {
                     ((TextField)result).setComponentError(null);
-                    ((TextField)result).addShortcutListener(new ShortcutListener("Cancel edit", KeyCode.ESCAPE, null) {
+                    clearColumnEditActions();
+                    // we attach the shortcuts to the table, not the textbox, so that they still trigger if the change from the edited field would cause the current row
+                    // to be filtered by the current container filter.
+                    m_columnEditEscRegistration = CmsFileTable.this.addShortcutListener(
+                        new ShortcutListener("Cancel edit", KeyCode.ESCAPE, null) {
 
-                        private static final long serialVersionUID = 1L;
+                            private static final long serialVersionUID = 1L;
 
-                        @Override
-                        public void handleAction(Object sender, Object target) {
+                            @Override
+                            public void handleAction(Object sender, Object target) {
 
-                            cancelEdit();
-                        }
-                    });
-                    ((TextField)result).addShortcutListener(new ShortcutListener("Save", KeyCode.ENTER, null) {
+                                cancelEdit();
+                            }
+                        });
 
-                        private static final long serialVersionUID = 1L;
+                    m_columnEditEnterRegistration = CmsFileTable.this.addShortcutListener(
+                        new ShortcutListener("Save", KeyCode.ENTER, null) {
 
-                        @Override
-                        public void handleAction(Object sender, Object target) {
+                            private static final long serialVersionUID = 1L;
 
-                            stopEdit();
-                        }
-                    });
+                            @Override
+                            public void handleAction(Object sender, Object target) {
+
+                                stopEdit();
+                            }
+                        });
+
                     ((TextField)result).addBlurListener(m_fileEditHandler);
                     ((TextField)result).setTextChangeEventMode(TextChangeEventMode.LAZY);
                     ((TextField)result).addTextChangeListener(m_editHandler);
@@ -304,36 +313,6 @@ public class CmsFileTable extends CmsResourceTable {
     /** The serial version id. */
     private static final long serialVersionUID = 5460048685141699277L;
 
-    static {
-        Map<CmsResourceTableProperty, Integer> defaultProps = new LinkedHashMap<CmsResourceTableProperty, Integer>();
-        defaultProps.put(PROPERTY_TYPE_ICON, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_PROJECT, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_RESOURCE_NAME, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_TITLE, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_NAVIGATION_TEXT, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_NAVIGATION_POSITION, Integer.valueOf(INVISIBLE));
-        defaultProps.put(PROPERTY_IN_NAVIGATION, Integer.valueOf(INVISIBLE));
-        defaultProps.put(PROPERTY_COPYRIGHT, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_CACHE, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_RESOURCE_TYPE, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_INTERNAL_RESOURCE_TYPE, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_SIZE, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_PERMISSIONS, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_DATE_MODIFIED, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_USER_MODIFIED, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_DATE_CREATED, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_USER_CREATED, Integer.valueOf(COLLAPSED));
-        defaultProps.put(PROPERTY_DATE_RELEASED, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_DATE_EXPIRED, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_STATE_NAME, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_USER_LOCKED, Integer.valueOf(0));
-        defaultProps.put(PROPERTY_IS_FOLDER, Integer.valueOf(INVISIBLE));
-        defaultProps.put(PROPERTY_STATE, Integer.valueOf(INVISIBLE));
-        defaultProps.put(PROPERTY_INSIDE_PROJECT, Integer.valueOf(INVISIBLE));
-        defaultProps.put(PROPERTY_RELEASED_NOT_EXPIRED, Integer.valueOf(INVISIBLE));
-        DEFAULT_TABLE_PROPERTIES = Collections.unmodifiableMap(defaultProps);
-    }
-
     /** The selected resources. */
     protected List<CmsResource> m_currentResources = new ArrayList<CmsResource>();
 
@@ -358,6 +337,12 @@ public class CmsFileTable extends CmsResourceTable {
     /** The table drag mode, stored during item editing. */
     private TableDragMode m_beforEditDragMode;
 
+    /** Action registration for pressing Enter during column editing. */
+    private Registration m_columnEditEnterRegistration;
+
+    /** Action registration for pressing Esc during column editing. */
+    private Registration m_columnEditEscRegistration;
+
     /** The dialog context provider. */
     private I_CmsContextProvider m_contextProvider;
 
@@ -367,8 +352,8 @@ public class CmsFileTable extends CmsResourceTable {
     /** The edited property id. */
     private CmsResourceTableProperty m_editProperty;
 
-    /** Saved container filters. */
-    private Collection<Filter> m_filters = Collections.emptyList();
+    /** Stack of saved container filters. */
+    private List<Collection<Filter>> m_filterStack = new ArrayList<>();
 
     /** The folder select handler. */
     private I_FolderSelectHandler m_folderSelectHandler;
@@ -482,6 +467,43 @@ public class CmsFileTable extends CmsResourceTable {
         m_menu.setAsTableContextMenu(m_fileTable);
     }
 
+    static {
+        Map<CmsResourceTableProperty, Integer> defaultProps = new LinkedHashMap<CmsResourceTableProperty, Integer>();
+        defaultProps.put(PROPERTY_TYPE_ICON, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_PROJECT, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_RESOURCE_NAME, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_TITLE, Integer.valueOf(0));
+        try {
+            if (OpenCms.getWorkplaceManager().isExplorerCategoriesEnabled()) {
+                defaultProps.put(PROPERTY_CATEGORIES, Integer.valueOf(COLLAPSED));
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        defaultProps.put(PROPERTY_NAVIGATION_TEXT, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_NAVIGATION_POSITION, Integer.valueOf(INVISIBLE));
+        defaultProps.put(PROPERTY_IN_NAVIGATION, Integer.valueOf(INVISIBLE));
+        defaultProps.put(PROPERTY_COPYRIGHT, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_CACHE, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_RESOURCE_TYPE, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_INTERNAL_RESOURCE_TYPE, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_SIZE, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_PERMISSIONS, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_DATE_MODIFIED, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_USER_MODIFIED, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_DATE_CREATED, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_USER_CREATED, Integer.valueOf(COLLAPSED));
+        defaultProps.put(PROPERTY_DATE_RELEASED, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_DATE_EXPIRED, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_STATE_NAME, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_USER_LOCKED, Integer.valueOf(0));
+        defaultProps.put(PROPERTY_IS_FOLDER, Integer.valueOf(INVISIBLE));
+        defaultProps.put(PROPERTY_STATE, Integer.valueOf(INVISIBLE));
+        defaultProps.put(PROPERTY_INSIDE_PROJECT, Integer.valueOf(INVISIBLE));
+        defaultProps.put(PROPERTY_RELEASED_NOT_EXPIRED, Integer.valueOf(INVISIBLE));
+        DEFAULT_TABLE_PROPERTIES = Collections.unmodifiableMap(defaultProps);
+    }
+
     /**
      * Returns the resource state specific style name.<p>
      *
@@ -575,6 +597,17 @@ public class CmsFileTable extends CmsResourceTable {
     }
 
     /**
+     * Checks if the file table has a row for the resource with the given structure id.
+     *
+     * @param structureId a structure id
+     * @return true if the file table has a row for the resource with the given id
+     */
+    public boolean containsId(CmsUUID structureId) {
+
+        return m_fileTable.getContainerDataSource().getItem("" + structureId) != null;
+    }
+
+    /**
     * Filters the displayed resources.<p>
     * Only resources where either the resource name, the title or the nav-text contains the given substring are shown.<p>
     *
@@ -588,7 +621,8 @@ public class CmsFileTable extends CmsResourceTable {
                 new Or(
                     new SimpleStringFilter(CmsResourceTableProperty.PROPERTY_RESOURCE_NAME, search, true, false),
                     new SimpleStringFilter(CmsResourceTableProperty.PROPERTY_NAVIGATION_TEXT, search, true, false),
-                    new SimpleStringFilter(CmsResourceTableProperty.PROPERTY_TITLE, search, true, false)));
+                    new SimpleStringFilter(CmsResourceTableProperty.PROPERTY_TITLE, search, true, false),
+                    new SimpleStringFilter(CmsResourceTableProperty.PROPERTY_CATEGORIES, search, true, false)));
         }
         if ((m_fileTable.getValue() != null) & !((Set<?>)m_fileTable.getValue()).isEmpty()) {
             m_fileTable.setCurrentPageFirstItemId(((Set<?>)m_fileTable.getValue()).iterator().next());
@@ -619,7 +653,7 @@ public class CmsFileTable extends CmsResourceTable {
                     CmsResourceTableProperty tableProp = (CmsResourceTableProperty)propId;
                     if (!m_fileTable.isColumnCollapsed(propId)) {
                         Class<?> colType = tableProp.getColumnType();
-                        // skip "widget"-valued columns - currently this is just the project flag
+                        // skip columns with Vaadin types - currently this is just the project flag
                         if (!colType.getName().contains("vaadin")) {
                             // always use English column headers, as external tools using the CSV may use the column labels as IDs
                             String colHeader = OpenCms.getWorkplaceManager().getMessages(Locale.ENGLISH).key(
@@ -670,6 +704,16 @@ public class CmsFileTable extends CmsResourceTable {
     }
 
     /**
+     * Returns the dialog context provider.<p>
+     *
+     * @return the dialog context provider
+     */
+    public I_CmsContextProvider getContextProvider() {
+
+        return m_contextProvider;
+    }
+
+    /**
      * Returns the index of the first visible item.<p>
      *
      * @return the first visible item
@@ -711,14 +755,18 @@ public class CmsFileTable extends CmsResourceTable {
 
         fileTableState.setSortAscending(m_fileTable.isSortAscending());
         fileTableState.setSortColumnId((CmsResourceTableProperty)m_fileTable.getSortContainerPropertyId());
-        List<CmsResourceTableProperty> collapsedCollumns = new ArrayList<CmsResourceTableProperty>();
+        List<CmsResourceTableProperty> collapsedCollumns = new ArrayList<>();
+        List<CmsResourceTableProperty> uncollapsedColumns = new ArrayList<>();
         Object[] visibleCols = m_fileTable.getVisibleColumns();
         for (int i = 0; i < visibleCols.length; i++) {
             if (m_fileTable.isColumnCollapsed(visibleCols[i])) {
                 collapsedCollumns.add((CmsResourceTableProperty)visibleCols[i]);
+            } else {
+                uncollapsedColumns.add((CmsResourceTableProperty)visibleCols[i]);
             }
         }
         fileTableState.setCollapsedColumns(collapsedCollumns);
+        fileTableState.setUncollapsedColumns(uncollapsedColumns);
         return fileTableState;
     }
 
@@ -736,17 +784,6 @@ public class CmsFileTable extends CmsResourceTable {
             m_fileTable.setValue(null);
             m_fileTable.select(itemId);
         }
-    }
-
-    /**
-     * Checks if the file table has a row for the resource with the given structure id.
-     *
-     * @param structureId a structure id
-     * @return true if the file table has a row for the resource with the given id
-     */
-    public boolean containsId(CmsUUID structureId) {
-
-        return m_fileTable.getContainerDataSource().getItem("" + structureId) != null;
     }
 
     /**
@@ -795,10 +832,15 @@ public class CmsFileTable extends CmsResourceTable {
      */
     public void restoreFilters() {
 
-        IndexedContainer container = (IndexedContainer)m_fileTable.getContainerDataSource();
-        container.removeAllContainerFilters();
-        for (Filter filter : m_filters) {
-            container.addContainerFilter(filter);
+        if (m_filterStack.size() > 0) {
+            IndexedContainer container = (IndexedContainer)m_fileTable.getContainerDataSource();
+            container.removeAllContainerFilters();
+            Collection<Filter> filters = m_filterStack.remove(m_filterStack.size() - 1);
+            for (Filter filter : filters) {
+                container.addContainerFilter(filter);
+            }
+        } else {
+            LOG.error("restoreFilter called but no saved filters available");
         }
     }
 
@@ -808,7 +850,8 @@ public class CmsFileTable extends CmsResourceTable {
     public void saveFilters() {
 
         IndexedContainer container = (IndexedContainer)m_fileTable.getContainerDataSource();
-        m_filters = container.getContainerFilters();
+        Collection<Filter> filters = container.getContainerFilters();
+        m_filterStack.add(new ArrayList<>(filters)); // we need to make a copy because the list returned by getContainerFilters() is changed dynamically by the container
     }
 
     /**
@@ -873,7 +916,19 @@ public class CmsFileTable extends CmsResourceTable {
             m_fileTable.setSortAscending(state.isSortAscending());
             Object[] visibleCols = m_fileTable.getVisibleColumns();
             for (int i = 0; i < visibleCols.length; i++) {
-                m_fileTable.setColumnCollapsed(visibleCols[i], state.getCollapsedColumns().contains(visibleCols[i]));
+                boolean isCollapsed;
+                // Originally, just the collapsed columns would be stored in the user settings.
+                // The problem with this is that if new columns were added in a new version of OpenCms,
+                // those would be active by default for users who had stored table settings.
+                // So we now also store the uncollapsed columns, and prioritize this list for deciding whether
+                // a column should be visible.
+                if (state.getUncollapsedColumns() != null) {
+                    isCollapsed = !state.getUncollapsedColumns().contains(visibleCols[i]);
+                } else {
+                    isCollapsed = state.getCollapsedColumns().contains(visibleCols[i])
+                        || CmsResourceTableProperty.PROPERTY_CATEGORIES.equals(visibleCols[i]);
+                }
+                m_fileTable.setColumnCollapsed(visibleCols[i], isCollapsed);
             }
         }
     }
@@ -909,14 +964,20 @@ public class CmsFileTable extends CmsResourceTable {
     public void stopEdit() {
 
         if (m_editHandler != null) {
-            String value = (String)m_container.getItem(m_editItemId.toString()).getItemProperty(
-                m_editProperty).getValue();
-            if (!value.equals(m_originalEditValue)) {
-                m_editHandler.validate(value);
-                m_editHandler.save(value);
-            } else {
-                // call cancel to ensure unlock
-                m_editHandler.cancel();
+            saveFilters();
+            clearFilters();
+            try {
+                String value = (String)m_container.getItem(m_editItemId.toString()).getItemProperty(
+                    m_editProperty).getValue();
+                if (!value.equals(m_originalEditValue)) {
+                    m_editHandler.validate(value);
+                    m_editHandler.save(value);
+                } else {
+                    // call cancel to ensure unlock
+                    m_editHandler.cancel();
+                }
+            } finally {
+                restoreFilters();
             }
         }
         clearEdit();
@@ -993,16 +1054,6 @@ public class CmsFileTable extends CmsResourceTable {
             m_editHandler.cancel();
         }
         clearEdit();
-    }
-
-    /**
-     * Returns the dialog context provider.<p>
-     *
-     * @return the dialog context provider
-     */
-    I_CmsContextProvider getContextProvider() {
-
-        return m_contextProvider;
     }
 
     /**
@@ -1107,17 +1158,40 @@ public class CmsFileTable extends CmsResourceTable {
     }
 
     /**
+     * Clears the actions that were set for editing a column.
+     */
+    private void clearColumnEditActions() {
+
+        if (m_columnEditEnterRegistration != null) {
+            m_columnEditEnterRegistration.remove();
+            m_columnEditEnterRegistration = null;
+        }
+        if (m_columnEditEscRegistration != null) {
+            m_columnEditEscRegistration.remove();
+            m_columnEditEscRegistration = null;
+        }
+    }
+
+    /**
      * Clears the current edit process.<p>
      */
     private void clearEdit() {
 
         m_fileTable.setEditable(false);
         if (m_editItemId != null) {
-            updateItem(m_editItemId, false);
+            try {
+                // current filter may prevent item from being updated
+                saveFilters();
+                clearFilters();
+                updateItem(m_editItemId, false);
+            } finally {
+                restoreFilters();
+            }
         }
         m_editItemId = null;
         m_editProperty = null;
         m_editHandler = null;
+        clearColumnEditActions();
         updateSorting();
     }
 

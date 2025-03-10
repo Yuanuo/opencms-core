@@ -24,6 +24,7 @@
         <editorpreconditions>
             <editorprecondition name="xmlcontent" class="org.opencms.workplace.editors.CmsPreEditorActionDefinitionXmlContent" />
         </editorpreconditions>
+        <editor-max-locale-buttons>5</editor-max-locale-buttons>
         <directeditprovider class="org.opencms.ade.editprovider.CmsToolbarDirectEditProvider" />
         <exportpoints>
             <exportpoint uri="/system/workplace/resources/" destination="resources/" />
@@ -33,6 +34,9 @@
         <enableusermanagement>true</enableusermanagement>
         <defaultpropertiesonstructure>true</defaultpropertiesonstructure>
         <enableadvancedpropertytabs>true</enableadvancedpropertytabs>
+        <categorydisplayoptions displayByRepository="true" />
+        <!-- Displaying categories in the explorer has a big performance impact. Only enable if really needed. -->
+        <display-categories-in-explorer enabled="false" with-path="true" leaves-only="true" />
         <maxfileuploadsize>-1</maxfileuploadsize>
         <labeledfolders />
         <rfsfileviewsettings>
@@ -229,13 +233,13 @@
             <preference-tab name="basic">
                 <preference name="locale" value="en" nice-name="%(key.GUI_LABEL_LANGUAGE_0)" />
                 <preference name="elementReuseMode" value="reuse" nice-name="%(key.GUI_PREF_REUSE_MODE_0)" widget="select" widget-config="reuse:%(key.GUI_PREF_REUSE_MODE_REUSE_0)|copy:%(key.GUI_PREF_REUSE_MODE_COPY_0)|ask:%(key.GUI_PREF_REUSE_MODE_ASK_0)" />
+	            <preference name="checkReuseWarning" nice-name="%(key.GUI_PREF_SHOW_REUSE_WARNING_0)" value="true" widget="select" widget-config="false:%(key.GUI_PREF_CHECK_REUSE_WARNING_OPTION_FALSE_0)|true:%(key.GUI_PREF_CHECK_REUSE_WARNING_OPTION_TRUE_0)" />
                 <preference name="elementView" nice-name="%(key.GUI_PREF_ELEMENT_VIEW_0)" value="00000000-0000-0000-0000-000000000000" />
                 <preference name="explorerElementView" nice-name="%(key.GUI_PREF_EXPLORER_ELEMENT_VIEW_0)" value="505c1305-271f-3b09-925f-a33a067c98cf" />
                 <preference name="galleryShowInvalidDefault" value="false" nice-name="%(key.GUI_PREF_GALLERY_SHOW_INVALID_DEFAULT_0)" widget="checkbox" />
             </preference-tab>
             <preference-tab name="extended">
                 <preference name="workplaceMode" value="new" nice-name="%(key.GUI_PREF_WORKPLACE_MODE_0)" widget="select" widget-config="old:%(key.GUI_PREF_WORKPLACE_MODE_OLD_0)|new:%(key.GUI_PREF_WORKPLACE_MODE_NEW_0)" />
-
                 <preference name="startProject" value="Offline" nice-name="%(key.GUI_PREF_STARTUP_PROJECT_0)" />
                 <preference name="startSite" value="/sites/default/" nice-name="%(key.GUI_PREF_STARTUP_SITE_0)" />
                 <preference name="startFolder" value="/" nice-name="%(key.GUI_PREF_STARTUP_FOLDER_0)" />
@@ -294,7 +298,7 @@
                 <preference name="gallery.linkgallery" />
                 <preference name="gallery.imagegallery" />
                 <preference name="gallery.downloadgallery" />
-                <preference name="org.opencms.ui.apps.CmsFileExplorerSettings" value="{'collapsed_collumns':['PROPERTY_PROJECT','PROPERTY_NAVIGATION_TEXT','PROPERTY_COPYRIGHT','PROPERTY_CACHE','PROPERTY_INTERNAL_RESOURCE_TYPE', 'PROPERTY_PERMISSIONS','PROPERTY_USER_MODIFIED','PROPERTY_DATE_MODIFIED','PROPERTY_DATE_RELEASED','PROPERTY_DATE_EXPIRED','PROPERTY_DATE_CREATED','PROPERTY_USER_CREATED','PROPERTY_STATE_NAME','PROPERTY_USER_LOCKED'],'sort_column':'PROPERTY_RESOURCE_NAME','sort_order':true}" />
+                <preference name="org.opencms.ui.apps.CmsFileExplorerSettings" value="{'collapsed_collumns':['PROPERTY_PROJECT','PROPERTY_NAVIGATION_TEXT','PROPERTY_COPYRIGHT','PROPERTY_CACHE','PROPERTY_INTERNAL_RESOURCE_TYPE', 'PROPERTY_PERMISSIONS','PROPERTY_USER_MODIFIED','PROPERTY_DATE_MODIFIED','PROPERTY_DATE_RELEASED','PROPERTY_DATE_EXPIRED','PROPERTY_DATE_CREATED','PROPERTY_USER_CREATED','PROPERTY_STATE_NAME','PROPERTY_USER_LOCKED', 'PROPERTY_CATEGORIES'],'sort_column':'PROPERTY_RESOURCE_NAME','sort_order':true}" />
             </preference-tab>
         </default-preferences>
         <tool-manager>
@@ -313,6 +317,8 @@
         <upload-restriction class="org.opencms.ade.upload.CmsDefaultUploadRestriction">
             <param name="/">enabled:true|types:*</param>
         </upload-restriction>
+        <virus-scanner />
         <sitemap-config-edit-role>DEVELOPER</sitemap-config-edit-role>
+        <allow-element-author-to-work-in-galleries>false</allow-element-author-to-work-in-galleries>
     </workplace>
 </opencms>

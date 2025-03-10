@@ -222,7 +222,7 @@ public class CmsFlexRequestDispatcher implements RequestDispatcher {
                 LOG.debug(
                     Messages.get().getBundle().key(
                         Messages.LOG_FLEXREQUESTDISPATCHER_LOADING_RESOURCE_TYPE_1,
-                        new Integer(resource.getTypeId())));
+                        Integer.valueOf(resource.getTypeId())));
             }
             loader = OpenCms.getResourceManager().getLoader(resource);
         } catch (CmsException e) {
@@ -414,7 +414,7 @@ public class CmsFlexRequestDispatcher implements RequestDispatcher {
                         LOG.debug(
                             Messages.get().getBundle().key(
                                 Messages.LOG_FLEXREQUESTDISPATCHER_LOADING_RESOURCE_TYPE_1,
-                                new Integer(resource.getTypeId())));
+                                Integer.valueOf(resource.getTypeId())));
                     }
                     loader = OpenCms.getResourceManager().getLoader(resource);
                 } catch (ClassCastException e) {
@@ -443,7 +443,7 @@ public class CmsFlexRequestDispatcher implements RequestDispatcher {
                 try {
                     loader.service(cms, resource, w_req, w_res);
                 } catch (Exception e) {
-                    LOG.error(e.getLocalizedMessage(), e);
+                    LOG.debug(e.getLocalizedMessage(), e);
                     // an error occurred
                     if (f_res.hasIncludeList()) {
                         // to prevent include list and include result list indices going out of sync, add an empty byte array
@@ -460,6 +460,8 @@ public class CmsFlexRequestDispatcher implements RequestDispatcher {
                         // cache entry has a timeout, set last modified to time of last creation
                         entry.setDateLastModifiedToPreviousTimeout(w_res.getCmsCacheKey().getTimeout());
                         entry.setDateExpiresToNextTimeout(w_res.getCmsCacheKey().getTimeout());
+                        // if expiration date from controller comes before timeout, don't wait until timeout
+                        entry.limitDateExpires(controller.getDateExpires());
                         controller.updateDates(entry.getDateLastModified(), entry.getDateExpires());
                     } else {
                         // no timeout, use last modified date from files in VFS

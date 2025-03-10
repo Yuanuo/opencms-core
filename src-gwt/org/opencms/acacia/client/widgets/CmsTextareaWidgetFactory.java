@@ -30,8 +30,19 @@ package org.opencms.acacia.client.widgets;
 import org.opencms.acacia.client.I_CmsWidgetFactory;
 import org.opencms.ade.contenteditor.widgetregistry.client.WidgetRegistry;
 import org.opencms.gwt.client.I_CmsHasInit;
+import org.opencms.gwt.client.util.CmsDebugLog;
+import org.opencms.gwt.shared.CmsGwtConstants;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Stream;
 
 import com.google.gwt.dom.client.Element;
+
+import elemental2.core.Global;
+import jsinterop.base.Any;
+import jsinterop.base.Js;
+import jsinterop.base.JsPropertyMap;
 
 /**
  * Factory to generate basic input widget.<p>
@@ -40,6 +51,14 @@ public class CmsTextareaWidgetFactory implements I_CmsWidgetFactory, I_CmsHasIni
 
     /** The widget name. */
     private static final String WIDGET_NAME = "org.opencms.widgets.CmsTextareaWidget";
+
+    /** Configuration for enabling typography button in inline mode only. */
+    public static final String CONF_TYPOGRAPHY = "typography";
+
+    /** Array of both possible typography options. */
+    public static final List<String> TYPOGRAPHY_OPTIONS = Arrays.asList(
+        CONF_TYPOGRAPHY,
+        CmsTextareaWidget.CONF_AUTO_TYPOGRAPHY);
 
     /**
      * Initializes this class.<p>
@@ -62,7 +81,35 @@ public class CmsTextareaWidgetFactory implements I_CmsWidgetFactory, I_CmsHasIni
      */
     public I_CmsEditWidget createInlineWidget(String configuration, Element element) {
 
-        return new CmsTinyMCEWidget(element, CmsTinyMCEWidget.NO_HTML_EDIT);
+        String typografLocale = null;
+        try {
+            JsPropertyMap<Object> configObj = Js.cast(Global.JSON.parse(configuration));
+
+            Any config = configObj.getAsAny(CmsGwtConstants.JSON_TEXTAREA_CONFIG);
+            Any locale = configObj.getAsAny(CmsGwtConstants.JSON_TEXTAREA_LOCALE);
+            if ((config != null) && hasTypography(config.asString())) {
+                if ((locale != null) && CmsTypografUtil.Typograf.hasLocale(locale.asString())) {
+                    typografLocale = locale.asString();
+                }
+            }
+        } catch (Exception e) {
+            CmsDebugLog.consoleLog(e.getMessage());
+        }
+        CmsTinyMCEWidget result = new CmsTinyMCEWidget(element, CmsTinyMCEWidget.NO_HTML_EDIT);
+        result.setTypografLocale(typografLocale);
+        return result;
+    }
+
+    /**
+     * Checks if a typography option is set.
+     *
+     * @param config the config string
+     * @return true if a typography option is set
+     */
+    private boolean hasTypography(String config) {
+
+        boolean result = Stream.of(config.split("\\|")).anyMatch(token -> TYPOGRAPHY_OPTIONS.contains(token.trim()));
+        return result;
     }
 
 }

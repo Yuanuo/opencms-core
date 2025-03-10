@@ -325,6 +325,18 @@ public class CmsFlexCacheEntry implements I_CmsLruCacheObject, I_CmsMemoryMonito
     }
 
     /**
+     * Ensures that the expiration date is at most 'limit'.
+     *
+     * @param limit the maximum allowed expiration date
+     */
+    public void limitDateExpires(long limit) {
+
+        if (m_dateExpires > limit) {
+            m_dateExpires = limit;
+        }
+    }
+
+    /**
      * @see org.opencms.cache.I_CmsLruCacheObject#removeFromLruCache()
      */
     public void removeFromLruCache() {
@@ -445,9 +457,9 @@ public class CmsFlexCacheEntry implements I_CmsLruCacheObject, I_CmsMemoryMonito
             LOG.debug(
                 Messages.get().getBundle().key(
                     Messages.LOG_FLEXCACHEENTRY_SET_EXPIRATION_DATE_3,
-                    new Long(m_dateExpires),
-                    new Long(now),
-                    new Long(m_dateExpires - now)));
+                    Long.valueOf(m_dateExpires),
+                    Long.valueOf(now),
+                    Long.valueOf(m_dateExpires - now)));
         }
     }
 

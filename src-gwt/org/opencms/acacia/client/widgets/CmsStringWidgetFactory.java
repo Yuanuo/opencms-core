@@ -30,8 +30,16 @@ package org.opencms.acacia.client.widgets;
 import org.opencms.acacia.client.I_CmsWidgetFactory;
 import org.opencms.ade.contenteditor.widgetregistry.client.WidgetRegistry;
 import org.opencms.gwt.client.I_CmsHasInit;
+import org.opencms.gwt.client.util.CmsDebugLog;
+import org.opencms.gwt.shared.CmsGwtConstants;
 
 import com.google.gwt.dom.client.Element;
+
+import elemental2.core.Global;
+import elemental2.dom.DomGlobal;
+import jsinterop.base.Any;
+import jsinterop.base.Js;
+import jsinterop.base.JsPropertyMap;
 
 /**
  * Factory to generate basic input widget.<p>
@@ -62,6 +70,22 @@ public class CmsStringWidgetFactory implements I_CmsWidgetFactory, I_CmsHasInit 
      */
     public I_CmsEditWidget createInlineWidget(String configuration, Element element) {
 
-        return new CmsTinyMCEWidget(element, CmsTinyMCEWidget.NO_HTML_EDIT);
+        String typografLocale = null;
+        try {
+            JsPropertyMap<Object> configObj = Js.cast(Global.JSON.parse(configuration));
+            Any typograf = configObj.getAsAny(CmsGwtConstants.JSON_INPUT_TYPOGRAF);
+
+            Any locale = configObj.getAsAny(CmsGwtConstants.JSON_INPUT_LOCALE);
+            if ((typograf != null) && (locale != null) && CmsTypografUtil.Typograf.hasLocale(locale.asString())) {
+                // for the inline widget, both 'true' and 'auto' as value of the typograf attribute cause the typography button to appear
+                typografLocale = locale.asString();
+            }
+
+        } catch (Exception e) {
+            CmsDebugLog.consoleLog(e.getMessage());
+        }
+        CmsTinyMCEWidget result = new CmsTinyMCEWidget(element, CmsTinyMCEWidget.NO_HTML_EDIT);
+        result.setTypografLocale(typografLocale);
+        return result;
     }
 }

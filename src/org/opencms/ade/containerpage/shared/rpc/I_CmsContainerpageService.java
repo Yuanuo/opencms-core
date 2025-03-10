@@ -40,6 +40,7 @@ import org.opencms.ade.containerpage.shared.CmsGroupContainer;
 import org.opencms.ade.containerpage.shared.CmsGroupContainerSaveResult;
 import org.opencms.ade.containerpage.shared.CmsInheritanceContainer;
 import org.opencms.ade.containerpage.shared.CmsRemovedElementStatus;
+import org.opencms.ade.containerpage.shared.CmsReuseInfo;
 import org.opencms.gwt.CmsRpcException;
 import org.opencms.gwt.shared.CmsListElementCreationDialogData;
 import org.opencms.gwt.shared.CmsTemplateContextInfo;
@@ -406,13 +407,26 @@ public interface I_CmsContainerpageService extends RemoteService {
      * Gets the status of a removed element.<p>
      *
      * @param id the client id of the removed element
+     * @param contextId the id of the resource used to look up the sitemap configuration
      * @param containerpageId the id of the page which should be excluded from the relation check, or null if no page should be excluded
      *
      * @return the status of the removed element
      *
      * @throws CmsRpcException if something goes wrong
      */
-    CmsRemovedElementStatus getRemovedElementStatus(String id, CmsUUID containerpageId) throws CmsRpcException;
+    CmsRemovedElementStatus getRemovedElementStatus(String id, CmsUUID contextId, CmsUUID containerpageId)
+    throws CmsRpcException;
+
+    /**
+     * Loads the reuse information for a container element.
+     *
+     * @param pageId the current page id
+     * @param detailId the current detail id
+     * @param elementId the id of the element to check
+     * @return the reuse information for the element
+     * @throws CmsRpcException if something goes wrong
+     */
+    CmsReuseInfo getReuseInfo(CmsUUID pageId, CmsUUID detailId, CmsUUID elementId) throws CmsRpcException;
 
     /**
      * Handles the element deletion.<p>
@@ -632,14 +646,4 @@ public interface I_CmsContainerpageService extends RemoteService {
      */
     void setLastPage(CmsUUID pageId, CmsUUID detailId) throws CmsRpcException;
 
-    /**
-     * Updates the formatter setting for an element in the server-side element cache.
-     *
-     * @param clientId the client id of the element
-     * @param containerId the id of the container containing the element
-     * @param settings the settings of the element
-     * @throws CmsRpcException if something goes wrong
-     */
-    void updateServerElementFormatter(String clientId, String containerId, Map<String, String> settings)
-    throws CmsRpcException;
 }

@@ -388,6 +388,7 @@ public class CmsSolrDocumentXmlContent extends A_CmsVfsDocument {
      * @param resource the resource
      * @param index the used index
      * @param forceLocale if set, only the content values for the given locale will be extracted
+     * @param alreadyExtracted keeps track of ids of contents which have already been extracted
      *
      * @return the extraction result
      *
@@ -759,8 +760,17 @@ public class CmsSolrDocumentXmlContent extends A_CmsVfsDocument {
     /**
      * @see org.opencms.search.documents.I_CmsDocumentFactory#isUsingCache()
      */
+    @Override
+    public boolean isOnlyDependentOnContent() {
+
+        return false;
+    }
+
+    /**
+     * @see org.opencms.search.documents.I_CmsDocumentFactory#isUsingCache()
+     */
     public boolean isUsingCache() {
 
-        return true;
+        return false;
     }
 }

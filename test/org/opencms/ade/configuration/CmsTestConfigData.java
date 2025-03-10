@@ -27,6 +27,7 @@
 
 package org.opencms.ade.configuration;
 
+import org.opencms.ade.configuration.CmsADEConfigDataInternal.ConfigReferenceMeta;
 import org.opencms.ade.configuration.CmsConfigurationReader.DiscardPropertiesMode;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCacheState;
@@ -198,7 +199,7 @@ public class CmsTestConfigData extends CmsADEConfigData {
      */
     public void registerSchemaFormatters(int typeId, CmsFormatterConfiguration formatters) {
 
-        m_schemaFormatterConfiguration.put(new Integer(typeId), formatters);
+        m_schemaFormatterConfiguration.put(Integer.valueOf(typeId), formatters);
     }
 
     /**
@@ -297,12 +298,21 @@ public class CmsTestConfigData extends CmsADEConfigData {
     @Override
     protected CmsFormatterConfiguration getFormattersFromSchema(CmsObject cms, CmsResource res) {
 
-        Integer key = new Integer(res.getTypeId());
+        Integer key = Integer.valueOf(res.getTypeId());
         CmsFormatterConfiguration result = m_schemaFormatterConfiguration.get(key);
         if (result == null) {
             result = super.getFormattersFromSchema(cms, res);
         }
         return result;
+    }
+
+    /**
+     * @see org.opencms.ade.configuration.CmsADEConfigData#getMeta()
+     */
+    @Override
+    protected ConfigReferenceMeta getMeta() {
+
+        return new ConfigReferenceMeta();
     }
 
 }

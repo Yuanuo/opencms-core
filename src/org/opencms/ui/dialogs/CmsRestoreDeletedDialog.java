@@ -29,12 +29,15 @@ package org.opencms.ui.dialogs;
 
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
+import org.opencms.file.history.CmsHistoryProject;
 import org.opencms.file.history.I_CmsHistoryResource;
 import org.opencms.file.types.CmsResourceTypeUnknownFile;
 import org.opencms.file.types.CmsResourceTypeUnknownFolder;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.CmsVfsService;
+import org.opencms.loader.CmsLoaderException;
 import org.opencms.main.CmsException;
+import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.I_CmsDialogContext;
@@ -49,6 +52,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+
+import org.apache.commons.logging.Log;
 
 import com.google.common.collect.Lists;
 import com.vaadin.ui.AbstractOrderedLayout;
@@ -67,6 +72,9 @@ import com.vaadin.v7.ui.Label;
  * Dialog for restoring deleted resources in a folder.<p>
  */
 public class CmsRestoreDeletedDialog extends CmsBasicDialog {
+
+    /** Logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsRestoreDeletedDialog.class);
 
     /** Property for storing selection status. */
     private static final String PROP_SELECTED = "selected";
@@ -269,14 +277,34 @@ public class CmsRestoreDeletedDialog extends CmsBasicDialog {
 
         }
         for (I_CmsHistoryResource deleted : deletedResources) {
-            I_CmsResourceType resType = OpenCms.getResourceManager().getResourceType(deleted.getTypeId());
-            String typeName = resType.getTypeName();
-            CmsExplorerTypeSettings explorerType = OpenCms.getWorkplaceManager().getExplorerTypeSetting(typeName);
+            CmsExplorerTypeSettings explorerType;
+            try {
+                I_CmsResourceType resType = OpenCms.getResourceManager().getResourceType(deleted.getTypeId());
+                String typeName = resType.getTypeName();
+                explorerType = OpenCms.getWorkplaceManager().getExplorerTypeSetting(typeName);
+            } catch (CmsLoaderException e) {
+                explorerType = OpenCms.getWorkplaceManager().getExplorerTypeSetting(
+                    deleted.isFile()
+                    ? CmsResourceTypeUnknownFile.getStaticTypeName()
+                    : CmsResourceTypeUnknownFolder.getStaticTypeName());
+            }
             String title = cms.getRequestContext().removeSiteRoot(deleted.getRootPath());
 
+            long deletionDate = 0;
+            try {
+                CmsHistoryProject hp = cms.readHistoryProject(deleted.getPublishTag());
+                if (hp != null) {
+                    deletionDate = hp.getPublishingDate();
+                }
+            } catch (CmsException e) {
+                LOG.debug(
+                    "Failed to retrieve deletion date for deleted resource "
+                        + deleted.getRootPath()
+                        + ". Last modification date will be shown.");
+            }
             String subtitle = CmsVaadinUtils.getMessageText(
                 org.opencms.ui.Messages.GUI_RESTOREDELETED_DATE_VERSION_2,
-                CmsVfsService.formatDateTime(cms, deleted.getDateLastModified()),
+                CmsVfsService.formatDateTime(cms, deletionDate == 0 ? deleted.getDateLastModified() : deletionDate),
                 "" + deleted.getVersion());
             if (explorerType == null) {
                 explorerType = OpenCms.getWorkplaceManager().getExplorerTypeSetting(

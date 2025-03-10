@@ -40,6 +40,7 @@ import org.opencms.file.types.CmsResourceTypeJsp;
 import org.opencms.i18n.CmsAcceptLanguageHeaderParser;
 import org.opencms.i18n.CmsI18nInfo;
 import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.loader.CmsDumpLoader;
 import org.opencms.loader.I_CmsResourceLoader;
 import org.opencms.main.CmsContextInfo;
 import org.opencms.main.CmsEvent;
@@ -115,7 +116,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
     public static final String EXPORT_BACKUP_FOLDER_NAME = "backup";
 
     /** Name for the default work path. */
-    public static final Integer EXPORT_DEFAULT_BACKUPS = new Integer(0);
+    public static final Integer EXPORT_DEFAULT_BACKUPS = Integer.valueOf(0);
 
     /** Name for the folder default index file. */
     public static final String EXPORT_DEFAULT_FILE = "index_export.html";
@@ -627,6 +628,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         if (res != null) {
             wrapRes = new CmsStaticExportResponseWrapper(res);
         }
+        boolean exportWithResponse = true;
         if (LOG.isDebugEnabled()) {
             LOG.debug(Messages.get().getBundle().key(Messages.LOG_SE_RESOURCE_START_1, data));
         }
@@ -637,7 +639,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         // check loader id for resource
         I_CmsResourceLoader loader = OpenCms.getResourceManager().getLoader(file);
         if ((loader == null) || (!loader.isStaticExportEnabled())) {
-            Object[] arguments = new Object[] {vfsName, new Integer(file.getTypeId())};
+            Object[] arguments = new Object[] {vfsName, Integer.valueOf(file.getTypeId())};
             throw new CmsStaticExportException(
                 Messages.get().container(Messages.ERR_EXPORT_NOT_SUPPORTED_2, arguments));
         }
@@ -664,7 +666,8 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         while (it.hasNext()) {
             CmsStaticExportRfsRule rule = it.next();
             // normal case
-            boolean export = rule.getSource().matcher(siteRoot + vfsName).matches();
+
+            boolean export = rule.getSource().matcher(CmsStringUtil.joinPaths(siteRoot, vfsName)).matches();
             matched |= export;
             // system folder case
             export |= ((OpenCms.getSiteManager().startsWithShared(vfsName)
@@ -681,8 +684,13 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                     locCms = OpenCms.initCmsObject(exportCms, ctxInfo);
                 }
                 // read the content in the matching locale
-                byte[] content = loader.export(locCms, new CmsFile(file), req, wrapRes);
+                byte[] content = loader.export(locCms, new CmsFile(file), req, exportWithResponse ? wrapRes : null);
                 if (content != null) {
+                    if (loader.getClass() == CmsDumpLoader.class /* NOT instanceof, doesn't work for image loader */) {
+                        // disable writing to response for static resources after the first rule match to avoid duplicate response data
+                        // when compression is enabled in Tomcat.
+                        exportWithResponse = false;
+                    }
                     // write to rfs
                     exported = true;
                     String locRfsName = rfsName;
@@ -697,7 +705,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         if (!matched) {
             // no rule matched
             String exportPath = getExportPath(siteRoot + vfsName);
-            byte[] content = loader.export(exportCms, new CmsFile(file), req, wrapRes);
+            byte[] content = loader.export(exportCms, new CmsFile(file), req, exportWithResponse ? wrapRes : null);
             if (content != null) {
                 exported = true;
                 writeResource(req, exportPath, rfsName, resource, content);
@@ -2165,7 +2173,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
      */
     public void setExportBackups(String backup) {
 
-        m_staticExportBackups = new Integer(backup);
+        m_staticExportBackups = Integer.valueOf(backup);
     }
 
     /**
@@ -2400,7 +2408,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         m_cacheExportLinks.clear();
         m_exportnameResources = null;
         if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_FLUSHED_CACHES_1, new Integer(event.getType())));
+            LOG.debug(Messages.get().getBundle().key(Messages.LOG_FLUSHED_CACHES_1, Integer.valueOf(event.getType())));
         }
     }
 
@@ -2426,14 +2434,14 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                 backupFolderName = backupFolderName + EXPORT_BACKUP_FOLDER_NAME;
             }
             for (int i = exportBackups; i > 0; i--) {
-                File staticExportBackupOld = new File(backupFolderName + new Integer(i).toString());
+                File staticExportBackupOld = new File(backupFolderName + Integer.valueOf(i).toString());
                 if (staticExportBackupOld.exists()) {
                     if ((i + 1) > exportBackups) {
                         // delete folder if it is the last backup folder
                         CmsFileUtil.purgeDirectory(staticExportBackupOld);
                     } else {
                         // set backup folder to the next backup folder name
-                        staticExportBackupOld.renameTo(new File(backupFolderName + new Integer(i + 1).toString()));
+                        staticExportBackupOld.renameTo(new File(backupFolderName + Integer.valueOf(i + 1).toString()));
                     }
                 }
                 // old export folder rename to first backup folder
@@ -2848,7 +2856,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
         }
         synchronized (m_lockScrubExportFolders) {
             int count = 0;
-            Integer size = new Integer(m_rfsRules.size() + 1);
+            Integer size = Integer.valueOf(m_rfsRules.size() + 1);
             // default case
             String exportFolderName = CmsFileUtil.normalizePath(m_staticExportPath + '/');
             try {
@@ -2862,7 +2870,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                     report.println(
                         Messages.get().container(
                             Messages.RPT_DELETE_EXPORT_FOLDER_3,
-                            new Integer(count),
+                            Integer.valueOf(count),
                             size,
                             exportFolderName),
                         I_CmsReport.FORMAT_NOTE);
@@ -2896,7 +2904,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                         report.println(
                             Messages.get().container(
                                 Messages.RPT_DELETE_EXPORT_FOLDER_3,
-                                new Integer(count),
+                                Integer.valueOf(count),
                                 size,
                                 exportFolderName),
                             I_CmsReport.FORMAT_NOTE);
@@ -2979,7 +2987,7 @@ public class CmsStaticExportManager implements I_CmsEventListener {
                         Messages.get().getBundle().key(
                             Messages.LOG_SET_LAST_MODIFIED_2,
                             exportFile.getName(),
-                            new Long((dateLastModified.longValue() / 1000) * 1000)));
+                            Long.valueOf((dateLastModified.longValue() / 1000) * 1000)));
                 }
             }
         } else {

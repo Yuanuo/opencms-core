@@ -100,7 +100,7 @@ input.textBoxReadOnly {
 	 
 }
 
-.textBoxPanel > input {
+.textBoxPanel > input, .textBoxPanelError > input {
     padding-left: 4px;
     padding-right: 4px;
     box-sizing: border-box;
@@ -467,6 +467,11 @@ div.categoryItem{
 	margin-top: 6px;
 }
 
+div.categoryEmptyLabel {
+	margin-left: 12px;
+	margin-top: 12px;
+}
+
 div.fader, div.textArea div.fader {
 	background-image: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 100%) !important;
 }
@@ -571,10 +576,26 @@ div.formInfo {
 	font-weight: bold; 
 }
 
-div.formLabel { 
+div.formLabelBox { 
 	width: 30%;
-	line-height: value("constants.css.inputHeight");
     align-self: flex-start;
+    display: flex;
+}
+
+div.formLabel {
+	line-height: value("constants.css.inputHeight");
+}
+
+.formLabelTag {
+	border-radius: 4px;
+	background-color: value("constants.css.backgroundColorListItem");
+	border: 1px solid darkgrey;
+	line-height: 20px;
+	height: 20px;
+	padding-left: 3px;
+	padding-right: 3px;
+	margin-left: 5px;
+	align-self: center;
 }
 
 

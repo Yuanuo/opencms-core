@@ -129,5 +129,4 @@ public class CmsUnusedContentFinderConfiguration extends A_CmsWorkplaceAppConfig
 
         return new CmsAppVisibilityStatus(true, true, null);
     }
-
 }

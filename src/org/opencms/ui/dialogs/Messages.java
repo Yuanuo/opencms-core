@@ -72,9 +72,6 @@ public class Messages extends A_CmsMessageBundle {
     public static final String GUI_GALLERY_DIRECTLY_USED_1 = "GUI_GALLERY_DIRECTLY_USED_1";
 
     /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_LASTMODIFIED_BY_2 = "GUI_GALLERY_OPTIMIZE_LASTMODIFIED_BY_2";
-
-    /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_CONFIRM_CANCEL_0 = "GUI_GALLERY_OPTIMIZE_CONFIRM_CANCEL_0";
 
     /** Message constant for key in the resource bundle. */
@@ -87,10 +84,10 @@ public class Messages extends A_CmsMessageBundle {
     public static final String GUI_GALLERY_OPTIMIZE_CONFIRM_DELETE_TITLE_0 = "GUI_GALLERY_OPTIMIZE_CONFIRM_DELETE_TITLE_0";
 
     /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_INPUT_DESCRIPTION_0 = "GUI_GALLERY_OPTIMIZE_INPUT_DESCRIPTION_0";
+    public static final String GUI_GALLERY_OPTIMIZE_INPUT_DELETE_UNUSED_0 = "GUI_GALLERY_OPTIMIZE_INPUT_DELETE_UNUSED_0";
 
     /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_INPUT_DELETE_UNUSED_0 = "GUI_GALLERY_OPTIMIZE_INPUT_DELETE_UNUSED_0";
+    public static final String GUI_GALLERY_OPTIMIZE_INPUT_DESCRIPTION_0 = "GUI_GALLERY_OPTIMIZE_INPUT_DESCRIPTION_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_LABEL_IN_ONLINE_PROJECT_0 = "GUI_GALLERY_OPTIMIZE_LABEL_IN_ONLINE_PROJECT_0";
@@ -102,9 +99,6 @@ public class Messages extends A_CmsMessageBundle {
     public static final String GUI_GALLERY_OPTIMIZE_LABEL_NOT_IN_USE_0 = "GUI_GALLERY_OPTIMIZE_LABEL_NOT_IN_USE_0";
 
     /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0 = "GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0";
-
-    /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_LABEL_PAGE_INFO_1 = "GUI_GALLERY_OPTIMIZE_LABEL_PAGE_INFO_1";
 
     /** Message constant for key in the resource bundle. */
@@ -114,19 +108,79 @@ public class Messages extends A_CmsMessageBundle {
     public static final String GUI_GALLERY_OPTIMIZE_LABEL_PAGE_INFO_ONE_0 = "GUI_GALLERY_OPTIMIZE_LABEL_PAGE_INFO_ONE_0";
 
     /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0 = "GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_LASTMODIFIED_BY_2 = "GUI_GALLERY_OPTIMIZE_LASTMODIFIED_BY_2";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_UNUSED_0 = "GUI_GALLERY_OPTIMIZE_NO_UNUSED_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_UNUSED_DOWNLOADS_0 = "GUI_GALLERY_OPTIMIZE_NO_UNUSED_DOWNLOADS_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_0 = "GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_DOWNLOADS_0 = "GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_DOWNLOADS_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_1 = "GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_DOWNLOADS_1 = "GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_DOWNLOADS_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_0 = "GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_DOWNLOADS_0 = "GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_DOWNLOADS_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_0 = "GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_DOWNLOADS_0 = "GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_DOWNLOADS_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_1 = "GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_DOWNLOADS_1 = "GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_DOWNLOADS_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_0 = "GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_DOWNLOADS_0 = "GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_DOWNLOADS_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_UNUSED_1 = "GUI_GALLERY_OPTIMIZE_NUM_UNUSED_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_NUM_UNUSED_DOWNLOADS_1 = "GUI_GALLERY_OPTIMIZE_NUM_UNUSED_DOWNLOADS_1";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_SELECTED_PAGE_2 = "GUI_GALLERY_OPTIMIZE_SELECTED_PAGE_2";
+
+    /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_DATE_MODIFIED_ASCENDING_0 = "GUI_GALLERY_OPTIMIZE_SORT_DATE_MODIFIED_ASCENDING_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_DATE_MODIFIED_DESCENDING_0 = "GUI_GALLERY_OPTIMIZE_SORT_DATE_MODIFIED_DESCENDING_0";
 
     /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_SORT_NOCOPYRIGHT_FIRST_0 = "GUI_GALLERY_OPTIMIZE_SORT_NOCOPYRIGHT_FIRST_0";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_GALLERY_OPTIMIZE_SORT_NODESCRIPTION_FIRST_0 = "GUI_GALLERY_OPTIMIZE_SORT_NODESCRIPTION_FIRST_0";
+
+    /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_PATH_ASCENDING_0 = "GUI_GALLERY_OPTIMIZE_SORT_PATH_ASCENDING_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_PATH_DESCENDING_0 = "GUI_GALLERY_OPTIMIZE_SORT_PATH_DESCENDING_0";
-
-    /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_SELECTED_PAGE_2 = "GUI_GALLERY_OPTIMIZE_SELECTED_PAGE_2";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_TITLE_ASCENDING_0 = "GUI_GALLERY_OPTIMIZE_SORT_TITLE_ASCENDING_0";
@@ -136,9 +190,6 @@ public class Messages extends A_CmsMessageBundle {
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_GALLERY_OPTIMIZE_SORT_UNUSED_FIRST_0 = "GUI_GALLERY_OPTIMIZE_SORT_UNUSED_FIRST_0";
-
-    /** Message constant for key in the resource bundle. */
-    public static final String GUI_GALLERY_OPTIMIZE_SORT_NOCOPYRIGHT_FIRST_0 = "GUI_GALLERY_OPTIMIZE_SORT_NOCOPYRIGHT_FIRST_0";
 
     /** Message constant for key in the resource bundle. */
     public static final String GUI_USER_DATA_ADDRESS_0 = "GUI_USER_DATA_ADDRESS_0";

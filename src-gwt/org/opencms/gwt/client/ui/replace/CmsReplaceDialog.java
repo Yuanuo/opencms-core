@@ -35,6 +35,7 @@ import org.opencms.gwt.client.ui.CmsErrorDialog;
 import org.opencms.gwt.client.ui.CmsListItemWidget;
 import org.opencms.gwt.client.ui.CmsPopup;
 import org.opencms.gwt.client.ui.CmsPushButton;
+import org.opencms.gwt.client.ui.CmsVirusReport;
 import org.opencms.gwt.client.ui.FontOpenCms;
 import org.opencms.gwt.client.ui.I_CmsButton;
 import org.opencms.gwt.client.ui.css.I_CmsConstantsBundle;
@@ -55,6 +56,8 @@ import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.event.dom.client.ClickEvent;
@@ -215,14 +218,29 @@ public class CmsReplaceDialog extends CmsPopup implements I_CmsUploadDialog {
             // the content length is unknown. For that reason take the request size to show how
             // much bytes were uploaded.
             double size = jsonObject.get(I_CmsUploadConstants.KEY_REQUEST_SIZE).isNumber().doubleValue();
-            long requestSize = new Double(size).longValue();
+            long requestSize = Double.valueOf(size).longValue();
             if (m_contentLength == 0) {
                 m_contentLength = requestSize;
             }
             if (success) {
-                m_mainPanel.displayDialogInfo(Messages.get().key(Messages.GUI_UPLOAD_INFO_FINISHING_0), false);
                 m_progressInfo.finish();
-                closeOnSuccess();
+                m_mainPanel.displayDialogInfo(Messages.get().key(Messages.GUI_UPLOAD_INFO_FINISHING_0), false);
+                Map<String, List<String>> viruses = CmsVirusReport.getVirusWarnings(jsonObject);
+                if (viruses.isEmpty()) {
+                    closeOnSuccess();
+                } else {
+                    if (m_handlerReg != null) {
+                        m_handlerReg.removeHandler();
+                    }
+                    CmsPopup popup = CmsVirusReport.createPopup(viruses, () -> {
+                        // do nothing
+                    });
+                    if (m_closeHandler != null) {
+                        popup.addCloseHandler(m_closeHandler);
+                    }
+                    hide();
+                    popup.center();
+                }
             } else {
                 String message = jsonObject.get(I_CmsUploadConstants.KEY_MESSAGE).isString().stringValue();
                 String stacktrace = jsonObject.get(I_CmsUploadConstants.KEY_STACKTRACE).isString().stringValue();

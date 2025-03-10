@@ -642,7 +642,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                 Messages.get().container(
                     Messages.ERR_RESOURCENAME_TOO_LONG_2,
                     resourcePath,
-                    new Integer(CmsDriverManager.MAX_VFS_RESOURCE_PATH_LENGTH)));
+                    Integer.valueOf(CmsDriverManager.MAX_VFS_RESOURCE_PATH_LENGTH)));
         }
 
         // check if the parent folder of the resource exists and if is not deleted
@@ -2114,7 +2114,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                             Messages.ERR_TOO_MANY_PROPERTIES_3,
                             key,
                             resource.getRootPath(),
-                            new Integer(resultSize)));
+                            Integer.valueOf(resultSize)));
                 }
 
                 if (property == null) {
@@ -2134,7 +2134,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                         Messages.get().container(
                             Messages.ERR_UNKNOWN_PROPERTY_VALUE_MAPPING_3,
                             resource.getRootPath(),
-                            new Integer(mappingType),
+                            Integer.valueOf(mappingType),
                             key));
                 }
 
@@ -2206,7 +2206,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                         Messages.get().container(
                             Messages.ERR_UNKNOWN_PROPERTY_VALUE_MAPPING_3,
                             resource.getRootPath(),
-                            new Integer(mappingType),
+                            Integer.valueOf(mappingType),
                             propertyKey));
                 }
                 property.setOrigin(resource.getRootPath());
@@ -2858,8 +2858,8 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             m_sqlManager.closeAll(dbc, conn, stmt, res);
         }
         Map<String, Integer> result = new HashMap<String, Integer>();
-        result.put("structure", new Integer(structureVersion));
-        result.put(I_CmsEventListener.KEY_RESOURCE, new Integer(resourceVersion));
+        result.put("structure", Integer.valueOf(structureVersion));
+        result.put(I_CmsEventListener.KEY_RESOURCE, Integer.valueOf(resourceVersion));
         return result;
     }
 
@@ -3846,7 +3846,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             Integer result = null;
             if (resultSet.next()) {
                 int counter = resultSet.getInt(1);
-                result = new Integer(counter);
+                result = Integer.valueOf(counter);
                 while (resultSet.next()) {
                     // for MSSQL
                 }
@@ -4131,7 +4131,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
         throw new CmsDataAccessException(
             Messages.get().container(
                 Messages.ERR_INVALID_RESOURCE_LENGTH_2,
-                new Integer(resource.getLength()),
+                Integer.valueOf(resource.getLength()),
                 resource.getRootPath()));
     }
 
@@ -4195,7 +4195,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_STRUCTURE_SELECT_BY_DATE_EXPIRED_AFTER"));
             conditions.append(END_CONDITION);
-            params.add(new Long(startTime));
+            params.add(Long.valueOf(startTime));
         }
 
         if (endTime > 0L) {
@@ -4203,7 +4203,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_STRUCTURE_SELECT_BY_DATE_EXPIRED_BEFORE"));
             conditions.append(END_CONDITION);
-            params.add(new Long(endTime));
+            params.add(Long.valueOf(endTime));
         }
     }
 
@@ -4369,7 +4369,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             while (it.hasNext()) {
                 CmsRelationType type = it.next();
                 conditions.append("?");
-                params.add(new Integer(type.getId()));
+                params.add(Integer.valueOf(type.getId()));
                 if (it.hasNext()) {
                     conditions.append(", ");
                 }
@@ -4401,7 +4401,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_STRUCTURE_SELECT_BY_DATE_RELEASED_AFTER"));
             conditions.append(END_CONDITION);
-            params.add(new Long(startTime));
+            params.add(Long.valueOf(startTime));
         }
 
         if (endTime > 0L) {
@@ -4409,7 +4409,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_STRUCTURE_SELECT_BY_DATE_RELEASED_BEFORE"));
             conditions.append(END_CONDITION);
-            params.add(new Long(endTime));
+            params.add(Long.valueOf(endTime));
         }
     }
 
@@ -4461,8 +4461,8 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             }
             conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_RESOURCE_STATE"));
             conditions.append(END_CONDITION);
-            params.add(new Integer(state.getState()));
-            params.add(new Integer(state.getState()));
+            params.add(Integer.valueOf(state.getState()));
+            params.add(Integer.valueOf(state.getState()));
         }
     }
 
@@ -4487,7 +4487,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_DATE_LASTMODIFIED_AFTER"));
             conditions.append(END_CONDITION);
-            params.add(new Long(startTime));
+            params.add(Long.valueOf(startTime));
         }
 
         if (endTime > 0L) {
@@ -4495,7 +4495,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_INCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_DATE_LASTMODIFIED_BEFORE"));
             conditions.append(END_CONDITION);
-            params.add(new Long(endTime));
+            params.add(Long.valueOf(endTime));
         }
     }
 
@@ -4521,13 +4521,13 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
                 conditions.append(BEGIN_EXCLUDE_CONDITION);
                 conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_RESOURCE_TYPE"));
                 conditions.append(END_CONDITION);
-                params.add(new Integer(type));
+                params.add(Integer.valueOf(type));
             } else {
                 //otherwise add condition to match against given type if necessary
                 conditions.append(BEGIN_INCLUDE_CONDITION);
                 conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_RESOURCE_TYPE"));
                 conditions.append(END_CONDITION);
-                params.add(new Integer(type));
+                params.add(Integer.valueOf(type));
             }
         }
     }
@@ -4553,7 +4553,7 @@ public class CmsVfsDriver implements I_CmsDriver, I_CmsVfsDriver {
             conditions.append(BEGIN_EXCLUDE_CONDITION);
             conditions.append(m_sqlManager.readQuery(projectId, "C_RESOURCES_SELECT_BY_RESOURCE_TYPE"));
             conditions.append(END_CONDITION);
-            params.add(new Integer(CmsDriverManager.READ_IGNORE_TYPE));
+            params.add(Integer.valueOf(CmsDriverManager.READ_IGNORE_TYPE));
         } else if (!((types == null) || types.isEmpty())) {
             //otherwise add condition to match against given type if necessary
             conditions.append(BEGIN_INCLUDE_CONDITION);

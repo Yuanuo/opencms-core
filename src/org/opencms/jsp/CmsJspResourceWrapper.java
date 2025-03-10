@@ -41,6 +41,7 @@ import org.opencms.i18n.CmsLocaleGroup;
 import org.opencms.jsp.util.CmsJspCategoryAccessBean;
 import org.opencms.jsp.util.CmsJspContentAccessBean;
 import org.opencms.jsp.util.CmsJspImageBean;
+import org.opencms.jsp.util.CmsJspLinkWrapper;
 import org.opencms.jsp.util.CmsJspValueTransformers.CmsLocalePropertyLoaderTransformer;
 import org.opencms.loader.CmsLoaderException;
 import org.opencms.main.CmsException;
@@ -51,6 +52,7 @@ import org.opencms.relations.CmsRelationFilter;
 import org.opencms.security.CmsSecurityException;
 import org.opencms.util.CmsCollectionsGenericWrapper;
 import org.opencms.util.CmsUUID;
+import org.opencms.util.CmsVfsUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,6 +63,9 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.apache.commons.logging.Log;
+
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 
 /**
  * Wrapper subclass of CmsResource with some convenience methods.<p>
@@ -148,6 +153,10 @@ public class CmsJspResourceWrapper extends CmsResource {
 
     /** The XML content access bean. */
     private CmsJspContentAccessBean m_xml;
+
+    /** Creates/caches link wrapper. */
+    private Supplier<CmsJspLinkWrapper> m_linkSupplier = Suppliers.memoize(
+        () -> new CmsJspLinkWrapper(m_cms, CmsJspResourceWrapper.this));
 
     /**
      * Creates a new instance.<p>
@@ -376,9 +385,7 @@ public class CmsJspResourceWrapper extends CmsResource {
      */
     public String getLink() {
 
-        return OpenCms.getLinkManager().substituteLinkForUnknownTarget(
-            m_cms,
-            m_cms.getRequestContext().getSitePath(this));
+        return getToLink().getLink();
     }
 
     /**
@@ -521,7 +528,7 @@ public class CmsJspResourceWrapper extends CmsResource {
      */
     public String getOnlineLink() {
 
-        return OpenCms.getLinkManager().getOnlineLink(m_cms, m_cms.getRequestContext().getSitePath(this));
+        return getToLink().getOnlineLink();
     }
 
     /**
@@ -617,6 +624,36 @@ public class CmsJspResourceWrapper extends CmsResource {
             }
         }
         return m_properties;
+    }
+
+    /**
+     * Returns the locale specific evaluated "Description" property for the resource.
+     * In case the resource is a default file, also the parent folders "Description" property is read as fallback.
+     *
+     * @return the locale specific description property for the resource.
+     */
+    public String getPropertyDescription() {
+
+        return CmsVfsUtil.readPropertyValueWithFolderFallbackForDefaultFiles(
+            m_cms,
+            this,
+            CmsPropertyDefinition.PROPERTY_DESCRIPTION,
+            m_cms.getRequestContext().getLocale());
+    }
+
+    /**
+     * Returns the locale specific evaluated "Keywords" property for the resource.
+     * In case the resource is a default file, also the parent folders "Keywords" property is read as fallback.
+     *
+     * @return the locale specific description property for the resource.
+     */
+    public String getPropertyKeywords() {
+
+        return CmsVfsUtil.readPropertyValueWithFolderFallbackForDefaultFiles(
+            m_cms,
+            this,
+            CmsPropertyDefinition.PROPERTY_KEYWORDS,
+            m_cms.getRequestContext().getLocale());
     }
 
     /**
@@ -851,6 +888,16 @@ public class CmsJspResourceWrapper extends CmsResource {
     }
 
     /**
+     * Gets a link wrapper corresponding to the the resource's path.
+     *
+     * @return the new link wrapper
+     */
+    public CmsJspLinkWrapper getToLink() {
+
+        return m_linkSupplier.get();
+    }
+
+    /**
      * Returns this resource wrapper.<p>
      *
      * This is included because in case {@link org.opencms.jsp.util.CmsJspStandardContextBean#getWrap()} is used, the result may be
@@ -959,6 +1006,11 @@ public class CmsJspResourceWrapper extends CmsResource {
         return (sitePath != null)
             && ((getSitePath().indexOf(sitePath) == 0))
             && (sitePath.length() < getSitePath().length());
+    }
+
+    public boolean isNavigationDefaultFile() {
+
+        return CmsVfsUtil.isDefaultFile(m_cms, this);
     }
 
     /**

@@ -91,7 +91,6 @@ import org.apache.commons.logging.Log;
 import com.google.common.base.Supplier;
 import com.vaadin.event.FieldEvents.BlurEvent;
 import com.vaadin.event.FieldEvents.BlurListener;
-import com.vaadin.server.Page;
 import com.vaadin.server.StreamResource;
 import com.vaadin.server.UserError;
 import com.vaadin.ui.Button;
@@ -747,7 +746,7 @@ public class CmsEditSiteForm extends CmsBasicDialog {
 
         if (!OpenCms.getSiteManager().isConfigurableWebServer()) {
             m_fieldWebServer.setVisible(false);
-            m_fieldWebServer.setValue(new Boolean(true));
+            m_fieldWebServer.setValue(Boolean.valueOf(true));
 
         }
 
@@ -862,7 +861,7 @@ public class CmsEditSiteForm extends CmsBasicDialog {
         m_fieldExclusiveError.setEnabled(false);
         Receiver uploadReceiver = new FavIconReceiver();
 
-        m_fieldWebServer.setValue(new Boolean(true));
+        m_fieldWebServer.setValue(Boolean.valueOf(true));
 
         m_fieldUploadFavIcon.setReceiver(uploadReceiver);
         m_fieldUploadFavIcon.setButtonCaption(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_SELECT_FILE_0));
@@ -2020,7 +2019,6 @@ public class CmsEditSiteForm extends CmsBasicDialog {
             m_site.getSiteRoot(),
             m_manager.getFavIcon(m_site.getSiteRoot()));
         resourceInfo.addStyleName("o-res-site-info");
-        Page.getCurrent().getStyles().add(".o-res-site-info img {max-width: 24px;}");
         displayResourceInfoDirectly(Collections.singletonList(resourceInfo));
 
         m_tab.removeTab(m_tab.getTab(5));
@@ -2054,11 +2052,11 @@ public class CmsEditSiteForm extends CmsBasicDialog {
         if (m_site.getErrorPage() != null) {
             m_fieldErrorPage.setValue(m_site.getErrorPage());
         }
-        m_fieldWebServer.setValue(new Boolean(m_site.isWebserver()));
+        m_fieldWebServer.setValue(Boolean.valueOf(m_site.isWebserver()));
         m_fieldWebServer.setEnabled(enableAll);
-        m_fieldExclusiveURL.setValue(new Boolean(m_site.isExclusiveUrl()));
+        m_fieldExclusiveURL.setValue(Boolean.valueOf(m_site.isExclusiveUrl()));
         m_fieldExclusiveURL.setEnabled(enableAll);
-        m_fieldExclusiveError.setValue(new Boolean(m_site.isExclusiveError()));
+        m_fieldExclusiveError.setValue(Boolean.valueOf(m_site.isExclusiveError()));
         m_fieldExclusiveError.setEnabled(enableAll);
 
         Map<String, String> siteParameters = m_site.getParameters();

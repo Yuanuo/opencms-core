@@ -127,7 +127,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
 
         /**
          * Creates a new instance.
-        
+
          * @param dataItem the data item
          */
         public ContextMenu(DataItem dataItem) {
@@ -178,14 +178,14 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         /** The data binder of this editable gallery item. */
         private Binder<DataItem> m_binder = new Binder<DataItem>();
 
-        /** The form composite of this editable gallery item. */
-        private FormComposite m_compositeForm;
-
         /** The file composite of this editable gallery item. */
         private FileComposite m_compositeFile;
 
         /** The file delete composite of this editable gallery item. */
         private FileDeleteComposite m_compositeFileDelete;
+
+        /** The form composite of this editable gallery item. */
+        private FormComposite m_compositeForm;
 
         /** The copyright information of this editable gallery item. */
         private String m_copyright;
@@ -347,6 +347,16 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         public Boolean getNoCopyright() {
 
             return Boolean.valueOf(CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_copyright));
+        }
+
+        /**
+         * Returns whether this data item has no description.<p>
+         *
+         * @return whether this data item has no description
+         */
+        public Boolean getNoDescription() {
+
+            return Boolean.valueOf(CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_description));
         }
 
         /**
@@ -637,8 +647,10 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             setWidthFull();
             m_selectSortOrder = createSelectSortOrder();
             m_textFieldFilter = createTextFieldFilter();
-            addComponent(m_selectSortOrder, "left: 2px; top: 2px;");
-            addComponent(m_textFieldFilter, "right: 2px; top: 2px;");
+
+            addComponent(m_selectSortOrder, "left: 0px; top: 2px;");
+            addComponent(m_textFieldFilter, "right: 0px; top: 2px;");
+            addStyleName("o-optimize-gallery-header");
             refresh();
         }
 
@@ -766,7 +778,8 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 m_messageSortPathAscending,
                 m_messageSortPathDescending,
                 m_messageSortUnusedFirst,
-                m_messageSortNoCopyrightFirst);
+                m_messageSortNoCopyrightFirst,
+                m_messageSortNoDescriptionFirst);
             selectSortOrder.addValueChangeListener(event -> {
                 if (event.isUserOriginated()) {
                     selectPage(0);
@@ -836,16 +849,10 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
     private class FileComposite extends HorizontalLayout {
 
         /** The panel height. */
-        private static final String PANEL_HEIGHT = "176px";
+        private static final String PANEL_HEIGHT = "172px";
 
         /** The panel width. */
-        private static final String PANEL_WIDTH = "206px";
-
-        /** Image scale parameters for preview images as used by the image scaler. */
-        private static final String SCALE_PARAMETERS = "t:1,c:ffffff,w:" + IMAGE_WIDTH + ",h:" + IMAGE_HEIGHT;
-
-        /** Request query string to load a scaled preview image. */
-        private static final String SCALE_QUERY_STRING = "?__scale=" + SCALE_PARAMETERS;
+        private static final String PANEL_WIDTH = "202px";
 
         /** The default serial version UID. */
         private static final long serialVersionUID = 1L;
@@ -871,7 +878,8 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             m_panel.setHeight(PANEL_HEIGHT);
             m_panel.addStyleName("v-panel");
             Component link = createClickableFile();
-            m_panel.addComponent(link, "left: 2px; top: 2px;");
+            m_panel.addComponent(link, "left: 0px; top: 0px;");
+            m_panel.addStyleName("o-optimize-gallery-preview-panel");
             addComponent(m_panel);
         }
 
@@ -901,8 +909,14 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 + "px\" height=\""
                 + IMAGE_HEIGHT
                 + "px\" src=\""
-                + getScaleUri(resource)
-                + "\" style=\"background: white;\">";
+                + getScaleUri(resource, false)
+                + "\""
+                + " srcset=\""
+                + getScaleUri(resource, true)
+                + " 2x"
+                + "\" "
+                + " onerror='cmsJsFunctions.handleBrokenImage(this)' "
+                + " >";
             String a = "<a target=\"_blank\" href=\"" + getPermanentUri(resource) + "\">" + image + "</a>";
             String div = "<div class=\""
                 + OpenCmsTheme.GALLERY_PREVIEW_IMAGE
@@ -949,10 +963,12 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         private String getPermanentUri(CmsResource resource) {
 
             String structureId = resource.getStructureId().toString();
+            String extension = CmsResource.getExtension(resource.getRootPath());
+            String suffix = (extension != null) ? "." + extension : "";
             String permalink = CmsStringUtil.joinPaths(
                 OpenCms.getSystemInfo().getOpenCmsContext(),
                 CmsPermalinkResourceHandler.PERMALINK_HANDLER,
-                structureId);
+                structureId) + suffix;
             return permalink;
         }
 
@@ -960,12 +976,13 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
          * Utility function to create a permanent URI for a scaled preview image.<p>
          *
          * @param resource the CMS resource
+         * @param highres if true, generate high resolution scaling uri
          * @return the scale URI
          */
-        private String getScaleUri(CmsResource resource) {
+        private String getScaleUri(CmsResource resource, boolean highres) {
 
             String paramTimestamp = "&timestamp=" + System.currentTimeMillis();
-            return getPermanentUri(resource) + SCALE_QUERY_STRING + paramTimestamp;
+            return getPermanentUri(resource) + getScaleQueryString(highres) + paramTimestamp;
         }
     }
 
@@ -1397,6 +1414,14 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             DataItem::getDateLastModified).reversed()::compare;
 
         /** Comparator. */
+        final SerializableComparator<DataItem> SORT_NOCOPYRIGHT_FIRST = Comparator.comparing(
+            DataItem::getNoCopyright)::compare;
+
+        /** Comparator. */
+        final SerializableComparator<DataItem> SORT_NODESCRIPTION_FIRST = Comparator.comparing(
+            DataItem::getNoDescription)::compare;
+
+        /** Comparator. */
         final SerializableComparator<DataItem> SORT_PATH_ASCENDING = Comparator.comparing(
             DataItem::getPath,
             String.CASE_INSENSITIVE_ORDER)::compare;
@@ -1418,10 +1443,6 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
 
         /** Comparator. */
         final SerializableComparator<DataItem> SORT_UNUSED_FIRST = Comparator.comparing(DataItem::getIsUsed)::compare;
-
-        /** Comparator. */
-        final SerializableComparator<DataItem> SORT_NOCOPYRIGHT_FIRST = Comparator.comparing(
-            DataItem::getNoCopyright)::compare;
 
         /**
          * Create a new provider for a given data item list.
@@ -1636,17 +1657,17 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         }
     }
 
+    /** The height of the preview images. */
+    public static final int IMAGE_HEIGHT = 170;
+
+    /** The width of the preview images. */
+    public static final int IMAGE_WIDTH = 200;
+
     /** The sort order session attribute. */
     static final String GALLERY_OPTIMIZE_ATTR_SORT_ORDER = "GALLERY_OPTIMIZE_ATTR_SORT_ORDER";
 
     /** Logger instance for this class. */
     static final Log LOG = CmsLog.getLog(CmsGalleryOptimizeDialog.class);
-
-    /** The height of the preview images. */
-    private static final String IMAGE_HEIGHT = "170";
-
-    /** The width of the preview images. */
-    private static final String IMAGE_WIDTH = "200";
 
     /** The default serial version UID. */
     private static final long serialVersionUID = 1L;
@@ -1657,20 +1678,23 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
     /** The save and exit button. */
     private Button m_buttonSaveAndExit;
 
-    /** The dialog context. */
-    private I_CmsDialogContext m_context;
-
     /** The UI composite representing the gallery item list header view. */
     private Object m_compositeDataListHeader;
+
+    /** The dialog context. */
+    private I_CmsDialogContext m_context;
 
     /** The UI component representing the gallery item list header view. */
     private VerticalLayout m_dataListHeaderView;
 
+    /** The UI component representing the gallery item list view. */
+    private GridLayout m_dataListView;
+
     /** The UI component representing the scrollable wrapper around the gallery item list view. */
     private Panel m_dataListViewScrollable;
 
-    /** The UI component representing the gallery item list view. */
-    private GridLayout m_dataListView;
+    /** The filter handler. */
+    private FilterHandler m_filterHandler = new FilterHandler();
 
     /** The gallery */
     private CmsResource m_gallery;
@@ -1683,6 +1707,12 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
 
     /** Localized message. */
     private String m_messageSortDateLastModifiedDescending;
+
+    /** Localized message. */
+    private String m_messageSortNoCopyrightFirst;
+
+    /** Localized message. */
+    private String m_messageSortNoDescriptionFirst;
 
     /** Localized message. */
     private String m_messageSortPathAscending;
@@ -1699,12 +1729,6 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
     /** Localized message. */
     private String m_messageSortUnusedFirst;
 
-    /** Localized message. */
-    private String m_messageSortNoCopyrightFirst;
-
-    /** The filter handler. */
-    private FilterHandler m_filterHandler = new FilterHandler();
-
     /** The page handler. */
     private PageHandler m_pageHandler = new PageHandler();
 
@@ -1713,6 +1737,9 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
 
     /** The save handler. */
     private SaveHandler m_saveHandler = new SaveHandler();
+
+    /** Contains information about unused images. */
+    private CssLayout m_unusedInfo = new CssLayout();
 
     /**
      * Creates a new instance of a gallery optimize dialog.<p>
@@ -1728,9 +1755,34 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         initDialog();
         initLock();
         initEvents();
+        m_unusedInfo.setWidth("100%");
         dataListLoad();
         displayDataListHeaderView();
         displayDataListViewSorted(getSessionSortOrder());
+    }
+
+    /**
+     * Gets the scaling parameters for the preview.
+     *
+     * @param highres if true, generates high-resolution scaling parameters
+     * @return the scaling parameters
+     */
+    public static String getScaleParameter(boolean highres) {
+
+        int m = highres ? 2 : 1;
+        String suffix = highres ? ",q:85" : "";
+        return "t:9,w:" + (m * IMAGE_WIDTH) + ",h:" + (m * IMAGE_HEIGHT) + suffix;
+
+    }
+
+    /**
+     * Gets the scaling query string for the preview.
+     * @param highres if true, generates high-resolution scaling query string
+     * @return the scaling parameters
+     */
+    public static String getScaleQueryString(boolean highres) {
+
+        return "?__scale=" + getScaleParameter(highres);
     }
 
     /**
@@ -1853,7 +1905,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 @Override
                 public void run() {
 
-                    persist();
+                    persist(exit);
                     m_saveHandler.setFlagCancelSave(false);
                     if (exit) {
                         finishDialog(m_saveHandler.getChangedIds());
@@ -1873,7 +1925,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 m_saveHandler.getDeletedCurrentResource(),
                 org.opencms.ui.Messages.GUI_SELECTED_0);
         } else {
-            persist();
+            persist(exit);
             if (exit) {
                 finishDialog(m_saveHandler.getChangedIds());
             }
@@ -1889,6 +1941,8 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
      */
     private HorizontalLayout createDisplayGalleryInUse() throws CmsException {
 
+        String galleryTitle = getGalleryTitle();
+        String text = CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_DIRECTLY_USED_1, galleryTitle);
         HorizontalLayout layout1 = new HorizontalLayout();
         layout1.setWidthFull();
         layout1.addStyleNames("v-panel", "o-error-dialog", OpenCmsTheme.GALLERY_ALERT_IN_USE);
@@ -1898,8 +1952,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         icon.setContentMode(ContentMode.HTML);
         icon.setWidthUndefined();
         icon.setStyleName("o-warning-icon");
-        String galleryTitle = getGalleryTitle();
-        Label message = new Label(CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_DIRECTLY_USED_1, galleryTitle));
+        Label message = new Label(text);
         message.setContentMode(ContentMode.HTML);
         message.setWidthUndefined();
         layout2.addComponent(icon);
@@ -1917,15 +1970,28 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
      */
     private HorizontalLayout createDisplayInOnlineProject() {
 
+        String text = CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_OPTIMIZE_LABEL_IN_ONLINE_PROJECT_0);
+        return createNote(text);
+    }
+
+    /**
+     * Creates an info box.
+     *
+     * @param text the text (HTML) to display in the box
+     * @param styles the additional CSS styles for the info box
+     * @return
+     */
+    private HorizontalLayout createNote(String text, String... styles) {
+
         HorizontalLayout layout = new HorizontalLayout();
         layout.setWidthFull();
         layout.addStyleNames("v-panel", "o-error-dialog");
+        layout.addStyleNames(styles);
         Label icon = new Label(FontOpenCms.WARNING.getHtml());
         icon.setContentMode(ContentMode.HTML);
         icon.setWidthUndefined();
         icon.setStyleName("o-warning-icon");
-        Label message = new Label(
-            CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_OPTIMIZE_LABEL_IN_ONLINE_PROJECT_0));
+        Label message = new Label(text);
         message.setContentMode(ContentMode.HTML);
         message.setWidthUndefined();
         layout.addComponent(icon);
@@ -1933,6 +1999,26 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         layout.setComponentAlignment(message, Alignment.MIDDLE_LEFT);
         layout.setExpandRatio(message, 1.0f);
         return layout;
+    }
+
+    /**
+     * Creates a note widget to display above the list.
+     *
+     * @param html the HTML content
+     * @param styles the additional CSS classes
+     * @return the created widget
+     */
+    private HorizontalLayout createSimpleNote(String html, String... styles) {
+
+        HorizontalLayout layout1 = new HorizontalLayout();
+        layout1.setWidthFull();
+        layout1.addStyleNames("v-panel", "o-error-dialog");
+        layout1.addStyleName("o-optimize-gallery-note");
+        layout1.addStyleNames(styles);
+        Label message = new Label(html);
+        message.setContentMode(ContentMode.HTML);
+        layout1.addComponent(message);
+        return layout1;
     }
 
     /**
@@ -1989,7 +2075,9 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             }
         }
         m_compositeDataListHeader = new DataListHeaderComposite();
+
         m_dataListHeaderView.addComponent((Component)m_compositeDataListHeader);
+        m_dataListHeaderView.addComponent(m_unusedInfo);
     }
 
     /**
@@ -2023,6 +2111,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             m_dataListView.addComponent(dataItem.getCompositeForm(), 2, i);
             i++;
         }
+        updateUnusedInfo();
         if (scrollToTop) {
             m_dataListViewScrollable.setScrollTop(0);
         }
@@ -2055,6 +2144,8 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             m_provider.setSortComparator(m_provider.SORT_UNUSED_FIRST);
         } else if (sortOrder == m_messageSortNoCopyrightFirst) {
             m_provider.setSortComparator(m_provider.SORT_NOCOPYRIGHT_FIRST);
+        } else if (sortOrder == m_messageSortNoDescriptionFirst) {
+            m_provider.setSortComparator(m_provider.SORT_NODESCRIPTION_FIRST);
         } else {
             m_provider.setSortComparator(defaultSortOrder);
         }
@@ -2177,30 +2268,49 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         m_messageSortUnusedFirst = CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_OPTIMIZE_SORT_UNUSED_FIRST_0);
         m_messageSortNoCopyrightFirst = CmsVaadinUtils.getMessageText(
             Messages.GUI_GALLERY_OPTIMIZE_SORT_NOCOPYRIGHT_FIRST_0);
+        m_messageSortNoDescriptionFirst = CmsVaadinUtils.getMessageText(
+            Messages.GUI_GALLERY_OPTIMIZE_SORT_NODESCRIPTION_FIRST_0);
     }
 
     /**
      * Persists all data changes that have not been saved yet. Refreshes the UI.
      * Informs the user about failed updates, failed renames and failed deletes.<p>
+     *
+     * @param exit true if we exit the dialog after saving
      */
-    private void persist() {
+    private void persist(boolean exit) {
 
         StringBuilder errorMessageList = new StringBuilder();
         persistUpdateAndRename(errorMessageList);
         persistDelete(errorMessageList);
+
+        // In the embedded dialog case, using the Vaadin notifications when exiting the dialog doesn't work (the iframe
+        // is hidden before the notifications show up).
+        // We don't really need notifications for the successful case, but when errors occur, we send them to the
+        // ADE notification mechanism.
+        boolean embeddedExit = (m_context instanceof CmsEmbeddedDialogContext) && exit;
+
         if (errorMessageList.length() == 0) {
-            String message = CmsVaadinUtils.getMessageText(Messages.GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0);
-            Notification notification = new Notification(message, "", Notification.Type.HUMANIZED_MESSAGE);
-            notification.setPosition(Position.TOP_CENTER);
-            notification.show(Page.getCurrent());
+
+            if (!embeddedExit) {
+                String message = CmsVaadinUtils.getMessageText(
+                    Messages.GUI_GALLERY_OPTIMIZE_LABEL_SUCCESSFULLY_SAVED_0);
+                Notification notification = new Notification(message, "", Notification.Type.HUMANIZED_MESSAGE);
+                notification.setPosition(Position.TOP_CENTER);
+                notification.show(Page.getCurrent());
+            }
         } else {
-            Notification notification = new Notification(
-                "",
-                errorMessageList.toString(),
-                Notification.Type.ERROR_MESSAGE);
-            notification.setHtmlContentAllowed(true);
-            notification.setPosition(Position.TOP_CENTER);
-            notification.show(Page.getCurrent());
+            if (embeddedExit) {
+                ((CmsEmbeddedDialogContext)m_context).sendNotification(true, errorMessageList.toString());
+            } else {
+                Notification notification = new Notification(
+                    "",
+                    errorMessageList.toString(),
+                    Notification.Type.ERROR_MESSAGE);
+                notification.setHtmlContentAllowed(true);
+                notification.setPosition(Position.TOP_CENTER);
+                notification.show(Page.getCurrent());
+            }
         }
     }
 
@@ -2293,6 +2403,81 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 LOG.warn(e.getLocalizedMessage(), e);
             }
         }
+    }
+
+    /**
+     * Updates the 'unused elements' information.
+     */
+    private void updateUnusedInfo() {
+
+        m_unusedInfo.removeAllComponents();
+        m_unusedInfo.setVisible(true);
+        boolean isImageGallery = OpenCms.getResourceManager().matchResourceType("imagegallery", m_gallery.getTypeId());
+        if (m_provider.getSortComparator() == m_provider.SORT_UNUSED_FIRST) {
+            long unusedCount = m_provider.getItems().stream().filter(item -> !item.getIsUsed()).count();
+            if (unusedCount == 0) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NO_UNUSED_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_NO_UNUSED_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text, "o-optimize-gallery-warning"));
+            } else {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NUM_UNUSED_1
+                    : Messages.GUI_GALLERY_OPTIMIZE_NUM_UNUSED_DOWNLOADS_1,
+                    unusedCount);
+                m_unusedInfo.addComponent(createSimpleNote(text));
+            }
+        } else if (m_provider.getSortComparator() == m_provider.SORT_NOCOPYRIGHT_FIRST) {
+            long noCopyright = m_provider.getItems().stream().filter(item -> !item.getNoCopyright()).count();
+            if (noCopyright == 0) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_NO_NOCOPYRIGHT_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text, "o-optimize-gallery-warning"));
+            } else if (noCopyright == 1) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_ONE_NOCOPYRIGHT_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text));
+            } else {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_1
+                    : Messages.GUI_GALLERY_OPTIMIZE_NUM_NOCOPYRIGHT_DOWNLOADS_1,
+                    noCopyright);
+                m_unusedInfo.addComponent(createSimpleNote(text));
+            }
+        } else if (m_provider.getSortComparator() == m_provider.SORT_NODESCRIPTION_FIRST) {
+            long noDescription = m_provider.getItems().stream().filter(item -> !item.getNoDescription()).count();
+            if (noDescription == 0) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_NO_NODESCRIPTION_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text, "o-optimize-gallery-warning"));
+            } else if (noDescription == 1) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_ONE_NODESCRIPTION_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text));
+            } else {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_1
+                    : Messages.GUI_GALLERY_OPTIMIZE_NUM_NODESCRIPTION_DOWNLOADS_1,
+                    noDescription);
+
+                m_unusedInfo.addComponent(createSimpleNote(text));
+            }
+        } else {
+            m_unusedInfo.setVisible(false);
+        }
+
     }
 
 }

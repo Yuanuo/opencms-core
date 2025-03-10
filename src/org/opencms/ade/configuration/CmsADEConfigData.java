@@ -28,6 +28,7 @@
 package org.opencms.ade.configuration;
 
 import org.opencms.ade.configuration.CmsADEConfigDataInternal.AttributeValue;
+import org.opencms.ade.configuration.CmsADEConfigDataInternal.ConfigReferenceMeta;
 import org.opencms.ade.configuration.formatters.CmsFormatterBeanParser;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCacheState;
@@ -1052,7 +1053,7 @@ public class CmsADEConfigData {
         }
         Collection<CmsUUID> enabledIds = m_data.getDynamicFunctions();
         Collection<CmsUUID> disabledIds = m_data.getFunctionsToRemove();
-        if (m_data.isRemoveAllFunctions()) {
+        if (m_data.isRemoveAllFunctions() && !m_configSequence.getMeta().isSkipRemovals()) {
             result.removeAll();
         }
         if (enabledIds != null) {
@@ -1102,6 +1103,9 @@ public class CmsADEConfigData {
         while (currentConfig != null) {
             CmsFormatterChangeSet changes = currentConfig.getOwnFormatterChangeSet();
             if (changes != null) {
+                if (currentConfig.getMeta().isSkipRemovals()) {
+                    changes = changes.cloneWithNoRemovals();
+                }
                 result.add(changes);
             }
             currentConfig = currentConfig.parent();
@@ -1264,7 +1268,8 @@ public class CmsADEConfigData {
 
         CmsADEConfigData parentData = parent();
         List<CmsPropertyConfig> parentProperties;
-        if ((parentData != null) && !m_data.isDiscardInheritedProperties()) {
+        boolean removeInherited = m_data.isDiscardInheritedProperties() && !getMeta().isSkipRemovals();
+        if ((parentData != null) && !removeInherited) {
             parentProperties = parentData.getPropertyConfiguration();
         } else {
             parentProperties = Collections.emptyList();
@@ -1397,7 +1402,8 @@ public class CmsADEConfigData {
         List<CmsADEConfigData> relevantConfigurations = new ArrayList<>();
         while (currentConfig != null) {
             relevantConfigurations.add(currentConfig);
-            if (currentConfig.m_data.isRemoveSharedSettingOverrides()) {
+            if (currentConfig.m_data.isRemoveSharedSettingOverrides()
+                && !currentConfig.m_configSequence.getMeta().isSkipRemovals()) {
                 // once we find a configuration where 'remove all shared setting overrides' is enabled,
                 // all parent configurations become irrelevant
                 break;
@@ -1429,7 +1435,7 @@ public class CmsADEConfigData {
 
         CmsADEConfigData parent = parent();
         Set<CmsUUID> result;
-        if ((parent == null) || m_data.isRemoveAllPlugins()) {
+        if ((parent == null) || (m_data.isRemoveAllPlugins() && !getMeta().isSkipRemovals())) {
             result = new HashSet<>();
         } else {
             result = parent.getSitePluginIds();
@@ -1633,6 +1639,11 @@ public class CmsADEConfigData {
         return m_data.isExcludeExternalDetailContents();
     }
 
+    /**
+     * Checks if dynamic functions not matching any containers should be hidden.
+     *
+     * @return true if dynamic functions not matching any containers should be hidden
+     */
     public boolean isHideNonMatchingFunctions() {
 
         return getDisabledFunctionsMode(CmsGalleryDisabledTypesMode.hide) == CmsGalleryDisabledTypesMode.hide;
@@ -1904,6 +1915,16 @@ public class CmsADEConfigData {
     }
 
     /**
+     * Gets the metadata about how this configuration was referenced.
+     *
+     * @return the metadata
+     */
+    protected ConfigReferenceMeta getMeta() {
+
+        return m_configSequence.getMeta();
+    }
+
+    /**
      * Internal method for getting the function references.<p>
      *
      * @return the function references
@@ -1939,13 +1960,16 @@ public class CmsADEConfigData {
         } else {
             parentResourceTypes = Lists.newArrayList();
             for (CmsResourceTypeConfig typeConfig : parentData.internalGetResourceTypes(false)) {
-                CmsResourceTypeConfig copiedType = typeConfig.copy(m_data.isDiscardInheritedTypes());
+                CmsResourceTypeConfig copiedType = typeConfig.copy(
+                    m_data.isDiscardInheritedTypes() && !getMeta().isSkipRemovals());
                 parentResourceTypes.add(copiedType);
             }
         }
+        String template = getMeta().getTemplate();
         List<CmsResourceTypeConfig> result = combineConfigurationElements(
             parentResourceTypes,
-            m_data.getOwnResourceTypes(),
+            m_data.getOwnResourceTypes().stream().map(type -> type.markWithTemplate(template)).collect(
+                Collectors.toList()),
             true);
         if (m_data.isCreateContentsLocally()) {
             for (CmsResourceTypeConfig typeConfig : result) {
@@ -1987,8 +2011,18 @@ public class CmsADEConfigData {
 
         List<CmsDetailPageInfo> result = new ArrayList<CmsDetailPageInfo>();
         Map<String, List<CmsDetailPageInfo>> resultDetailPageMap = Maps.newHashMap();
-        resultDetailPageMap.putAll(getDetailPagesMap(parentDetailPageCopies));
-        resultDetailPageMap.putAll(getDetailPagesMap(ownDetailPages));
+        Map<String, List<CmsDetailPageInfo>> parentPagesGroupedByType = getDetailPagesMap(parentDetailPageCopies);
+        Map<String, List<CmsDetailPageInfo>> childPagesGroupedByType = getDetailPagesMap(ownDetailPages);
+        Set<String> allTypes = new HashSet<>();
+        allTypes.addAll(parentPagesGroupedByType.keySet());
+        allTypes.addAll(childPagesGroupedByType.keySet());
+        for (String type : allTypes) {
+
+            List<CmsDetailPageInfo> parentPages = parentPagesGroupedByType.get(type);
+            List<CmsDetailPageInfo> childPages = childPagesGroupedByType.get(type);
+            List<CmsDetailPageInfo> merged = mergeDetailPagesForType(parentPages, childPages);
+            resultDetailPageMap.put(type, merged);
+        }
         result = new ArrayList<CmsDetailPageInfo>();
         for (List<CmsDetailPageInfo> pages : resultDetailPageMap.values()) {
             result.addAll(pages);
@@ -2023,6 +2057,7 @@ public class CmsADEConfigData {
                     rootPath,
                     page.getType(),
                     page.getQualifier(),
+                    page.getFolders(),
                     iconClasses);
                 result.add(page.isInherited() ? correctedPage.copyAsInherited() : correctedPage);
             } catch (CmsException e) {
@@ -2134,6 +2169,43 @@ public class CmsADEConfigData {
             m_formattersByKey = formattersByKey;
         }
         return m_formattersByKey;
+    }
+
+    /**
+     * Merges detail pages for a specific resource type from a parent and child sitemap.
+     *
+     * @param parentPages the detail pages from the parent sitemap
+     * @param childPages the detail pages from the child sitemap
+     * @return the merged detail pages
+     */
+    private List<CmsDetailPageInfo> mergeDetailPagesForType(
+        List<CmsDetailPageInfo> parentPages,
+        List<CmsDetailPageInfo> childPages) {
+
+        List<CmsDetailPageInfo> merged = null;
+        if ((parentPages != null) && (childPages != null)) {
+            if (childPages.stream().anyMatch(page -> page.getQualifier() == null)) {
+                // If the child detail pages contain one with an unqualified type, they completely override the parent detail pages.
+                merged = childPages;
+            } else {
+                // Otherwise, all child pages with a specific merge key override all parent pages with the same merge key
+                Map<String, List<CmsDetailPageInfo>> pagesGroupedByMergeKey = new HashMap<>();
+                for (List<CmsDetailPageInfo> pages : Arrays.asList(parentPages, childPages)) {
+                    pagesGroupedByMergeKey.putAll(
+                        pages.stream().collect(Collectors.groupingBy(page -> page.getMergeKey())));
+                }
+                // combine page lists for all merge keys into a single page list
+                merged = pagesGroupedByMergeKey.entrySet().stream().flatMap(entry -> entry.getValue().stream()).collect(
+                    Collectors.toList());
+            }
+        } else if (parentPages != null) {
+            merged = parentPages;
+        } else if (childPages != null) {
+            merged = childPages;
+        } else {
+            merged = new ArrayList<>();
+        }
+        return merged;
     }
 
 }

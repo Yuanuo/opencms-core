@@ -36,6 +36,7 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
+import org.opencms.file.types.CmsResourceTypeImage;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.flex.CmsFlexController;
 import org.opencms.gwt.CmsGwtService;
@@ -47,7 +48,9 @@ import org.opencms.gwt.shared.property.CmsClientProperty;
 import org.opencms.gwt.shared.property.CmsPropertyModification;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
+import org.opencms.main.CmsPermalinkResourceHandler;
 import org.opencms.main.OpenCms;
+import org.opencms.ui.dialogs.CmsGalleryOptimizeDialog;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -141,6 +144,7 @@ public class CmsPostUploadDialogService extends CmsGwtService implements I_CmsPo
                 result.setWarning(warning);
             }
 
+            CmsObject cms = getCmsObject();
             I_CmsResourceType type = OpenCms.getResourceManager().getResourceType(res.getTypeId());
             String typeName = type.getTypeName();
             listInfo.setResourceType(typeName);
@@ -156,19 +160,24 @@ public class CmsPostUploadDialogService extends CmsGwtService implements I_CmsPo
             Map<String, CmsXmlContentProperty> propertyDefinitions = new LinkedHashMap<String, CmsXmlContentProperty>();
             Map<String, CmsClientProperty> clientProperties = new LinkedHashMap<String, CmsClientProperty>();
 
-            // add the file name to the list of properties to allow renaming the uploaded file
+            // match strings consisting of one or more alphanumeric characters and those from NAME_CONSTRAINTS, but exclude those that are just sequences of one or more "."s
+            String regex = "^(?!\\.+$)[" + CmsResource.NAME_CONSTRAINTS + "a-zA-Z0-9]+$";
+            Locale locale = OpenCms.getWorkplaceManager().getWorkplaceLocale(cms);
+            String validationMessage = Messages.get().getBundle(locale).key(
+                Messages.GUI_POSTUPLOAD_FILENAME_VALIDATION_ERROR_1,
+                CmsResource.NAME_CONSTRAINTS);
             CmsXmlContentProperty fileNamePropDef = new CmsXmlContentProperty(
                 CmsPropertyModification.FILE_NAME_PROPERTY,
                 "string",
                 "string",
                 "",
-                "",
+                regex,
                 "",
                 "",
                 Messages.get().getBundle(OpenCms.getWorkplaceManager().getWorkplaceLocale(getCmsObject())).key(
                     Messages.GUI_UPLOAD_FILE_NAME_0),
                 "",
-                "",
+                validationMessage,
                 "false");
             propertyDefinitions.put(CmsPropertyModification.FILE_NAME_PROPERTY, fileNamePropDef);
             clientProperties.put(
@@ -230,6 +239,36 @@ public class CmsPostUploadDialogService extends CmsGwtService implements I_CmsPo
 
             CmsPropertyEditorHelper.updateWysiwygConfig(propertyDefinitions, getCmsObject(), res);
 
+            String previewLink = null;
+            if (CmsResourceTypeImage.getStaticTypeName().equals(typeName)) {
+                String extension = CmsResource.getExtension(res.getRootPath());
+                String suffix = extension != null ? "." + extension : "";
+                String permalink = CmsStringUtil.joinPaths(
+                    OpenCms.getSystemInfo().getOpenCmsContext(),
+                    CmsPermalinkResourceHandler.PERMALINK_HANDLER,
+                    res.getStructureId().toString()) + suffix;
+                previewLink = permalink + CmsGalleryOptimizeDialog.getScaleQueryString(false);
+                result.setPermalink(permalink);
+                result.setPreviewLink(previewLink);
+                result.setHighResPreviewLink(permalink + CmsGalleryOptimizeDialog.getScaleQueryString(true));
+                result.setPreviewInfo1((res.getLength() / 1024) + "kb");
+                CmsProperty imageSizeProp = cms.readPropertyObject(
+                    res,
+                    CmsPropertyDefinition.PROPERTY_IMAGE_SIZE,
+                    false);
+                String imageSizeText = "? x ?";
+                if (!CmsStringUtil.isEmptyOrWhitespaceOnly(imageSizeProp.getValue())) {
+                    Map<String, String> imageSizeAttrs = CmsStringUtil.splitAsMap(imageSizeProp.getValue(), ",", ":");
+                    String w = imageSizeAttrs.get("w");
+                    String h = imageSizeAttrs.get("h");
+                    if ((w != null) && (h != null)) {
+                        imageSizeText = w + " x " + h;
+
+                    }
+                }
+                result.setPreviewInfo2(imageSizeText);
+            }
+
             result.setPropertyDefinitions(propertyDefinitions);
             result.setProperties(clientProperties);
             return result;
@@ -285,6 +324,15 @@ public class CmsPostUploadDialogService extends CmsGwtService implements I_CmsPo
 
         Map<CmsUUID, String> result = new LinkedHashMap<>();
         CmsObject cms = getCmsObject();
+        boolean hasImage = false;
+        for (CmsResource resource : resources) {
+            if (OpenCms.getResourceManager().matchResourceType(
+                CmsResourceTypeImage.getStaticTypeName(),
+                resource.getTypeId())) {
+                hasImage = true;
+                break;
+            }
+        }
         // split resource list into two parts, ones that have required properties and ones that don't,
         // then iterate over the ones with required properties first.
         //
@@ -298,7 +346,7 @@ public class CmsPostUploadDialogService extends CmsGwtService implements I_CmsPo
         }
         Set<CmsUUID> reqValIds = parts.get(Boolean.TRUE).stream().map(res -> res.getStructureId()).collect(
             Collectors.toSet());
-        return new CmsPostUploadDialogBean(result, reqValIds);
+        return new CmsPostUploadDialogBean(result, reqValIds, hasImage);
     }
 
     /**

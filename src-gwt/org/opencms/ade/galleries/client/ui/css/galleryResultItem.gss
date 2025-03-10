@@ -1,9 +1,9 @@
 @external cms_type_icon, imagedrag;
 
-@def smallImageWidth 96;
-@def smallImageHeight 72;
+@def smallImageWidth 100;
+@def smallImageHeight 85;
 @def bigImageWidth 200;
-@def bigImageHeight 150;
+@def bigImageHeight 170;
 
 /** unused classes **/
 .itemAdditional, .oc-inline-editable, .open, .itemActive, .itemRed, .itemBlue, .itemYellow, .disabledItem, .itemTitle, .cms_type_icon, .expired,
@@ -21,20 +21,28 @@
 
 .tilingList .tilingItem .itemContent{
 	height: auto;	
+	vertical-align: top;
 }
 
 .tilingList .tilingItem .itemContainer{
-	padding: 2px;
 	line-height: 1px;
+	overflow: hidden;
+	vertical-align: top;
 }
 
 .tilingList div.imageTile{
-	gwt-sprite: "coreImages.brokenImage";
-	background-position: center;
 	display: block;
 	width: value("galleryResultItemCss.bigImageWidth","px");
 	height: value("galleryResultItemCss.bigImageHeight","px");
 }
+
+.tilingList div.imageTile img {
+	object-fit: scale-down;
+	background-color: #eeeeee;
+	background-size: 20px 20px;
+	background-position: 0 0,10px 10px;
+}
+
 .tilingList div.imageTile img.bigImage {
 	display: block;
 	width: value("galleryResultItemCss.bigImageWidth","px");
@@ -42,9 +50,21 @@
 }
 
 .tilingList div.imageTile.svg img {
-	background-color: white;
+	background-color: #eeeeee;
 	object-fit: contain;
 }
+
+.tilingList {
+	margin-left: 0px !important;
+	margin-top: 0px !important;
+	margin-right: 2px;
+	margin-bottom: 2px;
+	padding-left: 0px !important;
+	padding-bottom: 4px !important;
+}
+
+	
+	
 
 .expiredImageOverlay {
 	display: none; 
@@ -68,7 +88,15 @@ li.expired .expiredImageOverlay {
 }
 
 .tilingList .tilingItem{
-	margin: 1px;
+	margin-left: 4px;
+	margin-top: 4px;
+	margin-right: 0px !important;
+	margin-bottom: 0px !important;
+}
+
+.tilingList .buttonPanel {
+	margin-right: 2px;
+	margin-top: 2px;
 }
 
 .tilingList .tilingItem .lockIcon{
@@ -93,5 +121,5 @@ li.expired .expiredImageOverlay {
 }
 
 .tilingList .topRightIcon {
-	left: 0px !important; 
+	left: 2px !important; 
 }

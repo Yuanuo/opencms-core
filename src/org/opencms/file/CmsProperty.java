@@ -92,30 +92,31 @@ public class CmsProperty implements Serializable, Cloneable, Comparable<CmsPrope
      * dependent on the locale.
      */
     public static class CmsPropertyLocaleTransformer implements Transformer {
-    
+
         /** The original properties map. */
         private Map<String, String> m_properties;
         /** The locale, w.r.t. which the properties should be accessed. */
         private Locale m_locale;
-    
+
         /**
          * Default constructor.
          * @param properties the "raw" properties map as read for a resource.
          * @param locale the locale w.r.t. which the properties should be accessed.
          */
         public CmsPropertyLocaleTransformer(Map<String, String> properties, Locale locale) {
+
             m_properties = null == properties ? new HashMap<String, String>() : properties;
             m_locale = null == locale ? new Locale("") : locale;
         }
-    
+
         /**
          * @see org.apache.commons.collections.Transformer#transform(java.lang.Object)
          */
         public Object transform(Object propertyName) {
-    
+
             return readProperty((String)propertyName);
         }
-    
+
         /**
          * Looks up a property in {@link #m_properties}, but returns the localized variant.
          *
@@ -123,7 +124,7 @@ public class CmsProperty implements Serializable, Cloneable, Comparable<CmsPrope
          * @return the value of the property
          */
         protected String readProperty(String propertyName) {
-    
+
             if (null == m_locale) {
                 return m_properties.get(propertyName);
             } else {
@@ -314,6 +315,43 @@ public class CmsProperty implements Serializable, Cloneable, Comparable<CmsPrope
         }
 
         return NULL_PROPERTY;
+    }
+
+    /**
+     * Returns the locale specific property name for the provided property base name.
+     * The locale specific extension is added without any check.
+     * E.g., for provided property name "Title" and locale "de_DE", the result will be "Title_de_DE".
+     * If the locale is null, the base name will be returned as is.
+     * If the base name is null, null will be returned.
+     *
+     * @param baseName the base property name.
+     * @param locale the locale to extend the property name for.
+     * @return the locale specific property name.
+     */
+    public static String getLocaleSpecificPropertyName(String baseName, Locale locale) {
+
+        return baseName == null ? null : (locale == null ? baseName : (baseName + "_" + locale.toString()));
+    }
+
+    /**
+     * Returns the value for the best matching local-specific property version.
+     *
+     * @param propertiesMap the "raw" property map
+     * @param key the name of the property to search for
+     * @param locale the locale to search for
+     *
+     * @return the key for the best matching local-specific property version.
+     */
+    public static String getLocaleSpecificPropertyValue(
+        Map<String, CmsProperty> propertiesMap,
+        String key,
+        Locale locale) {
+
+        String localeSpecificKey = CmsProperty.getLocalizedKey(propertiesMap, key, locale);
+        if (propertiesMap.containsKey(localeSpecificKey)) {
+            return propertiesMap.get(localeSpecificKey).getValue();
+        }
+        return null;
     }
 
     /**

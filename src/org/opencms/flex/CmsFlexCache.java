@@ -1097,9 +1097,6 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
     private void put(CmsFlexCacheKey key, CmsFlexCacheEntry theCacheEntry, String variation) {
 
         CmsFlexCacheVariation o = m_keyCache.get(key.getResource());
-        if (key.getTimeout() > 0) {
-            theCacheEntry.setDateExpiresToNextTimeout(key.getTimeout());
-        }
         if (o == null) {
             // No variation map for this resource yet, so create one
             putKey(key);
@@ -1128,7 +1125,7 @@ public class CmsFlexCache extends Object implements I_CmsEventListener {
             LOG.debug(
                 Messages.get().getBundle().key(
                     Messages.LOG_FLEXCACHE_ADDED_ENTRY_FOR_RESOURCE_WITH_VARIATION_3,
-                    new Integer(m_size),
+                    Integer.valueOf(m_size),
                     key.getResource(),
                     variation));
             LOG.debug(Messages.get().getBundle().key(Messages.LOG_FLEXCACHE_ADDED_ENTRY_1, theCacheEntry.toString()));

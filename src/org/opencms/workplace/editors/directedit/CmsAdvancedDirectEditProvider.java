@@ -37,6 +37,7 @@ import org.opencms.file.types.CmsResourceTypeBinary;
 import org.opencms.file.types.CmsResourceTypeImage;
 import org.opencms.file.types.CmsResourceTypePlain;
 import org.opencms.file.types.CmsResourceTypeXmlContent;
+import org.opencms.file.types.CmsResourceTypeXmlPage;
 import org.opencms.file.types.I_CmsResourceType;
 import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.I_CmsAutoBeanFactory;
@@ -186,7 +187,9 @@ public class CmsAdvancedDirectEditProvider extends A_CmsDirectEditProvider {
      */
     public String endDirectEditEnabled() {
 
-        return "<div class=\"" + CmsGwtConstants.CLASS_EDITABLE_END + "\"></div>\n";
+        String tag = CmsGwtConstants.CLASS_EDITABLE_END;
+
+        return "<" + tag + " class=\"" + CmsGwtConstants.CLASS_EDITABLE_END + "\"></" + tag + ">\n";
     }
 
     /**
@@ -304,13 +307,18 @@ public class CmsAdvancedDirectEditProvider extends A_CmsDirectEditProvider {
         AutoBean<I_CmsContentLoadCollectorInfo> collectorInfoAutoBean = collectorInfoFactory.wrapCollectorInfo(info);
         String serializedCollectorInfo = AutoBeanCodex.encode(collectorInfoAutoBean).getPayload();
 
-        String marker = "<div class='"
+        String tag = CmsGwtConstants.CLASS_COLLECTOR_INFO;
+        String marker = "<"
+            + tag
+            + " class='"
             + CmsGwtConstants.CLASS_COLLECTOR_INFO
             + "' style='display: none !important;' "
             + CmsGwtConstants.ATTR_DATA_COLLECTOR
             + "='"
             + CmsEncoder.escapeXml(serializedCollectorInfo)
-            + "'></div>";
+            + "'></"
+            + tag
+            + ">";
         print(context, marker);
     }
 
@@ -476,7 +484,8 @@ public class CmsAdvancedDirectEditProvider extends A_CmsDirectEditProvider {
         boolean hasNew = false;
         editableData.put(
             "hasEdit",
-            params.getButtonSelection().isShowEdit() && CmsResourceTypeXmlContent.isXmlContent(resource));
+            params.getButtonSelection().isShowEdit()
+                && (CmsResourceTypeXmlContent.isXmlContent(resource) || CmsResourceTypeXmlPage.isXmlPage(resource)));
         editableData.put(
             "hasDelete",
             params.getButtonSelection().isShowDelete() && writable && sitemapConfigPermissions.canEdit());
@@ -556,21 +565,27 @@ public class CmsAdvancedDirectEditProvider extends A_CmsDirectEditProvider {
 
         StringBuffer result = new StringBuffer(512);
         if (m_useIds) {
+            String tag = CmsGwtConstants.CLASS_EDITABLE;
             result.append(
-                "<div id=\""
+                "<"
+                    + tag
+                    + " id=\"" // use custom tag
                     + getRandomId()
                     + "\" class='"
                     + CmsGwtConstants.CLASS_EDITABLE
                     + "' "
                     + CmsGwtConstants.ATTR_DATA_EDITABLE
-                    + "='").append(editableData.toString()).append("'></div>\n");
+                    + "='").append(editableData.toString()).append("'></" + tag + ">\n");
         } else {
+            String tag = CmsGwtConstants.CLASS_EDITABLE;
             result.append(
-                "<div class='"
+                "<"
+                    + tag
+                    + " class='"
                     + CmsGwtConstants.CLASS_EDITABLE
                     + "' "
                     + CmsGwtConstants.ATTR_DATA_EDITABLE
-                    + "='").append(editableData.toString()).append("'></div>\n");
+                    + "='").append(editableData.toString()).append("'></" + tag + ">\n");
         }
         return result.toString();
     }

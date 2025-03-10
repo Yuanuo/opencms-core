@@ -29,6 +29,7 @@ package org.opencms.configuration;
 
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
 import org.opencms.ade.upload.I_CmsUploadRestriction;
+import org.opencms.ade.upload.I_CmsVirusScanner;
 import org.opencms.configuration.preferences.I_CmsPreference;
 import org.opencms.db.CmsExportPoint;
 import org.opencms.file.types.CmsResourceTypeSubsitemapContentFolder;
@@ -123,6 +124,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
     /** The isview attribute. */
     public static final String A_ISVIEW = "isview";
 
+    /** The 'leaves-only' attribute for the 'display-categories-in-explorer' element. */
+    public static final String A_LEAVES_ONLY = "leaves-only";
+
     /** The name pattern attrribute. */
     public static final String A_NAME_PATTERN = "name-pattern";
 
@@ -186,6 +190,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
     /** The 'widget-config' attribute. */
     public static final String A_WIDGET_CONFIG = "widget-config";
 
+    /** The 'with-path' attribute for the 'display-categories-in-explorer' element. */
+    public static final String A_WITH_PATH = "with-path";
+
     /** The name of the DTD for this configuration. */
     public static final String CONFIGURATION_DTD_NAME = "opencms-workplace.dtd";
 
@@ -206,6 +213,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
 
     /** The name of the account infos node. */
     public static final String N_ACCOUNTINFOS = "account-infos";
+
+    /** The "allow-element-author-to-work-in-galleries" element */
+    public static final String N_ALLOW_ELEMENT_AUTHOR_TO_WORK_IN_GALLERIES = "allow-element-author-to-work-in-galleries";
 
     /** The name of the "allow broken relations" node. */
     public static final String N_ALLOWBROKENRELATIONS = "allowbrokenrelations";
@@ -279,11 +289,17 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
     /** The node name of the directpublish node. */
     public static final String N_DIRECTPUBLISH = "directpublish";
 
+    /** The 'display-categories-in-explorer' element. */
+    public static final String N_DISPLAY_CATEGORIES_IN_EXPLORER = "display-categories-in-explorer";
+
     /** The name of the edit options node. */
     public static final String N_EDITOPTIONS = "editoptions";
 
     /** The node name of the editor node. */
     public static final String N_EDITOR = "editor";
+
+    /** The element editor-max-locale-buttons. */
+    public static final String N_EDITOR_MAX_LOCALE_BUTTONS = "editor-max-locale-buttons";
 
     /** The name of the editor action node. */
     public static final String N_EDITORACTION = "editoraction";
@@ -560,6 +576,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
 
     /** The node name of the user lastmodified node. */
     public static final String N_USERLASTMODIFIED = "show-userlastmodified";
+
+    /** The node name of the virus-scanner node. */
+    public static final String N_VIRUS_SCANNER = "virus-scanner";
 
     /** The subname of the rfsfilesettings/windowSize node. */
     public static final String N_WINDOWSIZE = "windowSize";
@@ -894,6 +913,15 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
         digester.addCallParam("*/" + N_WORKPLACE + "/" + N_CATEGORYDISPLAYOPTIONS, 0, A_DISPLAY_BY_REPOSITORY);
         digester.addCallParam("*/" + N_WORKPLACE + "/" + N_CATEGORYDISPLAYOPTIONS, 1, A_DISPLAY_COLLAPSED);
 
+        // add explorer category options
+        digester.addCallMethod(
+            "*/" + N_WORKPLACE + "/" + N_DISPLAY_CATEGORIES_IN_EXPLORER,
+            "setExplorerCategoryOptions",
+            3);
+        digester.addCallParam("*/" + N_WORKPLACE + "/" + N_DISPLAY_CATEGORIES_IN_EXPLORER, 0, A_ENABLED);
+        digester.addCallParam("*/" + N_WORKPLACE + "/" + N_DISPLAY_CATEGORIES_IN_EXPLORER, 1, A_LEAVES_ONLY);
+        digester.addCallParam("*/" + N_WORKPLACE + "/" + N_DISPLAY_CATEGORIES_IN_EXPLORER, 2, A_WITH_PATH);
+
         digester.addCallMethod("*/" + N_WORKPLACE + "/" + N_GROUP_TRANSLATION, "setGroupTranslationClass", 1);
         digester.addCallParam("*/" + N_WORKPLACE + "/" + N_GROUP_TRANSLATION, 0, A_CLASS);
 
@@ -953,6 +981,8 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
         digester.addCallMethod(
             "*/" + N_WORKPLACE + "/" + N_EDITORPRECONDITIONS + "/" + N_EDITORPRECONDITION,
             I_CmsConfigurationParameterHandler.INIT_CONFIGURATION_METHOD);
+
+        digester.addCallMethod("*/" + N_WORKPLACE + "/" + N_EDITOR_MAX_LOCALE_BUTTONS, "setEditorMaxLocaleButtons", 0);
 
         // add rules for direct edit provider
         digester.addObjectCreate(
@@ -1036,6 +1066,39 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
             }
         });
 
+        digester.addRule("*/" + N_WORKPLACE + "/" + N_VIRUS_SCANNER, new Rule() {
+
+            private boolean m_enabled;
+
+            @Override
+            public void begin(String namespace, String name, Attributes attributes) throws Exception {
+
+                String className = attributes.getValue(A_CLASS);
+                m_enabled = false;
+                if (className != null) {
+                    m_enabled = Boolean.parseBoolean(attributes.getValue(A_ENABLED));
+                    Class<? extends I_CmsVirusScanner> cls = Class.forName(
+                        className,
+                        false,
+                        getClass().getClassLoader()).asSubclass(I_CmsVirusScanner.class);
+                    digester.push(cls.newInstance());
+                }
+            }
+
+            @Override
+            public void end(String namespace, String name) throws Exception {
+
+                if (digester.peek() instanceof I_CmsVirusScanner) { // there may be no virus scanner on the stack if the class name was empty or invalid
+                    I_CmsVirusScanner scanner = (I_CmsVirusScanner)(digester.pop());
+                    scanner.initConfiguration();
+                    CmsWorkplaceManager wpMan = ((CmsWorkplaceManager)digester.peek());
+                    wpMan.setVirusScanner(scanner);
+                    wpMan.setVirusScannerEnabled(m_enabled);
+                }
+            }
+
+        });
+
         // add explorer type rules
         addExplorerTypeXmlRules(digester);
         addDefaultAccessControlRules(digester);
@@ -1065,6 +1128,16 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
 
                 CmsWorkplaceManager wpManager = (CmsWorkplaceManager)(digester.peek());
                 wpManager.setSitemapConfigEditRole(text);
+            }
+        });
+
+        digester.addRule("*/" + N_WORKPLACE + "/" + N_ALLOW_ELEMENT_AUTHOR_TO_WORK_IN_GALLERIES, new Rule() {
+
+            @Override
+            public void body(String namespace, String name, String text) throws Exception {
+
+                CmsWorkplaceManager wpManager = (CmsWorkplaceManager)(digester.peek());
+                wpManager.setAllowElementAuthorToWorkInGalleries(Boolean.valueOf(text).booleanValue());
             }
         });
 
@@ -1147,6 +1220,9 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
             }
         }
 
+        Element maxLocaleElem = workplaceElement.addElement(N_EDITOR_MAX_LOCALE_BUTTONS);
+        maxLocaleElem.setText("" + m_workplaceManager.getEditorMaxLocaleButtons());
+
         I_CmsConfigurationParameterHandler deProvider = m_workplaceManager.getDirectEditProvider();
         Element deProviderNode = workplaceElement.addElement(N_DIRECTEDITPROVIDER).addAttribute(
             A_CLASS,
@@ -1200,6 +1276,11 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
                 categoryDisplayOptions.addAttribute(A_DISPLAY_COLLAPSED, "true");
             }
         }
+
+        Element explorerCategories = workplaceElement.addElement(N_DISPLAY_CATEGORIES_IN_EXPLORER);
+        explorerCategories.addAttribute(A_ENABLED, "" + m_workplaceManager.isExplorerCategoriesEnabled());
+        explorerCategories.addAttribute(A_LEAVES_ONLY, "" + m_workplaceManager.isExplorerCategoriesLeavesOnly());
+        explorerCategories.addAttribute(A_WITH_PATH, "" + m_workplaceManager.isExplorerCategoriesWithPath());
 
         String groupTranslationClass = m_workplaceManager.getGroupTranslationClass();
         if (groupTranslationClass != null) {
@@ -1379,10 +1460,24 @@ public class CmsWorkplaceConfiguration extends A_CmsXmlConfiguration {
         uploadRestrictionElem.addAttribute(A_CLASS, restriction.getClass().getName());
         restriction.getConfiguration().appendToXml(uploadRestrictionElem);
 
+        I_CmsVirusScanner virusScanner = m_workplaceManager.getVirusScanner();
+        Element virusScannerElem = workplaceElement.addElement(N_VIRUS_SCANNER);
+        boolean enabled = false;
+        if (virusScanner != null) {
+            virusScannerElem.addAttribute(A_CLASS, virusScanner.getClass().getName());
+            enabled = m_workplaceManager.isVirusScannerEnabled();
+            virusScanner.getConfiguration().appendToXml(virusScannerElem);
+        }
+        virusScannerElem.addAttribute(A_ENABLED, "" + enabled);
+
         String sitemapConfigEditRole = m_workplaceManager.getSitemapConfigEditRole();
         if (sitemapConfigEditRole != null) {
             workplaceElement.addElement(N_SITEMAP_CONFIG_EDIT_ROLE).addText(sitemapConfigEditRole);
         }
+
+        boolean allowElementAuthorToWorkInGalleries = m_workplaceManager.isAllowElementAuthorToWorkInGalleries();
+        workplaceElement.addElement(N_ALLOW_ELEMENT_AUTHOR_TO_WORK_IN_GALLERIES).addText(
+            "" + allowElementAuthorToWorkInGalleries);
 
         // return the configured node
         return workplaceElement;

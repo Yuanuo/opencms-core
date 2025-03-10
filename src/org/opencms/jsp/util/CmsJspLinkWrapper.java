@@ -37,11 +37,12 @@ import org.opencms.relations.CmsRelationType;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.xml.types.CmsXmlVarLinkValue;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.AbstractCollection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -58,11 +59,11 @@ public class CmsJspLinkWrapper extends AbstractCollection<String> {
     /** Stored CMS context. */
     protected CmsObject m_cms;
 
-    /** The link literal from which this wrapper was created. */
-    protected String m_link;
-
     /** Cached internal/external state. */
     protected Boolean m_internal;
+
+    /** The link literal from which this wrapper was created. */
+    protected String m_link;
 
     /** Cached link target resource. */
     protected Optional<CmsResource> m_resource;
@@ -72,6 +73,21 @@ public class CmsJspLinkWrapper extends AbstractCollection<String> {
 
     /** If <code>true</code> then empty links are allowed. */
     private boolean m_allowEmpty;
+
+    /**
+     * Creates a new link wrapper for a specific resource.
+     *
+     * @param cms the CMS context
+     * @param resource the resource to link to
+     */
+    public CmsJspLinkWrapper(CmsObject cms, CmsResource resource) {
+
+        m_cms = cms;
+        m_link = cms.getSitePath(resource);
+        m_allowEmpty = false;
+        m_internal = Boolean.TRUE;
+
+    }
 
     /**
      * Creates a new link wrapper.<p>
@@ -236,6 +252,18 @@ public class CmsJspLinkWrapper extends AbstractCollection<String> {
     }
 
     /**
+     * Converts the wrapped string to an URI object and returns it.
+     *
+     * <p>If the wrapped string cannont be converted, returns null.
+     *
+     * @return the URI object for the wrapped string, or null if conversion fails
+     */
+    public URI getToURI() {
+
+        return toURI();
+    }
+
+    /**
      * @see org.opencms.jsp.util.A_CmsJspValueWrapper#hashCode()
      */
     @Override
@@ -290,5 +318,24 @@ public class CmsJspLinkWrapper extends AbstractCollection<String> {
     public String toString() {
 
         return getLink();
+    }
+
+    /**
+     * Converts the wrapped string to an URI object and returns it.
+     *
+     * <p>If the wrapped string cannont be converted, returns null.
+     *
+     * @return the URI object for the wrapped string, or null if conversion fails
+     */
+    public URI toURI() {
+
+        if (m_link == null) {
+            return null;
+        }
+        try {
+            return new URI(m_link);
+        } catch (URISyntaxException e) {
+            return null;
+        }
     }
 }

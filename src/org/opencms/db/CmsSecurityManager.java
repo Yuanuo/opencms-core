@@ -27,6 +27,7 @@
 
 package org.opencms.db;
 
+import org.opencms.ade.contenteditor.CmsAccessRestrictionInfo;
 import org.opencms.ade.publish.CmsTooManyPublishResourcesException;
 import org.opencms.configuration.CmsConfigurationManager;
 import org.opencms.configuration.CmsSystemConfiguration;
@@ -121,6 +122,44 @@ import org.apache.commons.logging.Log;
  * @since 6.0.0
  */
 public final class CmsSecurityManager {
+
+    /**
+     * Exception which indicates the user tried to call setRestricted while not being a member of the corresponding group.
+     */
+    private static class RestrictionGroupMembershipException extends Exception {
+
+        /** Serial version id. */
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * Creates a new instance.
+         */
+        public RestrictionGroupMembershipException() {
+
+            super();
+
+        }
+
+    }
+
+    /**
+     * Exception which indicates the user tried to call setRestricted on a folder.
+     */
+    private static class RestrictionNotSupportedForFoldersException extends Exception {
+
+        /** Serial version id. */
+        private static final long serialVersionUID = 1L;
+
+        /**
+         * Creates a new instance.
+         */
+        public RestrictionNotSupportedForFoldersException() {
+
+            super();
+
+        }
+
+    }
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsSecurityManager.class);
@@ -1451,8 +1490,8 @@ public final class CmsSecurityManager {
                     Messages.ERR_DELETE_HISTORY_4,
                     new Object[] {
                         "/",
-                        new Integer(versionsToKeep),
-                        new Integer(versionsDeleted),
+                        Integer.valueOf(versionsToKeep),
+                        Integer.valueOf(versionsDeleted),
                         new Date(timeDeleted)}),
                 e);
         } finally {
@@ -3472,7 +3511,7 @@ public final class CmsSecurityManager {
                         firstname,
                         lastname,
                         email,
-                        new Integer(flags),
+                        Integer.valueOf(flags),
                         new Date(dateCreated),
                         additionalInfos}),
                 e);
@@ -4399,7 +4438,7 @@ public final class CmsSecurityManager {
                     Messages.get().container(
                         Messages.ERR_READ_FILE_HISTORY_2,
                         context.getSitePath(resource),
-                        new Integer(resource.getVersion())),
+                        Integer.valueOf(resource.getVersion())),
                     e);
             } else {
                 dbc.report(null, Messages.get().container(Messages.ERR_READ_FILE_1, context.getSitePath(resource)), e);
@@ -4591,7 +4630,7 @@ public final class CmsSecurityManager {
                 null,
                 Messages.get().container(
                     Messages.ERR_READ_HISTORY_PROJECT_2,
-                    new Integer(publishTag),
+                    Integer.valueOf(publishTag),
                     dbc.currentProject().getName()),
                 e);
         } finally {
@@ -5102,7 +5141,7 @@ public final class CmsSecurityManager {
                 Messages.get().container(
                     Messages.ERR_READING_RESOURCE_VERSION_2,
                     dbc.removeSiteRoot(resource.getRootPath()),
-                    new Integer(version)),
+                    Integer.valueOf(version)),
                 e);
         } finally {
             dbc.clear();
@@ -5677,7 +5716,7 @@ public final class CmsSecurityManager {
         CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
         try {
             checkOfflineProject(dbc);
-            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_CONTROL, true, CmsResourceFilter.ALL);
+            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_CONTROL, LockCheck.shallowOnly, CmsResourceFilter.ALL);
             m_driverManager.removeAccessControlEntry(dbc, resource, principal);
         } catch (Exception e) {
             dbc.report(
@@ -5984,7 +6023,7 @@ public final class CmsSecurityManager {
                 Messages.get().container(
                     Messages.ERR_RESTORE_RESOURCE_2,
                     context.getSitePath(resource),
-                    new Integer(version)),
+                    Integer.valueOf(version)),
                 e);
         } finally {
             dbc.clear();
@@ -6014,7 +6053,7 @@ public final class CmsSecurityManager {
             m_driverManager.saveAliases(dbc, context.getCurrentProject(), resource.getStructureId(), aliases);
             Map<String, Object> eventData = new HashMap<String, Object>();
             eventData.put(I_CmsEventListener.KEY_RESOURCE, resource);
-            eventData.put(I_CmsEventListener.KEY_CHANGE, new Integer(CmsDriverManager.CHANGED_RESOURCE));
+            eventData.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CmsDriverManager.CHANGED_RESOURCE));
             OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, eventData));
         } catch (Exception e) {
             dbc.report(null, Messages.get().container(Messages.ERR_DB_OPERATION_0), e);
@@ -6226,6 +6265,80 @@ public final class CmsSecurityManager {
     }
 
     /**
+     * Sets/clears the 'restricted' status for the given resource and group.
+     *
+     * <p>The 'restricted' status causes files to be inaccessible to users who are not in the group if the file is expired or unreleased.
+     * <p>It is implemented as an access control entry with the 'responsible' flag, but the permission check for this method is different from the chacc() methods: It doesn't require control
+     * permissions on the target resource, but the user has to be a member of the given group and have write access to the resource.
+     *
+     * @param context the current request context
+     * @param resource the target resource
+     * @param group a group (current user must be a member)
+     * @param restricted true if the restriction status should be set
+     * @throws CmsException if something goes wrong
+     */
+    public void setRestricted(CmsRequestContext context, CmsResource resource, CmsGroup group, boolean restricted)
+    throws CmsException {
+
+        CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
+        try {
+            checkOfflineProject(dbc);
+            if (!resource.isFile()) {
+                throw new RestrictionNotSupportedForFoldersException();
+            }
+            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_WRITE, true, CmsResourceFilter.ALL);
+
+            if (!hasRole(context, context.getCurrentUser(), CmsAccessRestrictionInfo.ROLE_CAN_IGNORE_GROUP)
+                && !userInGroup(context, context.getCurrentUser().getName(), group.getName())) {
+                throw new RestrictionGroupMembershipException();
+            }
+            List<CmsAccessControlEntry> aces = getAccessControlEntries(context, resource, false);
+            CmsAccessControlEntry foundAce = null;
+            for (CmsAccessControlEntry ace : aces) {
+                if (ace.getPrincipal().equals(group.getId())) {
+                    foundAce = ace;
+                    break;
+                }
+            }
+            CmsAccessControlEntry aceToWrite = null;
+            if (foundAce != null) {
+                // make a copy so we can compare it to the original later
+                aceToWrite = new CmsAccessControlEntry(
+                    foundAce.getResource(),
+                    foundAce.getPrincipal(),
+                    foundAce.getAllowedPermissions(),
+                    foundAce.getDeniedPermissions(),
+                    foundAce.getFlags());
+                if (restricted) {
+                    aceToWrite.setFlags(CmsAccessControlEntry.ACCESS_FLAGS_RESPONSIBLE);
+                } else {
+                    aceToWrite.resetFlags(CmsAccessControlEntry.ACCESS_FLAGS_RESPONSIBLE);
+                }
+                if ((aceToWrite.getAllowedPermissions() == 0)
+                    && (aceToWrite.getDeniedPermissions() == 0)
+                    && ((aceToWrite.getFlags() & ~CmsAccessControlEntry.ACCESS_FLAGS_GROUP) == 0)) {
+                    // an empty ACE (no permissions, no flags except group marker) is equivalent to no ACE at all - delete the existing one
+                    m_driverManager.removeAccessControlEntry(dbc, resource, group.getId());
+                } else if (!aceToWrite.equals(foundAce)) {
+                    m_driverManager.writeAccessControlEntry(dbc, resource, aceToWrite);
+                }
+            } else if (restricted) { // if restricted=false and no entry is found, we don't need to change anything
+                int flags = CmsAccessControlEntry.ACCESS_FLAGS_GROUP | CmsAccessControlEntry.ACCESS_FLAGS_RESPONSIBLE;
+                aceToWrite = new CmsAccessControlEntry(resource.getResourceId(), group.getId(), 0, 0, flags);
+                m_driverManager.writeAccessControlEntry(dbc, resource, aceToWrite);
+            }
+        } catch (Exception e) {
+            dbc.report(
+                null,
+                Messages.get().container(Messages.ERR_WRITE_ACL_ENTRY_1, context.getSitePath(resource)),
+                e);
+        } finally {
+            dbc.clear();
+        }
+
+    }
+
+    /**
      * Marks a subscribed resource as deleted.<p>
      *
      * @param context the request context
@@ -6376,7 +6489,12 @@ public final class CmsSecurityManager {
         CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
         try {
             checkOfflineProject(dbc);
-            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_WRITE, true, CmsResourceFilter.ALL);
+            checkPermissions(
+                dbc,
+                resource,
+                CmsPermissionSet.ACCESS_WRITE,
+                resource.isFile() || mode.isRecursive() || (mode == CmsResource.UNDO_MOVE_CONTENT) ? LockCheck.yes : LockCheck.shallowOnly,
+                CmsResourceFilter.ALL);
             checkSystemLocks(dbc, resource);
 
             m_driverManager.undoChanges(dbc, resource, mode);
@@ -6620,17 +6738,18 @@ public final class CmsSecurityManager {
      * @param context the current user context
      * @param resource the resource to update the relations for
      * @param relations the relations to update
+     * @param updateSiblingState if true, sets the state of siblings with changed relations to 'changed' (unless they are new or deleted)
      *
      * @throws CmsException if something goes wrong
      *
      * @see CmsDriverManager#updateRelationsForResource(CmsDbContext, CmsResource, List)
      */
-    public void updateRelationsForResource(CmsRequestContext context, CmsResource resource, List<CmsLink> relations)
+    public void updateRelationsForResource(CmsRequestContext context, CmsResource resource, List<CmsLink> relations, boolean updateSiblingState)
     throws CmsException {
 
         CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
         try {
-            m_driverManager.updateRelationsForResource(dbc, resource, relations);
+            m_driverManager.updateRelationsForResource(dbc, resource, relations, updateSiblingState);
         } catch (Exception e) {
             dbc.report(
                 null,
@@ -6734,7 +6853,7 @@ public final class CmsSecurityManager {
         CmsDbContext dbc = m_dbContextFactory.getDbContext(context);
         try {
             checkOfflineProject(dbc);
-            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_CONTROL, true, CmsResourceFilter.ALL);
+            checkPermissions(dbc, resource, CmsPermissionSet.ACCESS_CONTROL, LockCheck.shallowOnly, CmsResourceFilter.ALL);
             if (ace.getPrincipal().equals(CmsAccessControlEntry.PRINCIPAL_OVERWRITE_ALL_ID)) {
                 // only vfs managers can set the overwrite all ACE
                 checkRoleForResource(dbc, CmsRole.VFS_MANAGER, resource);
@@ -6834,10 +6953,10 @@ public final class CmsSecurityManager {
                 Messages.get().container(
                     Messages.ERR_HISTORY_PROJECT_4,
                     new Object[] {
-                        new Integer(publishTag),
+                        Integer.valueOf(publishTag),
                         dbc.currentProject().getName(),
                         dbc.currentProject().getUuid(),
-                        new Long(publishDate)}),
+                        Long.valueOf(publishDate)}),
                 e);
         } finally {
             dbc.clear();

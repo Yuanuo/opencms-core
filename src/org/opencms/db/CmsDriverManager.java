@@ -132,6 +132,7 @@ import org.opencms.workplace.threads.A_CmsProgressThread;
 
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -149,6 +150,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
@@ -175,6 +177,55 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
         /** Normal login process. */
         standard
+    }
+
+    /**
+     * Resource list which additionally knows whether it should be cacheable in the resource list cache or not.
+     */
+    public static class ResourceListWithCacheability extends ArrayList<CmsResource> {
+
+        /** Serial version id. */
+        private static final long serialVersionUID = 1L;
+
+        /** True if the list should be cacheable. */
+        private boolean m_cacheable = true;
+
+        /**
+         * Creates a new instance.
+         */
+        public ResourceListWithCacheability() {
+
+            super();
+        }
+
+        /**
+         * Creates a new instance.
+         * @param initialCapacity the initial capacity
+         */
+        public ResourceListWithCacheability(int initialCapacity) {
+
+            super(initialCapacity);
+        }
+
+        /**
+         * Returns true if the resource list is cacheable.
+         *
+         * @return true if the list is cacheable
+         */
+        public boolean isCacheable() {
+
+            return m_cacheable;
+        }
+
+        /**
+         * Enables/disables cacheability for the resource list.
+         * @param cacheable true if the list should be cacheable
+         */
+        public void setCacheable(boolean cacheable) {
+
+            m_cacheable = cacheable;
+        }
+
     }
 
     /**
@@ -374,8 +425,14 @@ public final class CmsDriverManager implements I_CmsEventListener {
         }
     }
 
+    /** Request context attribute used to override the time used for time-based exclusive access checks. */
+    public static final String ATTR_EXCLUSIVE_ACCESS_CLOCK = "ATTR_EXCLUSIVE_ACCESS_CLOCK";
+
     /** Attribute for signaling to the user driver that a specific OU should be initialized by fillDefaults. */
     public static final String ATTR_INIT_OU = "INIT_OU";
+
+    /** DB context attribute used to communicate information about resource cacheability between various methods. */
+    public static final String ATTR_PERMISSION_NOCACHE = "ATTR_PERMISSION_NOCACHE";
 
     /** Attribute login. */
     public static final String ATTRIBUTE_LOGIN = "A_LOGIN";
@@ -967,9 +1024,9 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     dbc.getRequestContext().getSitePath(resource)));
         } else if ((lockType == CmsLockType.EXCLUSIVE)
             && currentLock.isExclusiveOwnedInProjectBy(dbc.currentUser(), dbc.currentProject())) {
-                // the current lock requires no change
-                return;
-            }
+            // the current lock requires no change
+            return;
+        }
 
         // duplicate logic from CmsSecurityManager#hasPermissions() because lock state can't be ignored
         // if another user has locked the file, the current user can never get WRITE permissions with the default check
@@ -1202,7 +1259,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
     public void cmsEvent(CmsEvent event) {
 
         if (LOG.isDebugEnabled()) {
-            LOG.debug(Messages.get().getBundle().key(Messages.LOG_CMS_EVENT_1, new Integer(event.getType())));
+            LOG.debug(Messages.get().getBundle().key(Messages.LOG_CMS_EVENT_1, Integer.valueOf(event.getType())));
         }
 
         I_CmsReport report;
@@ -1328,7 +1385,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire a resource modification event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, destination);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_ACCESSCONTROL));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_ACCESSCONTROL));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -2684,7 +2741,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         report.println(Messages.get().container(Messages.RPT_START_DELETE_VERSIONS_0), I_CmsReport.FORMAT_HEADLINE);
         if (versionsToKeep >= 0) {
             report.println(
-                Messages.get().container(Messages.RPT_START_DELETE_ACT_VERSIONS_1, new Integer(versionsToKeep)),
+                Messages.get().container(Messages.RPT_START_DELETE_ACT_VERSIONS_1, Integer.valueOf(versionsToKeep)),
                 I_CmsReport.FORMAT_HEADLINE);
 
             List<I_CmsHistoryResource> resources = getHistoryDriver(dbc).getAllNotDeletedEntries(dbc);
@@ -2713,7 +2770,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     int deleted = getHistoryDriver(dbc).deleteEntries(dbc, histResource, versionsToKeep, -1);
 
                     report.print(
-                        Messages.get().container(Messages.RPT_VERSION_DELETING_1, new Integer(deleted)),
+                        Messages.get().container(Messages.RPT_VERSION_DELETING_1, Integer.valueOf(deleted)),
                         I_CmsReport.FORMAT_NOTE);
                     report.print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
                     report.println(
@@ -2741,12 +2798,14 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 report.println(
                     Messages.get().container(
                         Messages.RPT_START_DELETE_DEL_VERSIONS_2,
-                        new Integer(versionsDeleted),
+                        Integer.valueOf(versionsDeleted),
                         new Date(timeDeleted)),
                     I_CmsReport.FORMAT_HEADLINE);
             } else {
                 report.println(
-                    Messages.get().container(Messages.RPT_START_DELETE_DEL_VERSIONS_1, new Integer(versionsDeleted)),
+                    Messages.get().container(
+                        Messages.RPT_START_DELETE_DEL_VERSIONS_1,
+                        Integer.valueOf(versionsDeleted)),
                     I_CmsReport.FORMAT_HEADLINE);
             }
             List<I_CmsHistoryResource> resources = getHistoryDriver(dbc).getAllDeletedEntries(dbc);
@@ -2775,7 +2834,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     int deleted = getHistoryDriver(dbc).deleteEntries(dbc, histResource, versionsDeleted, timeDeleted);
 
                     report.print(
-                        Messages.get().container(Messages.RPT_VERSION_DELETING_1, new Integer(deleted)),
+                        Messages.get().container(Messages.RPT_VERSION_DELETING_1, Integer.valueOf(deleted)),
                         I_CmsReport.FORMAT_NOTE);
                     report.print(org.opencms.report.Messages.get().container(org.opencms.report.Messages.RPT_DOTS_0));
                     report.println(
@@ -4546,7 +4605,39 @@ public final class CmsDriverManager implements I_CmsEventListener {
     throws CmsException {
 
         CmsAccessControlList acList = getAccessControlList(dbc, resource, false);
-        return acList.getPermissions(user, getGroupsOfUser(dbc, user.getName(), false), getRolesForUser(dbc, user));
+        List<CmsGroup> groups = getGroupsOfUser(dbc, user.getName(), false);
+        List<CmsRole> roles = getRolesForUser(dbc, user);
+        CmsPermissionSetCustom permissions = acList.getPermissions(user, groups, roles);
+
+        if (acList.getExclusiveAccessPrincipals().size() > 0) {
+            long now;
+            @SuppressWarnings("unchecked")
+            Supplier<Long> alternativeClock = (Supplier<Long>)(dbc.getRequestContext().getAttribute(
+                ATTR_EXCLUSIVE_ACCESS_CLOCK));
+            if (alternativeClock != null) {
+                // used for testing
+                now = alternativeClock.get().longValue();
+            } else {
+                // *NOT* using dbc.getRequestContext().getRequestTime(), even though that value is used for normal resource availability checks, because
+                // that value may be manipulated by some workplace classes, and we want the real time for permission checks
+                now = System.currentTimeMillis();
+            }
+            permissions.setCacheable(false); // resources going in/out of availability can change permissions - don't cache
+            if (!resource.isReleasedAndNotExpired(now)) {
+                boolean hasExclusiveAccess = false;
+                for (CmsGroup group : groups) {
+                    if (acList.getExclusiveAccessPrincipals().contains(group.getId())) {
+                        hasExclusiveAccess = true;
+                        break;
+                    }
+                }
+                hasExclusiveAccess |= acList.getExclusiveAccessPrincipals().contains(user.getId());
+                if (!hasExclusiveAccess) {
+                    permissions.denyPermissions(CmsPermissionSet.PERMISSION_FULL);
+                }
+            }
+        }
+        return permissions;
     }
 
     /**
@@ -4678,8 +4769,8 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 thread.setDescription(
                     org.opencms.workplace.commons.Messages.get().getBundle().key(
                         org.opencms.workplace.commons.Messages.GUI_PROGRESS_PUBLISH_STEP1_2,
-                        new Integer(count),
-                        new Integer(publishResources.size())));
+                        Integer.valueOf(count),
+                        Integer.valueOf(publishResources.size())));
             }
 
             CmsResource checkResource = itCheckList.next();
@@ -5700,7 +5791,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
         data.put(
             I_CmsEventListener.KEY_CHANGE,
-            new Integer(changedProjectLastModified ? CHANGED_PROJECT : NOTHING_CHANGED));
+            Integer.valueOf(changedProjectLastModified ? CHANGED_PROJECT : NOTHING_CHANGED));
         data.put(I_CmsEventListener.KEY_SKIPINDEX, Boolean.TRUE);
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
@@ -8531,7 +8622,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire a resource modification event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_ACCESSCONTROL));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_ACCESSCONTROL));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -8810,7 +8901,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
             // only the resource was modified
             Map<String, Object> data = new HashMap<String, Object>(2);
             data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-            data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_RESOURCE | CHANGED_CONTENT));
+            data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_RESOURCE | CHANGED_CONTENT));
             OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
         }
     }
@@ -9022,7 +9113,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire the event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_RESOURCE | CHANGED_CONTENT));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_RESOURCE | CHANGED_CONTENT));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9132,7 +9223,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_RESOURCE | CHANGED_CONTENT));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_RESOURCE | CHANGED_CONTENT));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9237,7 +9328,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire the event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_TIMEFRAME));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_TIMEFRAME));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9282,7 +9373,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire the event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_LASTMODIFIED));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_LASTMODIFIED));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9326,7 +9417,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire the event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_TIMEFRAME));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_TIMEFRAME));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9501,7 +9592,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire change event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_RESOURCE));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_RESOURCE));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9618,7 +9709,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire resource modification event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(NOTHING_CHANGED));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(NOTHING_CHANGED));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -9854,26 +9945,27 @@ public final class CmsDriverManager implements I_CmsEventListener {
      * @param dbc the db context
      * @param resource the resource to update the relations for
      * @param links the links to consider for updating
+     * @param updateSiblingState if true, sets the state of siblings whose relations have changed to 'changed' (unless they are new or deleted)
      *
      * @throws CmsException if something goes wrong
      *
      * @see CmsSecurityManager#updateRelationsForResource(CmsRequestContext, CmsResource, List)
      */
-    public void updateRelationsForResource(CmsDbContext dbc, CmsResource resource, List<CmsLink> links)
+    public void updateRelationsForResource(
+        CmsDbContext dbc,
+        CmsResource resource,
+        List<CmsLink> links,
+        boolean updateSiblingState)
     throws CmsException {
 
-        deleteRelationsWithSiblings(dbc, resource);
-
-        // build the links again only if needed
-        if ((links == null) || links.isEmpty()) {
-            return;
+        if (links == null) {
+            links = new ArrayList<>();
         }
-        // the set of written relations
-        Set<CmsRelation> writtenRelations = new HashSet<CmsRelation>();
 
         // create new relation information
         I_CmsVfsDriver vfsDriver = getVfsDriver(dbc);
         Iterator<CmsLink> itLinks = links.iterator();
+        Set<CmsRelation> relationsForOriginalResource = new HashSet<>();
         while (itLinks.hasNext()) {
             CmsLink link = itLinks.next();
             if (link.isInternal()) { // only update internal links
@@ -9902,25 +9994,53 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     link.getStructureId(),
                     destPath,
                     link.getType());
+                relationsForOriginalResource.add(originalRelation);
+            }
+        }
+        List<CmsResource> siblings = resource.getSiblingCount() == 1
+        ? Arrays.asList(resource)
+        : readSiblings(dbc, resource, CmsResourceFilter.ALL);
 
-                // do not write twice the same relation
-                if (writtenRelations.contains(originalRelation)) {
-                    continue;
-                }
-                writtenRelations.add(originalRelation);
-
-                // TODO: it would be good to have the link locale to make the relation just to the right sibling
-                // create the relations in content for all siblings
-                Iterator<CmsResource> itSiblings = readSiblings(dbc, resource, CmsResourceFilter.ALL).iterator();
-                while (itSiblings.hasNext()) {
-                    CmsResource sibling = itSiblings.next();
-                    CmsRelation relation = new CmsRelation(
-                        sibling.getStructureId(),
-                        sibling.getRootPath(),
-                        originalRelation.getTargetId(),
-                        originalRelation.getTargetPath(),
-                        link.getType());
+        for (CmsResource sibling : siblings) {
+            // For each sibling, we determine which 'defined in content' relations it SHOULD have,
+            // and only update the relations if that set differs from the ones it actually has.
+            // If the updateSiblingState flag is set, then for siblings, we update the structure
+            // state to changed (unless the state was 'deleted' or 'new').
+            // This is so that even if the user later publishes only one sibling, the other sibling will still
+            // show up as changed in the GUI, so the user can publish it separately (with its updated relations).
+            Set<CmsRelation> relationsForSibling = relationsForOriginalResource.stream().map(
+                relation -> new CmsRelation(
+                    sibling.getStructureId(),
+                    sibling.getRootPath(),
+                    relation.getTargetId(),
+                    relation.getTargetPath(),
+                    relation.getType())).collect(Collectors.toSet());
+            Set<CmsRelation> existingRelations = new HashSet<>(
+                vfsDriver.readRelations(
+                    dbc,
+                    dbc.currentProject().getUuid(),
+                    sibling,
+                    CmsRelationFilter.TARGETS.filterDefinedInContent()));
+            if (!existingRelations.equals(relationsForSibling)) {
+                vfsDriver.deleteRelations(
+                    dbc,
+                    dbc.currentProject().getUuid(),
+                    sibling,
+                    CmsRelationFilter.TARGETS.filterDefinedInContent());
+                for (CmsRelation relation : relationsForSibling) {
                     vfsDriver.createRelation(dbc, dbc.currentProject().getUuid(), relation);
+                }
+                if (!sibling.getState().isDeleted()
+                    && !sibling.getState().isNew()
+                    && (siblings.size() > 1)
+                    && updateSiblingState) {
+                    sibling.setState(CmsResource.STATE_CHANGED);
+                    vfsDriver.writeResourceState(
+                        dbc,
+                        dbc.currentProject(),
+                        sibling,
+                        CmsDriverManager.UPDATE_STRUCTURE_STATE,
+                        false);
                 }
             }
         }
@@ -10024,7 +10144,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         // fire a resource modification event
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_ACCESSCONTROL));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_ACCESSCONTROL));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -10213,7 +10333,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_CONTENT));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_CONTENT));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
 
         return resource;
@@ -10556,7 +10676,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
         m_monitor.clearResourceCache();
         Map<String, Object> data = new HashMap<String, Object>(2);
         data.put(I_CmsEventListener.KEY_RESOURCE, resource);
-        data.put(I_CmsEventListener.KEY_CHANGE, new Integer(CHANGED_RESOURCE));
+        data.put(I_CmsEventListener.KEY_CHANGE, Integer.valueOf(CHANGED_RESOURCE));
         OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
     }
 
@@ -11304,18 +11424,39 @@ public final class CmsDriverManager implements I_CmsEventListener {
             // never check time range here - this must be done later in #updateContextDates(...)
             filter = filter.addExcludeTimerange();
         }
-        ArrayList<CmsResource> result = new ArrayList<CmsResource>(resourceList.size());
-        for (int i = 0; i < resourceList.size(); i++) {
-            // check the permission of all resources
-            CmsResource currentResource = resourceList.get(i);
-            if (m_securityManager.hasPermissions(
-                dbc,
-                currentResource,
-                CmsPermissionSet.ACCESS_READ,
-                LockCheck.yes,
-                filter).isAllowed()) {
-                // only return resources where permission was granted
-                result.add(currentResource);
+        ResourceListWithCacheability result = new ResourceListWithCacheability();
+        boolean nocacheWasSet = false;
+        if (null == dbc.getAttribute(ATTR_PERMISSION_NOCACHE)) {
+            // The attribute will be used by the permission handler to tell us that lists containing the resource
+            // should not be cached.
+            dbc.setAttribute(ATTR_PERMISSION_NOCACHE, new boolean[] {false});
+            // insurance against potential indirect recursive calls introduced by future code changes:
+            // make sure we only remove the attribute later if we were the one who set it
+            nocacheWasSet = true;
+        }
+        try {
+            for (int i = 0; i < resourceList.size(); i++) {
+                // check the permission of all resources
+                CmsResource currentResource = resourceList.get(i);
+                if (m_securityManager.hasPermissions(
+                    dbc,
+                    currentResource,
+                    CmsPermissionSet.ACCESS_READ,
+                    LockCheck.yes,
+                    filter).isAllowed()) {
+                    // only return resources where permission was granted
+                    result.add(currentResource);
+                }
+            }
+        } finally {
+            if (nocacheWasSet) {
+                boolean[] nocache = (boolean[])dbc.getAttribute(ATTR_PERMISSION_NOCACHE);
+                if (nocache != null) {
+                    dbc.removeAttribute(ATTR_PERMISSION_NOCACHE);
+                    if (nocache[0]) {
+                        result.setCacheable(false);
+                    }
+                }
             }
         }
         // return the result
@@ -11534,12 +11675,20 @@ public final class CmsDriverManager implements I_CmsEventListener {
             acl = new CmsAccessControlList();
         }
 
+        Set<CmsUUID> exclusiveAccessPrincipals = new HashSet<>();
         if (!((depth == 0) && inheritedOnly)) {
             Iterator<CmsAccessControlEntry> itAces = aces.iterator();
             while (itAces.hasNext()) {
                 CmsAccessControlEntry acEntry = itAces.next();
                 if (depth > 0) {
                     acEntry.setFlags(CmsAccessControlEntry.ACCESS_FLAGS_INHERITED);
+                }
+                if ((depth == 0)
+                    && resource.isFile()
+                    && (0 != (acEntry.getFlags() & CmsAccessControlEntry.ACCESS_FLAGS_RESPONSIBLE))) {
+
+                    // 'responsible' flag is only interpreted as exclusive access if it's not inherited and set directly on a file
+                    exclusiveAccessPrincipals.add(acEntry.getPrincipal());
                 }
 
                 acl.add(acEntry);
@@ -11551,6 +11700,10 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 }
             }
         }
+        if (exclusiveAccessPrincipals.size() > 0) {
+            acl.setExclusiveAccessPrincipals(exclusiveAccessPrincipals);
+        }
+
         if (dbc.getProjectId().isNullUUID()) {
             m_monitor.cacheACL(cacheKey, acl);
         }
@@ -11723,13 +11876,13 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
         Set<Integer> roleFlags = new HashSet<Integer>();
         // add role flag
-        Integer flags = new Integer(role.getVirtualGroupFlags());
+        Integer flags = Integer.valueOf(role.getVirtualGroupFlags());
         roleFlags.add(flags);
         // collect all child role flags
         Iterator<CmsRole> itChildRoles = role.getChildren(true).iterator();
         while (itChildRoles.hasNext()) {
             CmsRole child = itChildRoles.next();
-            flags = new Integer(child.getVirtualGroupFlags());
+            flags = Integer.valueOf(child.getVirtualGroupFlags());
             roleFlags.add(flags);
         }
         // iterate all groups matching the flags
@@ -11739,7 +11892,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
             CmsGroup group = it.next();
             if (group.isVirtual()) {
                 CmsRole r = CmsRole.valueOf(group);
-                if (roleFlags.contains(new Integer(r.getVirtualGroupFlags()))) {
+                if (roleFlags.contains(Integer.valueOf(r.getVirtualGroupFlags()))) {
                     groups.add(group);
                 }
             }
@@ -12034,7 +12187,8 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 data.put(I_CmsEventListener.KEY_RESOURCE, resource);
                 data.put(
                     I_CmsEventListener.KEY_CHANGE,
-                    new Integer(((attrModified) ? CHANGED_RESOURCE : 0) | ((aceModified) ? CHANGED_ACCESSCONTROL : 0)));
+                    Integer.valueOf(
+                        ((attrModified) ? CHANGED_RESOURCE : 0) | ((aceModified) ? CHANGED_ACCESSCONTROL : 0)));
                 OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_RESOURCE_MODIFIED, data));
             }
         }

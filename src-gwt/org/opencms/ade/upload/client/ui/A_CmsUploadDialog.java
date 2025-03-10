@@ -45,6 +45,7 @@ import org.opencms.gwt.client.ui.CmsPopup;
 import org.opencms.gwt.client.ui.CmsPushButton;
 import org.opencms.gwt.client.ui.CmsScrollPanel;
 import org.opencms.gwt.client.ui.CmsToggleButton;
+import org.opencms.gwt.client.ui.CmsVirusReport;
 import org.opencms.gwt.client.ui.FontOpenCms;
 import org.opencms.gwt.client.ui.I_CmsButton;
 import org.opencms.gwt.client.ui.I_CmsListItem;
@@ -67,6 +68,7 @@ import org.opencms.gwt.shared.I_CmsUploadConstants;
 import org.opencms.gwt.shared.rpc.I_CmsUploadService;
 import org.opencms.gwt.shared.rpc.I_CmsUploadServiceAsync;
 import org.opencms.util.CmsStringUtil;
+import org.opencms.util.CmsUUID;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,6 +78,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.google.common.base.Supplier;
 import com.google.gwt.core.client.GWT;
@@ -95,6 +98,7 @@ import com.google.gwt.json.client.JSONString;
 import com.google.gwt.json.client.JSONValue;
 import com.google.gwt.user.client.Command;
 import com.google.gwt.user.client.Timer;
+import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.rpc.ServiceDefTarget;
 import com.google.gwt.user.client.ui.FlowPanel;
 import com.google.gwt.user.client.ui.FormPanel;
@@ -374,9 +378,7 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
     }
 
     /**
-     * Parses the upload response of the server and decides what to do.<p>
-     *
-     * @param results a JSON Object
+     * @see org.opencms.gwt.client.ui.input.upload.I_CmsUploadDialog#parseResponse(java.lang.String)
      */
     public void parseResponse(String results) {
 
@@ -390,7 +392,7 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
             // the content length is unknown. For that reason take the request size to show how
             // much bytes were uploaded.
             double size = jsonObject.get(I_CmsUploadConstants.KEY_REQUEST_SIZE).isNumber().doubleValue();
-            long requestSize = new Double(size).longValue();
+            long requestSize = Double.valueOf(size).longValue();
             if (m_contentLength == 0) {
                 m_contentLength = requestSize;
             }
@@ -403,11 +405,12 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
                     false);
                 JSONValue uploadedFilesVal = jsonObject.get(I_CmsUploadConstants.KEY_UPLOADED_FILE_NAMES);
                 JSONValue uploadHook = jsonObject.get(I_CmsUploadConstants.KEY_UPLOAD_HOOK);
+                JSONValue uploadedFileIdsVal = jsonObject.get(I_CmsUploadConstants.KEY_UPLOADED_FILES);
+                JSONArray uploadedFileIdsArray = uploadedFileIdsVal.isArray();
+
                 String hookUri = null;
                 if ((uploadHook != null) && (uploadHook.isString() != null)) {
                     hookUri = uploadHook.isString().stringValue();
-                    JSONValue uploadedFileIdsVal = jsonObject.get(I_CmsUploadConstants.KEY_UPLOADED_FILES);
-                    JSONArray uploadedFileIdsArray = uploadedFileIdsVal.isArray();
                     if (uploadedFileIdsArray != null) {
                         for (int i = 0; i < uploadedFileIdsArray.size(); i++) {
                             JSONString entry = uploadedFileIdsArray.get(i).isString();
@@ -416,6 +419,10 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
                             }
                         }
                     }
+                }
+                if (uploadedFileIds.size() == 0) {
+                    // no files uploaded, probably because of virus scanner - don't show upload hook dialog
+                    hookUri = null;
                 }
                 JSONArray uploadedFilesArray = uploadedFilesVal.isArray();
                 if (uploadedFilesArray != null) {
@@ -426,26 +433,29 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
                         }
                     }
                 }
-                m_progressInfo.finish();
+                Map<String, List<String>> viruses = CmsVirusReport.getVirusWarnings(jsonObject);
                 final I_CmsUploadContext context = m_context;
-                closeOnSuccess();
-                if (hookUri != null) {
-                    // Set the context to be null so that it isn't called when the upload dialog closed;
-                    // we want it to be called when the upload property dialog is closed instead.<p>
+                final String finalHookUri = hookUri;
+                m_progressInfo.finish();
+                if (!viruses.isEmpty()) {
                     m_context = null;
-                    CloseHandler<PopupPanel> closeHandler;
-                    closeHandler = new CloseHandler<PopupPanel>() {
-
-                        public void onClose(CloseEvent<PopupPanel> event) {
-
-                            if (context != null) {
-                                context.onUploadFinished(m_uploadedFiles);
-                            }
+                    hide();
+                    CmsPopup virusPopup = CmsVirusReport.createPopup(viruses, () -> {
+                        if (finalHookUri != null) {
+                            openHookDialog(uploadedFileIds, finalHookUri, context);
+                        } else {
+                            context.onUploadFinished(m_uploadedFiles);
                         }
-                    };
-
-                    String title = Messages.get().key(Messages.GUI_UPLOAD_HOOK_DIALOG_TITLE_0);
-                    CmsUploadHookDialog.openDialog(title, hookUri, uploadedFileIds, closeHandler);
+                    });
+                    virusPopup.center();
+                } else {
+                    if (hookUri != null) {
+                        // Set the context to be null so that it isn't called when the upload dialog closed;
+                        // we want it to be called when the upload property dialog is closed instead.<p>
+                        m_context = null;
+                        openHookDialog(uploadedFileIds, hookUri, context);
+                    }
+                    closeOnSuccess();
                 }
             } else {
                 String message = jsonObject.get(I_CmsUploadConstants.KEY_MESSAGE).isString().stringValue();
@@ -462,7 +472,19 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
      */
     public void setContext(I_CmsUploadContext context) {
 
-        m_context = context;
+        if (context != null) {
+            m_context = new I_CmsUploadContext() {
+
+                @Override
+                public void onUploadFinished(List<String> uploadedFiles) {
+
+                    context.onUploadFinished(uploadedFiles);
+                }
+            };
+
+        } else {
+            m_context = context;
+        }
     }
 
     /**
@@ -593,7 +615,7 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
                 }
 
                 // add those files to the list of files to upload that potential candidates
-                if (!isTooLarge(file) && (file.getFileSize() != 0) && !restricted) {
+                if (!isTooLarge(file) && !restricted) {
                     m_filesToUpload.put(file.getFileName(), file);
                 }
 
@@ -1400,6 +1422,49 @@ public abstract class A_CmsUploadDialog extends CmsPopup implements I_CmsUploadD
         } else {
             return CmsCoreProvider.get().addSiteRoot(m_targetFolder);
         }
+    }
+
+    /**
+     * Helper method to upload the hook dialog after an upload.
+     *
+     * @param uploadedFileIds the uploaded file ids
+     * @param hookUri the hook URI
+     * @param context the upload context
+     */
+    private void openHookDialog(List<String> uploadedFileIds, String hookUri, final I_CmsUploadContext context) {
+
+        CloseHandler<PopupPanel> closeHandler;
+        closeHandler = new CloseHandler<PopupPanel>() {
+
+            public void onClose(CloseEvent<PopupPanel> event) {
+
+                if (context != null) {
+                    List<CmsUUID> actualIds = uploadedFileIds.stream().map(id -> new CmsUUID(id)).collect(
+                        Collectors.toList());
+                    // post-upload hook may rename files
+                    CmsCoreProvider.getVfsService().getSitePaths(actualIds, new AsyncCallback<List<String>>() {
+
+                        @Override
+                        public void onFailure(Throwable caught) {}
+
+                        @Override
+                        public void onSuccess(List<String> result) {
+
+                            for (int i = 0; i < result.size(); i++) {
+                                String path = result.get(i);
+                                if (path.startsWith(m_targetFolder)) {
+                                    result.set(i, path.substring(m_targetFolder.length()));
+                                }
+                            }
+                            context.onUploadFinished(result);
+                        }
+                    });
+                }
+            }
+        };
+
+        String title = Messages.get().key(Messages.GUI_UPLOAD_HOOK_DIALOG_TITLE_0);
+        CmsUploadHookDialog.openDialog(title, hookUri, uploadedFileIds, closeHandler);
     }
 
     /**

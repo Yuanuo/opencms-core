@@ -38,6 +38,7 @@ import org.opencms.file.CmsObject;
 import org.opencms.file.CmsRequestContext;
 import org.opencms.i18n.CmsMessages;
 import org.opencms.i18n.CmsMultiMessages;
+import org.opencms.jsp.util.CmsKeyDummyMacroResolver;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.util.CmsMacroResolver;
@@ -55,6 +56,7 @@ import org.opencms.xml.content.CmsXmlContentTab;
 import org.opencms.xml.content.I_CmsXmlContentHandler;
 import org.opencms.xml.content.I_CmsXmlContentHandler.DisplayType;
 import org.opencms.xml.types.A_CmsXmlContentValue;
+import org.opencms.xml.types.CmsXmlAccessRestrictionValue;
 import org.opencms.xml.types.CmsXmlDynamicCategoryValue;
 import org.opencms.xml.types.CmsXmlNestedContentDefinition;
 import org.opencms.xml.types.I_CmsXmlSchemaType;
@@ -77,7 +79,7 @@ public class CmsContentTypeVisitor {
     /**
      * Helper class to evaluate the widget display type.<p>
      */
-    protected class DisplayTypeEvaluator {
+    protected static class DisplayTypeEvaluator {
 
         /** The attribute name. */
         private String m_attributeName;
@@ -306,6 +308,65 @@ public class CmsContentTypeVisitor {
     }
 
     /**
+     * Returns the tab informations for the given content definition.<p>
+     * @param cms the CMS context
+     * @param definition the content definition
+     * @param messages the localization messages
+     *
+     * @return the tab informations
+     */
+    public static List<CmsTabInfo> collectTabInfos(
+        CmsObject cms,
+        CmsXmlContentDefinition definition,
+        CmsMessages messages) {
+
+        List<CmsTabInfo> result = new ArrayList<CmsTabInfo>();
+        CmsMacroResolver resolver = new CmsMacroResolver();
+        resolver.setCmsObject(cms);
+        resolver.setMessages(messages);
+        CmsKeyDummyMacroResolver keyResolver = new CmsKeyDummyMacroResolver(resolver);
+
+        if (definition.getContentHandler().getTabs() != null) {
+            for (CmsXmlContentTab xmlTab : definition.getContentHandler().getTabs()) {
+                String tabKey = null;
+                String tabName;
+
+                // in case the tab name attribute contains a localization macro
+                if (xmlTab.getTabName().contains(MESSAGE_MACRO_START)
+                    || xmlTab.getTabName().contains(MESSAGE_MACRO_START_OLD)) {
+                    tabName = resolver.resolveMacros(xmlTab.getTabName());
+                    tabKey = CmsKeyDummyMacroResolver.getKey(keyResolver.resolveMacros(xmlTab.getTabName()));
+                } else {
+                    tabName = messages.keyDefault(
+                        A_CmsWidget.LABEL_PREFIX + definition.getInnerName() + "." + xmlTab.getTabName(),
+                        xmlTab.getTabName());
+
+                    tabKey = A_CmsWidget.LABEL_PREFIX + definition.getInnerName() + "." + xmlTab.getTabName();
+                }
+
+                String descriptionKey = null;
+                if (xmlTab.getDescription() != null) {
+                    descriptionKey = CmsKeyDummyMacroResolver.getKey(
+                        keyResolver.resolveMacros(xmlTab.getDescription()));
+                }
+
+                result.add(
+                    new CmsTabInfo(
+                        tabName,
+                        tabKey,
+                        xmlTab.getTabName(),
+                        xmlTab.getIdName(),
+                        xmlTab.getStartName(),
+                        xmlTab.isCollapsed(),
+                        resolver.resolveMacros(xmlTab.getDescription()),
+                        descriptionKey,
+                        xmlTab.getDescription()));
+            }
+        }
+        return result;
+    }
+
+    /**
      * Gets the CMS context.<p>
      *
      * @return the CMS context
@@ -339,6 +400,7 @@ public class CmsContentTypeVisitor {
      * Returns the label for this value.<p>
      *
      * @param value the value
+     * @param defaultValue the default value
      *
      * @return the label
      */
@@ -468,7 +530,7 @@ public class CmsContentTypeVisitor {
         m_registeredTypes = new HashMap<String, CmsType>();
         m_localeSynchronizations = new ArrayList<String>();
         m_dynamicallyLoaded = new ArrayList<String>();
-        m_tabInfos = collectTabInfos(xmlContentDefinition);
+        m_tabInfos = collectTabInfos(m_cms, xmlContentDefinition, m_messages);
         readTypes(xmlContentDefinition, "");
     }
 
@@ -510,44 +572,6 @@ public class CmsContentTypeVisitor {
     protected Collection<CmsExternalWidgetConfiguration> getWidgetConfigurations() {
 
         return m_widgetConfigurations.values();
-    }
-
-    /**
-     * Returns the tab informations for the given content definition.<p>
-     *
-     * @param definition the content definition
-     *
-     * @return the tab informations
-     */
-    private List<CmsTabInfo> collectTabInfos(CmsXmlContentDefinition definition) {
-
-        List<CmsTabInfo> result = new ArrayList<CmsTabInfo>();
-        CmsMacroResolver resolver = new CmsMacroResolver();
-        resolver.setCmsObject(m_cms);
-        resolver.setMessages(m_messages);
-        if (definition.getContentHandler().getTabs() != null) {
-            for (CmsXmlContentTab xmlTab : definition.getContentHandler().getTabs()) {
-                String tabName;
-                // in case the tab name attribute contains a localization macro
-                if (xmlTab.getTabName().contains(MESSAGE_MACRO_START)
-                    || xmlTab.getTabName().contains(MESSAGE_MACRO_START_OLD)) {
-                    tabName = resolver.resolveMacros(xmlTab.getTabName());
-                } else {
-                    tabName = m_messages.keyDefault(
-                        A_CmsWidget.LABEL_PREFIX + definition.getInnerName() + "." + xmlTab.getTabName(),
-                        xmlTab.getTabName());
-                }
-
-                result.add(
-                    new CmsTabInfo(
-                        tabName,
-                        xmlTab.getIdName(),
-                        xmlTab.getStartName(),
-                        xmlTab.isCollapsed(),
-                        resolver.resolveMacros(xmlTab.getDescription())));
-            }
-        }
-        return result;
     }
 
     /**
@@ -664,7 +688,12 @@ public class CmsContentTypeVisitor {
                     CmsRequestContext.ATTRIBUTE_ADE_CONTEXT_PATH,
                     m_file.getRootPath());
             }
-            WidgetInfo widgetInfo = CmsWidgetUtil.collectWidgetInfo(cms, m_rootContentDefinition, path, m_messages);
+            WidgetInfo widgetInfo = CmsWidgetUtil.collectWidgetInfo(
+                cms,
+                m_rootContentDefinition,
+                path,
+                m_messages,
+                null);
             I_CmsWidget widget = widgetInfo.getWidget();
             I_CmsComplexWidget complexWidget = widgetInfo.getComplexWidget();
             configuredType = widgetInfo.getDisplayType();
@@ -738,10 +767,11 @@ public class CmsContentTypeVisitor {
             m_hasInvisible = true;
         }
         boolean localeSynchronized = (m_contentHandler.hasSynchronizedElements()
-            && m_contentHandler.getSynchronizations().contains(path.substring(1)))
+            && m_contentHandler.getSynchronizations(true).getSynchronizationPaths().contains(path.substring(1)))
             || schemaType.getTypeName().equals(CmsXmlDynamicCategoryValue.TYPE_NAME);
 
-        boolean dynamicallyLoaded = schemaType instanceof CmsXmlDynamicCategoryValue;
+        boolean dynamicallyLoaded = (schemaType instanceof CmsXmlDynamicCategoryValue)
+            || (schemaType instanceof CmsXmlAccessRestrictionValue);
 
         CmsAttributeConfiguration result = new CmsAttributeConfiguration(
             label,

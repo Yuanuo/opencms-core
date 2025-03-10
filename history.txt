@@ -15,6 +15,151 @@ Legend:
 - Minor improvement or general comment
 * Bug fixed
 
+OpenCms 18.0.0 - October 8, 2024
+
+! New "Place element" mode in the page editor as alternative to drag & drop
+! Reused content in the page and form editor is now clearly marked
+! Automatic typographical correction of quotation marks in Editors
+! "Dead links" in content from a WYSIWYG editor are now automatically disabled
+! Support for the Jetty 12 servlet container as an alternative for Tomcat
+
+- Page editor: Use custom <oc-...> tags instead of <div> for inserted 'edit points' in lists
+- Page editor: Added improved JavaScript events for page editor actions
+- Workplace: Added CSV user import/export dialog option for root OU
+- Workplace: 'Direct publish' added to context menu of gallery dialog
+- Workplace: Improved file list update behavior in apps after direct publish
+- Workplace: Improved 'Open page' option in context menus for elements on detail pages
+- Workplace: Optimized element settings dialog for multiline labels
+- Workplace: Added option to hide specific categories in category select widget
+- Configuration: Added sitemap attribute for loading of external TinyMCE configuration file
+- Configuration: Added option to use custom error messages in XSDs for built-in widgets like 'datetime'
+- Configuration: Added API fallback option for context menu items
+- JSP API: Added .toURI method to CmsJspLinkWrapper
+- JSP API: Added cms.formatterSettingDefault to get the default formatter setting
+- JSP API: Added cms.formatterKey to read the currently used formatter key
+- JSP API: Added support for formatter keys in <cms:displayFormatter> tag
+- JSP API: Added 'containerType' attribute to <cms:display> tag
+- Optimized log output for JSP compiler errors
+- Using UTF-8 for all resource bundle @.properties@ files instead of ISO-8859-1
+- Updated SOLR to version 9.5
+- Pull request #799 updated Russian translation org.opencms.locale.ru. (https://github.com/alkacon/opencms-core/pull/799)
+
+* Security: Do not log password on failed user login attempts
+* Fixed issue with updater not adding required nodes in @opencms-system.xml@ for the 'personal data search' app
+* Fixed issue with caching for search > document factories > content
+* Fixed issue when moving a redirect in the sitemap editor
+* Fixed issue with renaming the image when uploading an image in a content
+* Fixed issue with uploading files of size 0 bytes
+* Fixed issue with module import overwriting parent folders that are not part of the module
+* Fixed issue with wrong functions being inserted when multiple functions are placed directly after another
+* Fixed issue where moving a page in the sitemap editor to a folder containing a same-named redirect could cause DB corruption
+* Fixed issue with category detail pages not resolving correctly for expired resources
+* Fixed issue in the publish dialog where 'My changes' are not cleared when more than 1000 changes are present
+* Fixed issue where selecting a folder in the log download dialog resulted in an NPE
+* Fixed issue with 404 error after leaving the sitemap editor
+* Fixed issue where publishing a page after moving it is not possible when contents use "store with page" setting
+* Fixed issue where a sitemap configuration using a combination of category specific detail pages is not working correctly
+* Fixed issue with explorer folder location input sometimes showing a scrollbar
+* Fixed issue where editor for legacy 'xmlpage' type content could not be accessed from page editor
+* Fixed issue with 'Undelete' operation failing for resources that are of an unknown type
+* Fixed issue with dynamic functions not usable in template pages if the page locale is not 'en'
+* Fixed hardcoded version number in updater
+* Fixed deprecation warning for 'DOMNodeInserted mutation' event in Chrome console
+* Fixed deprecation warning for 'unload' event in Chrome console
+* Fixed issue #805 with unpublished relations on siblings (https://github.com/alkacon/opencms-core/issues/805)
+* Fixed issue #804 with missing edit markers in AJAX lists (https://github.com/alkacon/opencms-core/issues/804)
+
+
+OpenCms 17.0.0 - April 9, 2024
+
+! New app "Date search" to find contents changed in a date range
+! Export complete site contents for archiving in the "Websites" app
+! Option to hide contents with restricted "availability" date even in the Offline project
+! Support for Java 17 and 21 (in addition to Java 8 and 11)
+! This is the last OpenCms release that keeps Java 8 compatibility, future releases will require at least Java 11
+
+- Page editor: The "Project" switch is now available in the toolbar
+- Page editor: The "Move" Dialog is available from the edit point "info" context menu
+- Page editor: The fade animation on the toolbar has been removed
+- "Element Author" users can now upload images
+- "Element Author" users can now access 'Rename', 'Undo changes' and 'Properties' in the galleries dialog
+- Source search app: New type restriction "All except images and binaries"
+- Source search app: Improved search when using "XML content values only"
+- Explorer: The real deletion date is shown when restoring deleted resources
+- Folder with locked resources: Allow "Undo Changes" on the folders itself
+- Folder with locked resources: Allow access to the "Permissions" dialog
+- Settings: Translations for renamed values and / or properties
+- Settings: Support escaping of chars in Default and WidgetConfig nodes
+- Configuration: Add filter options for two select widgets in master sitemap configuration
+- Localization: Added french workplace localization
+- Build using Gradle 8
+- Pull request #792 extended shell with multiple classes (https://github.com/alkacon/opencms-core/pull/792)
+- Pull request #784 Remove unnecessary logs to the Servlet Container (https://github.com/alkacon/opencms-core/pull/784)
+- Pull request #794 Code review (https://github.com/alkacon/opencms-core/pull/794)
+
+* The site selectbox sometimes does not show all options when using a filter
+* <Synchronization> nodes now work in nested XSD schemas
+* Added several missing DB indices for MS SQL Server
+* Macros in <Search>listtitle</Search> are now resolved
+* Unused content finder: Fixed NPE if explorer type configuration is missing for a type
+* Sorting for display type in lists is now using the rank correctly
+* CmsJspElementSettingValueWrapper#getExists wrongly returned false in some cases
+* It is not longer possible to create two projects with the same name in the "Projects" app
+* Expired resources are now correctly handled in the "Database export" app
+* Fixed wrong module version in the zip file name for auto-incremented version numbers
+* Fixed issue where the link dialog in inline editor mode sometimes showed the wrong locale
+* Fixed issue where switching display formatters in a list did not work as expected
+* Fixed issue when configuring a serial date for monthly events
+* Fixed issue with NPE in element setting dialog for formatters that do not fit the container
+* Fixed issue with incorrect detail page link generated for contents in a foreign site
+* Fixed issue #782 where CmsShell command "replaceModuleFromDefault" did not work (https://github.com/alkacon/opencms-core/issues/782)
+* Fixed issue #796 with data view widget (https://github.com/alkacon/opencms-core/issues/796)
+* Fixed issue #768 with detail-only pages not being properly unlocked on logout (https://github.com/alkacon/opencms-core/issues/768)
+
+
+OpenCms 16.0.0 - October 2, 2023
+
+! New app to find "Unused contents"
+! Category based detail pages
+! Grouping of galleries in the "Galleries" tab of the gallery dialog
+! Search for sites in the site selector on the "Folders" tab of the gallery dialog
+! Search for types in the "Create new resource" dialog in the explorer
+! Option to force all users to set a new password after login
+
+- Page editor: The element settings dialog layout has been improved
+- Page editor: The gallery dialog layout has been slightly improved
+- Workplace: The "Projects" app now allows filtering by OU
+- Workplace: Temporary instead of permanent redirects are used in the offline project for "HTML redirect" resources
+- Lists: cms:display for "binary" resources now supports adding new files with [+] on the list
+- JSP API: Extension of the cms:link tag to support var and type attributes
+- JSP API: OpenCms link object for the EL
+- JSP API: Added replaceInvalid option to cms:secureparams to replace invalid parameters with a default text
+- JSP API: Several shortcut methods have been added to the CmsJspStandardContextBean
+- Configuration: The element setting configuration now allows alternatives for values and property names
+- A possible update to Tomcat 10 has been evaluated
+- Pull request #769 implemented support for putting detail contents of different types in the same folder (https://github.com/alkacon/opencms-core/issues/769)
+- Pull request #773 added updated Spanish localization provided by rgaviras (https://github.com/alkacon/opencms-core/pull/773)
+- Pull request #767 added support for Apple Wallet .pkpass files (https://github.com/alkacon/opencms-core/pull/767)
+
+* Security: Fixed issues in several dependencies by bumping the affected dependencies to the latest version
+* Security: Fixed issue with the Solr Handler related to the qt parameter
+* Workplace: After "Undo changes" on a detail page element, the wait screen did sometimes not close
+* Workplace: The "About" dialog did not correctly display for users without role "Workplace User"
+* Workplace: The "Rename" option for images was shown in the gallery dialog even if user has no permissions for this action
+* XML: Content correction did not correct empty nested contents
+* Configuration: ResourceType configuration for "modelgroup" did ignore the order
+* Configuration: Content storage location for detail containers in storage mode "with page" did not work as expected
+* Search: Offline indexing results on module update during setup were sometimes incorrect
+* Caching: Incorrect caching for "Password reset" state was used for user lists
+* Caching: Container page caching did not take user permissions on container elements into account
+* Fixed issue with multiple OpenCms instances in one Tomcat all writing to the same log file
+* Fixed XSS issue with HTML-valued properties in the explorer
+* Fixed XSS issue with HTML in the gallery search field
+* Fixed issue #763 with XSS in module info dialog (https://github.com/alkacon/opencms-core/issues/763)
+* Fixed issue #764 where a filter query "search_exclude:false" would be set multiple times in CmsSolrQuery objects (https://github.com/alkacon/opencms-core/issues/764)
+* Fixed issue #772 in the "Show online" function for detail pages (https://github.com/alkacon/opencms-core/issues/772)
+* Fixed issue #779 with broken calendar widget in Czech locale (https://github.com/alkacon/opencms-core/issues/779)
+
 
 OpenCms 15.0.0 - April 25, 2023
 

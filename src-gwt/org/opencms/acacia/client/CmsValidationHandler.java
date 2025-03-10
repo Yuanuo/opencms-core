@@ -34,7 +34,10 @@ import org.opencms.acacia.shared.rpc.I_CmsContentServiceAsync;
 import org.opencms.gwt.client.ui.CmsTabbedPanel;
 import org.opencms.util.CmsPair;
 
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import com.google.gwt.event.logical.shared.HasValueChangeHandlers;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
@@ -108,6 +111,9 @@ implements ValueChangeHandler<CmsEntity>, HasValueChangeHandlers<CmsValidationCo
     /** The validation context. */
     private CmsValidationContext m_validationContext;
 
+    /** Paths (without indexes) for which values are synchronized over the different locales. E.g. Availability/ReleaseDate */
+    private Set<String> m_synchronizedPaths;
+
     /**
      * Clears validation message for an attribute handler.<p>
      *
@@ -175,9 +181,11 @@ implements ValueChangeHandler<CmsEntity>, HasValueChangeHandlers<CmsValidationCo
                     }
                 }
             }
+            m_validationContext.setWarningEntity(entityId, validationResult.getWarnings(entityId));
+        } else {
+            m_validationContext.clearWarningEntity(entityId);
         }
         if (validationResult.hasErrors(entityId)) {
-            String invalidFields = "";
             for (Entry<String[], CmsPair<String, String>> error : validationResult.getErrors(entityId).entrySet()) {
                 String[] pathElements = error.getKey();
                 CmsAttributeHandler handler = m_rootHandler.getHandlerByPath(pathElements);
@@ -188,14 +196,10 @@ implements ValueChangeHandler<CmsEntity>, HasValueChangeHandlers<CmsValidationCo
                         error.getValue().getFirst(),
                         m_formTabPanel);
                 }
-                invalidFields += error.getValue().getSecond() + ", ";
             }
-            if (invalidFields.length() > 0) {
-                invalidFields = invalidFields.substring(0, invalidFields.length() - 2);
-            }
-            m_validationContext.addInvalidEntity(entityId, invalidFields);
+            m_validationContext.setInvalidEntity(entityId, validationResult.getErrors(entityId));
         } else {
-            m_validationContext.addValidEntity(entityId);
+            m_validationContext.setValidEntity(entityId);
         }
         ValueChangeEvent.fire(this, m_validationContext);
         m_validating = false;
@@ -301,6 +305,41 @@ implements ValueChangeHandler<CmsEntity>, HasValueChangeHandlers<CmsValidationCo
     public void setRootHandler(CmsRootHandler rootHandler) {
 
         m_rootHandler = rootHandler;
+    }
+
+    public void setSynchronizedValues(Collection<String> synchronizedValues) {
+
+        if (null != synchronizedValues) {
+            m_synchronizedPaths = new HashSet<>(synchronizedValues.size());
+            for (String sval : synchronizedValues) {
+                String path = "";
+                boolean isNested = true;
+                while (isNested) {
+                    int slashIdx = sval.indexOf('/');
+                    isNested = slashIdx == 0;
+                    if (isNested) {
+                        sval = sval.substring(1);
+                        slashIdx = sval.indexOf('/');
+                        int colonIdx = sval.indexOf(':');
+                        int idx = colonIdx < slashIdx ? colonIdx : slashIdx;
+                        path += sval.substring(0, idx) + "/";
+                        sval = sval.substring(idx);
+                    } else {
+                        path += CmsContentDefinition.removeIndex(sval.substring(sval.lastIndexOf('/') + 1));
+                    }
+                }
+                m_synchronizedPaths.add(path);
+            }
+        }
+    }
+
+    /**
+     * Update the validation context, i.e., replace it with the one generated from the validation result.
+     * @param validationResult the result to update the context for.
+     */
+    public void updateValidationContext(final CmsValidationResult validationResult) {
+
+        m_validationContext = new CmsValidationContext(validationResult, m_synchronizedPaths);
     }
 
     /**

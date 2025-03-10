@@ -60,14 +60,14 @@ import com.google.gwt.user.client.rpc.SynchronizedRpcRequest;
 public interface I_CmsCoreServiceAsync {
 
     /**
-     * Changes the password of the current user.<p>
-     *
-     * @param oldPassword the old password
-     * @param newPassword the value entered for the new password
-     * @param newPasswordConfirm the value entered for the confirmation of the new password
-     *
-     * @param callback the callback for the result
-     */
+    * Changes the password of the current user.<p>
+    *
+    * @param oldPassword the old password
+    * @param newPassword the value entered for the new password
+    * @param newPasswordConfirm the value entered for the confirmation of the new password
+    *
+    * @param callback the callback for the result
+    */
     void changePassword(
         String oldPassword,
         String newPassword,
@@ -95,22 +95,8 @@ public interface I_CmsCoreServiceAsync {
      * @param includeSubCats if to include all categories, or first level child categories only
      * @param refVfsPath the reference path (site-relative path according to which the available category repositories are determined),
      *        can be <code>null</code> to only use the system repository
-     * @param callback the async callback
-     */
-    void getCategories(
-        String fromCatPath,
-        boolean includeSubCats,
-        String refVfsPath,
-        AsyncCallback<List<CmsCategoryTreeEntry>> callback);
-
-    /**
-     * Returns the categories for the given search parameters.<p>
-     *
-     * @param fromCatPath the category path to start with, can be <code>null</code> or empty to use the root
-     * @param includeSubCats if to include all categories, or first level child categories only
-     * @param refVfsPath the reference path (site-relative path according to which the available category repositories are determined),
-     *        can be <code>null</code> to only use the system repository
      * @param withRepositories flag, indicating if also the category repositories should be returned as category
+     * @param selected a set of paths of currently selected categories (which should be included in the result even if they are marked as hidden)
      * @param callback the async callback
      */
     void getCategories(
@@ -118,6 +104,7 @@ public interface I_CmsCoreServiceAsync {
         boolean includeSubCats,
         String refVfsPath,
         boolean withRepositories,
+        Set<String> selected,
         AsyncCallback<List<CmsCategoryTreeEntry>> callback);
 
     /**
@@ -146,6 +133,20 @@ public interface I_CmsCoreServiceAsync {
     void getContextMenuEntries(
         CmsUUID structureId,
         AdeContext context,
+        AsyncCallback<List<CmsContextMenuEntryBean>> callback);
+
+    /**
+     * Returns a list of menu entry beans for the context menu.<p>
+     *
+     * @param structureId the structure id of the resource for which to get the context menu
+     * @param context the ade context (sitemap or containerpage)
+     * @param params additional context information that the server side can use to decide menu item availability
+     * @param callback the asynchronous callback
+     */
+    void getContextMenuEntries(
+        CmsUUID structureId,
+        AdeContext context,
+        Map<String, String> params,
         AsyncCallback<List<CmsContextMenuEntryBean>> callback);
 
     /**
@@ -249,6 +250,14 @@ public interface I_CmsCoreServiceAsync {
      * @param callback the async callback
      */
     void prefetch(AsyncCallback<CmsCoreData> callback);
+
+    /**
+     * Saves a category used by the current user.
+     *
+     * @param category the category
+     * @param callback the callback to call when finished
+     */
+    void saveUsedCategory(String category, AsyncCallback<Void> callback);
 
     /**
      * Saves the user settings for the current user.<p>

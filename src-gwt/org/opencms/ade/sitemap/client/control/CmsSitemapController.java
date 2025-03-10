@@ -92,6 +92,7 @@ import com.google.gwt.dom.client.Style;
 import com.google.gwt.event.shared.HandlerRegistration;
 import com.google.gwt.event.shared.SimpleEventBus;
 import com.google.gwt.user.client.Command;
+import com.google.gwt.user.client.DOM;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.rpc.SerializationException;
@@ -462,6 +463,7 @@ public class CmsSitemapController implements I_CmsSitemapController {
                     newEntry.getSitePath(),
                     newEntry.getDetailpageTypeName(),
                     /* qualifier = */null,
+                    new ArrayList<>(),
                     newEntry.getVfsModeIcon());
                 table.add(info);
             }
@@ -2097,6 +2099,7 @@ public class CmsSitemapController implements I_CmsSitemapController {
                             newEntry.getSitePath(),
                             newEntry.getDetailpageTypeName(),
                             /* qualifier = */null,
+                            new ArrayList<>(),
                             newEntry.getVfsModeIcon());
                     }
                     addDetailPageInfo(info);
@@ -2175,6 +2178,15 @@ public class CmsSitemapController implements I_CmsSitemapController {
                     start(0, true);
                     getService().save(getEntryPoint(), change, this);
 
+                }
+
+                @Override
+                public void onFailure(Throwable t) {
+
+                    // An error after a drag/drop operation can cause click events to get sent to the sitemap entry's move handle
+                    // instead of the error dialog's buttons. We use releaseCapture() to fix this.
+                    DOM.releaseCapture(DOM.getCaptureElement());
+                    super.onFailure(t);
                 }
 
                 /**
@@ -2330,7 +2342,7 @@ public class CmsSitemapController implements I_CmsSitemapController {
 
         m_galleryTypes.clear();
         for (CmsGalleryType type : galleryTypes) {
-            m_galleryTypes.put(new Integer(type.getTypeId()), type);
+            m_galleryTypes.put(Integer.valueOf(type.getTypeId()), type);
         }
     }
 
@@ -2347,9 +2359,11 @@ public class CmsSitemapController implements I_CmsSitemapController {
         for (CmsClientSitemapEntry entry : entries) {
             if (entry.getSitePath().startsWith(oldSitepath)) {
                 String currentPath = entry.getSitePath();
-                String updatedSitePath = CmsStringUtil.joinPaths(
-                    newSitepath,
-                    currentPath.substring(oldSitepath.length()));
+                String partAfterOldSitePath = currentPath.substring(oldSitepath.length());
+
+                String updatedSitePath = "".equals(partAfterOldSitePath)
+                ? newSitepath
+                : CmsStringUtil.joinPaths(newSitepath, partAfterOldSitePath);
                 entry.updateSitePath(updatedSitePath, this);
             }
         }

@@ -32,9 +32,11 @@ import org.opencms.acacia.client.CmsEditorBase;
 import org.opencms.acacia.client.CmsUndoRedoHandler;
 import org.opencms.acacia.client.CmsUndoRedoHandler.UndoRedoState;
 import org.opencms.acacia.client.CmsValidationContext;
+import org.opencms.acacia.client.CmsValidationHandler;
 import org.opencms.acacia.client.CmsValueFocusHandler;
 import org.opencms.acacia.client.I_CmsEntityRenderer;
 import org.opencms.acacia.client.I_CmsInlineFormParent;
+import org.opencms.acacia.client.I_CmsWidgetService;
 import org.opencms.acacia.client.entity.CmsEntityBackend;
 import org.opencms.acacia.shared.CmsEntity;
 import org.opencms.acacia.shared.CmsEntityAttribute;
@@ -78,6 +80,7 @@ import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.gwt.shared.CmsListInfoBean;
+import org.opencms.util.CmsPair;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
@@ -86,10 +89,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.TreeMap;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.core.client.JavaScriptObject;
@@ -128,6 +133,10 @@ import com.google.gwt.user.client.ui.PopupPanel;
 import com.google.gwt.user.client.ui.RootPanel;
 import com.google.gwt.user.client.ui.SimplePanel;
 import com.google.gwt.user.client.ui.TextBox;
+
+import elemental2.dom.DomGlobal;
+import jsinterop.base.Js;
+import jsinterop.base.JsPropertyMap;
 
 /**
  * The content editor.<p>
@@ -307,6 +316,15 @@ public final class CmsContentEditor extends CmsEditorBase {
     /** The entity observer instance. */
     private CmsEntityObserver m_entityObserver;
 
+    /** Flag, indicating if save is enabled */
+    private boolean m_hasChanges;
+
+    /** Flag, indicating if there are errors */
+    private boolean m_hasErrors;
+
+    /** Flag, indicating if there are warnings */
+    private boolean m_hasWarnings;
+
     /** The hide help bubbles button. */
     private CmsToggleButton m_hideHelpBubblesButton;
 
@@ -315,6 +333,9 @@ public final class CmsContentEditor extends CmsEditorBase {
 
     /** Flag which indicate whether the directedit parameter was set to true when loading the editor. */
     private boolean m_isDirectEdit;
+
+    /** Flag, indicating if save is enabled */
+    private boolean m_isSaveDisabled;
 
     /** Flag indicating the editor was opened as the stand alone version, not from within any other module. */
     private boolean m_isStandAlone;
@@ -385,7 +406,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         I_CmsLayoutBundle.INSTANCE.editorCss().ensureInjected();
         m_changedEntityIds = new HashSet<String>();
         m_registeredEntities = new HashSet<String>();
-        m_availableLocales = new HashMap<String, String>();
+        m_availableLocales = new LinkedHashMap<String, String>();
         m_contentLocales = new HashSet<String>();
         m_deletedEntities = new HashSet<String>();
         m_definitions = new HashMap<String, CmsContentDefinition>();
@@ -845,6 +866,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         m_clientId = clientId;
         initEventPreviewHandler();
         final CmsUUID structureId = new CmsUUID(elementId);
+        m_context = context;
 
         I_CmsSimpleCallback<Boolean> callback = new I_CmsSimpleCallback<Boolean>() {
 
@@ -907,8 +929,9 @@ public final class CmsContentEditor extends CmsEditorBase {
         I_CmsEditorCloseHandler onClose) {
 
         initEventPreviewHandler();
+        m_context = context;
         final String entityId = CmsContentDefinition.uuidToEntityId(elementId, locale);
-        m_locale = locale;
+        internalSetLocale(locale);
         m_onClose = onClose;
         CmsCoreProvider.get().lock(elementId, loadTime, new I_CmsSimpleCallback<Boolean>() {
 
@@ -956,6 +979,7 @@ public final class CmsContentEditor extends CmsEditorBase {
             RootPanel.get().add(new Label(e.getMessage()));
             return;
         }
+        context.setReusedElement(definition.isReusedElement());
         m_isStandAlone = true;
         if (definition.isModelInfo()) {
             openModelSelectDialog(context, definition);
@@ -1037,7 +1061,7 @@ public final class CmsContentEditor extends CmsEditorBase {
     public void saveAndDeleteEntities(final boolean clearOnSuccess, final I_CmsSimpleCallback<Boolean> callback) {
 
         final CmsEntity entity = m_entityBackend.getEntity(m_entityId);
-        saveAndDeleteEntities(entity, new ArrayList<String>(m_deletedEntities), clearOnSuccess, callback);
+        saveAndDeleteEntities(entity, new ArrayList<>(m_deletedEntities), clearOnSuccess, true, callback);
     }
 
     /**
@@ -1046,12 +1070,14 @@ public final class CmsContentEditor extends CmsEditorBase {
      * @param lastEditedEntity the last edited entity
      * @param deletedEntites the deleted entity id's
      * @param clearOnSuccess <code>true</code> to clear the VIE instance on success
+     * @param failOnWarnings <code>true</code> to prevent saving when warnings exist
      * @param callback the call back command
      */
     public void saveAndDeleteEntities(
         final CmsEntity lastEditedEntity,
         final List<String> deletedEntites,
         final boolean clearOnSuccess,
+        final boolean failOnWarnings,
         final I_CmsSimpleCallback<Boolean> callback) {
 
         CmsRpcAction<CmsSaveResult> asyncCallback = new CmsRpcAction<CmsSaveResult>() {
@@ -1067,6 +1093,7 @@ public final class CmsContentEditor extends CmsEditorBase {
                     getSkipPaths(),
                     m_locale,
                     clearOnSuccess,
+                    failOnWarnings,
                     this);
             }
 
@@ -1075,7 +1102,25 @@ public final class CmsContentEditor extends CmsEditorBase {
 
                 stop(false);
                 if ((result != null) && result.hasErrors()) {
-                    showValidationErrorDialog(result.getValidationResult());
+                    if (failOnWarnings && !result.getValidationResult().hasErrors()) {
+                        CmsContentEditor.this.showSaveValidationWarningDialog(
+                            result.getIssueInformation(),
+                            new I_CmsSimpleCallback<Boolean>() {
+
+                                @Override
+                                public void execute(Boolean arg) {
+
+                                    saveAndDeleteEntities(
+                                        lastEditedEntity,
+                                        deletedEntites,
+                                        clearOnSuccess,
+                                        false,
+                                        callback);
+                                }
+                            });
+                    } else {
+                        showValidationErrorDialog(result.getIssueInformation());
+                    }
                 } else {
                     callback.execute(Boolean.valueOf((result != null) && result.isHasChangedSettings()));
                     if (clearOnSuccess) {
@@ -1166,7 +1211,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         m_openFormButton = null;
         m_saveButton = null;
         m_onClose = null;
-        m_locale = null;
+        internalSetLocale(null);
         if (m_basePanel != null) {
             m_basePanel.removeFromParent();
             m_basePanel = null;
@@ -1351,7 +1396,7 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void confirmCancel() {
 
-        if (m_saveButton.isEnabled()) {
+        if (m_hasChanges) {
             CmsConfirmDialog dialog = new CmsConfirmDialog(
                 org.opencms.gwt.client.Messages.get().key(org.opencms.gwt.client.Messages.GUI_DIALOG_RESET_TITLE_0),
                 org.opencms.gwt.client.Messages.get().key(org.opencms.gwt.client.Messages.GUI_DIALOG_RESET_TEXT_0));
@@ -1431,9 +1476,11 @@ public final class CmsContentEditor extends CmsEditorBase {
                 m_changedEntityIds.add(targetId);
                 m_contentLocales.add(targetLocale);
                 m_deletedEntities.remove(targetId);
+                m_hasChanges = true;
                 enableSave();
             }
         }
+        updateValidation();
         initLocaleSelect();
     }
 
@@ -1479,6 +1526,7 @@ public final class CmsContentEditor extends CmsEditorBase {
             m_deletedEntities.add(m_entityId);
             getValidationHandler().getValidationContext().removeEntityId(m_entityId);
             unregistereEntity(m_entityId);
+            m_hasChanges = true;
             enableSave();
             String nextLocale = null;
             if (m_registeredEntities.isEmpty()) {
@@ -1497,8 +1545,14 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void disableSave(String message) {
 
-        m_saveButton.disable(message);
-        m_saveExitButton.disable(message);
+        // If there are warnings or errors, we keep the buttons enabled
+        // to display a hint dialog on the warnings/errors on click.
+        if (!(m_hasWarnings || m_hasErrors)) {
+            m_saveButton.disable(message);
+            m_saveExitButton.disable(message);
+            m_publishButton.disable(message);
+            m_isSaveDisabled = true;
+        }
     }
 
     /**
@@ -1522,22 +1576,8 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void handleValidationChange(CmsValidationContext validationContext) {
 
-        if (validationContext.hasValidationErrors()) {
-            String locales = "";
-            for (String id : validationContext.getInvalidEntityIds()) {
-
-                locales += "\n";
-
-                String locale = CmsContentDefinition.getLocaleFromId(id);
-                if (m_availableLocales.containsKey(locale)) {
-                    locales += m_availableLocales.get(locale);
-                    locales += ": " + validationContext.getInvalidFields(id);
-                }
-            }
-            disableSave(Messages.get().key(Messages.GUI_TOOLBAR_VALIDATION_ERRORS_1, locales));
-        } else if (!m_changedEntityIds.isEmpty()) {
-            enableSave();
-        }
+        // adjust the css classes for the save buttons depending on the validation info.
+        updateSaveButtons(validationContext.hasValidationErrors(), validationContext.hasValidationWarnings());
     }
 
     /**
@@ -1573,7 +1613,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         String mainLocale) {
 
         m_context = context;
-        m_locale = contentDefinition.getLocale();
+        internalSetLocale(contentDefinition.getLocale());
         m_entityId = contentDefinition.getEntityId();
         m_deleteOnCancel = contentDefinition.isDeleteOnCancel();
         m_autoUnlock = contentDefinition.isAutoUnlock();
@@ -1583,6 +1623,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         initClosingHandler();
         setContentDefinition(contentDefinition);
         initToolbar();
+        updateValidation();
         if (inline && (formParent != null)) {
             if ((mainLocale != null)
                 && (CmsDomUtil.querySelector(
@@ -1625,6 +1666,7 @@ public final class CmsContentEditor extends CmsEditorBase {
             renderFormContent();
             fixFocus();
         }
+        getValidationHandler().setSynchronizedValues(m_definitions.get(m_locale).getSynchronizations());
         if (contentDefinition.isPerformedAutocorrection()) {
             CmsNotification.get().send(
                 CmsNotification.Type.NORMAL,
@@ -1773,10 +1815,19 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void renderFormContent() {
 
+        m_contentInfoHeader = new CmsInfoHeader(m_title, null, m_sitePath, m_locale, m_iconClasses);
         initLocaleSelect();
         setNativeResourceInfo(m_sitePath, m_locale);
-        m_contentInfoHeader = new CmsInfoHeader(m_title, null, m_sitePath, m_locale, m_iconClasses);
+
         m_basePanel.add(m_contentInfoHeader);
+        if (m_context.isReusedElement()) {
+            String message = Messages.get().key(Messages.GUI_CONTENT_EDITOR_REUSE_MARKER_0);
+            Label label = new Label(message);
+            label.addStyleName("oc-editor-reuse-marker");
+            m_contentInfoHeader.addWidget(label);
+        }
+        FlowPanel localeButtons = m_contentInfoHeader.getPathButtons();
+        localeButtons.addStyleName(I_CmsLayoutBundle.INSTANCE.editorCss().localeButtons());
         SimplePanel content = new SimplePanel();
         content.setStyleName(org.opencms.acacia.client.css.I_CmsLayoutBundle.INSTANCE.form().formParent());
         m_basePanel.add(content);
@@ -1851,6 +1902,7 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     void setChanged() {
 
+        m_hasChanges = true;
         enableSave();
         m_changedEntityIds.add(m_entityId);
         m_deletedEntities.remove(m_entityId);
@@ -1908,6 +1960,7 @@ public final class CmsContentEditor extends CmsEditorBase {
 
         m_changedEntityIds.clear();
         m_deletedEntities.clear();
+        m_hasChanges = false;
         disableSave(Messages.get().key(Messages.GUI_TOOLBAR_NOTHING_CHANGED_0));
     }
 
@@ -1969,26 +2022,36 @@ public final class CmsContentEditor extends CmsEditorBase {
     }
 
     /**
+     * Show the validation warning dialog on save.
+     * @param issueInformation the validation issues
+     * @param callback the callback to trigger to save
+     */
+    void showSaveValidationWarningDialog(
+        Map<String, List<CmsPair<List<CmsPair<String, Integer>>, String>>> issueInformation,
+        I_CmsSimpleCallback<?> callback) {
+
+        Map<String, List<String>> issues = createIssueMap(issueInformation);
+
+        CmsConfirmSaveDialog dialog = new CmsConfirmSaveDialog(issues, true, m_contentLocales.size() == 1, callback);
+
+        dialog.center();
+
+    }
+
+    /**
      * Shows the validation error dialog.<p>
      *
-     * @param validationResult the validation result
+     * @param issueInformation the validation issues
      */
-    void showValidationErrorDialog(CmsValidationResult validationResult) {
+    void showValidationErrorDialog(
+        Map<String, List<CmsPair<List<CmsPair<String, Integer>>, String>>> issueInformation) {
 
-        if (validationResult.getErrors().keySet().contains(m_entityId)) {
-            getValidationHandler().displayValidation(m_entityId, validationResult);
-        }
-        String errorLocales = "";
-        for (String entityId : validationResult.getErrors().keySet()) {
-            String locale = CmsContentDefinition.getLocaleFromId(entityId);
-            errorLocales += m_availableLocales.get(locale) + ", ";
-        }
-        // remove trailing ','
-        errorLocales = errorLocales.substring(0, errorLocales.length() - 2);
-        CmsErrorDialog dialog = new CmsErrorDialog(
-            Messages.get().key(Messages.GUI_VALIDATION_ERROR_1, errorLocales),
-            null);
+        Map<String, List<String>> issues = createIssueMap(issueInformation);
+
+        CmsConfirmSaveDialog dialog = new CmsConfirmSaveDialog(issues, false, m_contentLocales.size() == 1, null);
+
         dialog.center();
+
     }
 
     /**
@@ -2002,7 +2065,8 @@ public final class CmsContentEditor extends CmsEditorBase {
             return;
         }
         final Integer oldTabIndex = getTabIndex();
-        m_locale = locale;
+        internalSetLocale(locale);
+
         m_basePanel.clear();
         destroyForm(false);
         final CmsEntity entity = m_entityBackend.getEntity(m_entityId);
@@ -2125,6 +2189,40 @@ public final class CmsContentEditor extends CmsEditorBase {
     }
 
     /**
+     * Update the validation context completely.
+     */
+    void updateValidation() {
+
+        final CmsEntity entity = m_entityBackend.getEntity(m_entityId);
+        final CmsValidationHandler validationHandler = getValidationHandler();
+        getService().validateEntities(
+            entity,
+            m_clientId,
+            new ArrayList<>(m_deletedEntities),
+            getSkipPaths(),
+            m_locale,
+            new AsyncCallback<CmsValidationResult>() {
+
+                @Override
+                public void onFailure(Throwable caught) {
+
+                    // TODO Auto-generated method stub
+
+                }
+
+                @Override
+                public void onSuccess(CmsValidationResult result) {
+
+                    CmsDebugLog.consoleLog("Update validation success: " + result);
+                    validationHandler.updateValidationContext(result);
+                    updateSaveButtons(result.hasErrors(), result.hasWarnings());
+
+                }
+
+            });
+    }
+
+    /**
      * Adds the change listener to the observer.<p>
      *
      * @param changeListener the change listener
@@ -2190,12 +2288,49 @@ public final class CmsContentEditor extends CmsEditorBase {
     }
 
     /**
+     * Creates the map from languages to localized element path information for all errors/warnings.
+     * @param issueInformation the information on the warnings/errors
+     * @return the map from languages to localized element path information for all errors/warnings.
+     */
+    private Map<String, List<String>> createIssueMap(
+        Map<String, List<CmsPair<List<CmsPair<String, Integer>>, String>>> issueInformation) {
+
+        I_CmsWidgetService service = getWidgetService();
+        Map<String, List<String>> resultMap = new TreeMap<>();
+        for (Entry<String, List<CmsPair<List<CmsPair<String, Integer>>, String>>> e : issueInformation.entrySet()) {
+            String localeName = e.getKey();
+            List<CmsPair<List<CmsPair<String, Integer>>, String>> items = e.getValue();
+            List<String> localeItems = new ArrayList<>(items.size());
+            resultMap.put(localeName, localeItems);
+            for (CmsPair<List<CmsPair<String, Integer>>, String> it : items) {
+                String path = "";
+                for (CmsPair<String, Integer> partInfo : it.getFirst()) {
+                    String attribute = partInfo.getFirst();
+                    Integer idx = partInfo.getSecond();
+                    path += service.getAttributeLabel(attribute);
+                    if (idx.intValue() > 1) {
+                        path += " [" + (idx) + "]";
+                    }
+                    path += " > ";
+                }
+                String issueDisplay = "<strong>"
+                    + path.substring(0, path.length() - 3)
+                    + "</strong> - "
+                    + it.getSecond();
+                localeItems.add(issueDisplay);
+            }
+        }
+        return resultMap;
+    }
+
+    /**
      * Enables the save buttons.<p>
      */
     private void enableSave() {
 
         m_saveButton.enable();
         m_saveExitButton.enable();
+        m_publishButton.enable();
     }
 
     /**
@@ -2297,13 +2432,29 @@ public final class CmsContentEditor extends CmsEditorBase {
         if (m_availableLocales.size() < 2) {
             return;
         }
+        FlowPanel localeButtons = m_contentInfoHeader.getPathButtons();
+        localeButtons.clear();
         Map<String, String> selectOptions = new HashMap<String, String>();
+        int buttonLimit = CmsCoreProvider.get().getMaxLocaleButtons();
         for (Entry<String, String> localeEntry : m_availableLocales.entrySet()) {
             if (m_contentLocales.contains(localeEntry.getKey())) {
-                selectOptions.put(localeEntry.getKey(), localeEntry.getValue());
+                final String locale = localeEntry.getKey();
+                selectOptions.put(locale, localeEntry.getValue());
+                if ((localeButtons.getWidgetCount() < buttonLimit) && !locale.equals(m_locale)) {
+                    Label button = new Label(locale.toUpperCase());
+                    localeButtons.add(button);
+                    button.addClickHandler(event -> {
+                        switchLocale(locale);
+                    });
+                }
             } else {
                 selectOptions.put(localeEntry.getKey(), localeEntry.getValue() + " [-]");
             }
+        }
+        if (localeButtons.getWidgetCount() > 0) {
+            Label label = new Label(m_locale.toUpperCase());
+            label.addStyleName(I_CmsLayoutBundle.INSTANCE.editorCss().currentLocaleLabel());
+            localeButtons.add(label);
         }
         if (m_localeSelect == null) {
             m_localeSelect = new CmsSelectBox(selectOptions);
@@ -2361,6 +2512,8 @@ public final class CmsContentEditor extends CmsEditorBase {
      */
     private void initToolbar() {
 
+        m_hasErrors = false;
+        m_hasWarnings = false;
         m_toolbar = new CmsToolbar();
         m_toolbar.setAppTitle(Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_0));
         m_publishButton = createButton(
@@ -2432,6 +2585,7 @@ public final class CmsContentEditor extends CmsEditorBase {
         m_saveButton.setVisible(false);
         m_toolbar.addLeft(m_saveButton);
         disableSave(Messages.get().key(Messages.GUI_TOOLBAR_NOTHING_CHANGED_0));
+        m_hasChanges = false;
         m_undoButton = createButton(Messages.get().key(Messages.GUI_TOOLBAR_UNDO_0), "opencms-icon-undo");
         m_undoButton.addClickHandler(new ClickHandler() {
 
@@ -2514,6 +2668,22 @@ public final class CmsContentEditor extends CmsEditorBase {
         });
         m_toolbar.addRight(m_cancelButton);
         RootPanel.get().add(m_toolbar);
+    }
+
+    /**
+     * Sets both this object's locale field and a Javascript variable that can be used to access the locale from nested iframes.
+     *
+     * @param locale the locale to set
+     */
+    private void internalSetLocale(String locale) {
+
+        m_locale = locale;
+        JsPropertyMap<Object> window = Js.cast(DomGlobal.window);
+        if (locale != null) {
+            window.set(CmsGwtConstants.ATTR_CONTENT_EDITOR_LOCALE, locale);
+        } else {
+            window.delete(CmsGwtConstants.ATTR_CONTENT_EDITOR_LOCALE);
+        }
     }
 
     /**
@@ -2677,6 +2847,41 @@ public final class CmsContentEditor extends CmsEditorBase {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Updates the styles at the save buttons.
+     * @param hasErrors flag, indicating if we have errors
+     * @param hasWarnings flag, indicating if we have warnings
+     */
+    private void updateSaveButtons(boolean hasErrors, boolean hasWarnings) {
+
+        if (m_hasErrors && !hasErrors) {
+            m_saveButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_saveExitButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_publishButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_hasErrors = false;
+        }
+        if (m_hasWarnings && (hasErrors || !hasWarnings)) {
+            m_saveButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_saveExitButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_publishButton.removeStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_hasWarnings = false;
+        }
+        if (!m_hasErrors && hasErrors) {
+            m_saveButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_saveExitButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_publishButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsError());
+            m_hasErrors = true;
+        } else if (!m_hasWarnings && !m_hasErrors && hasWarnings) {
+            m_saveButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_saveExitButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_publishButton.addStyleName(I_CmsLayoutBundle.INSTANCE.buttonCss().cmsWarning());
+            m_hasWarnings = true;
+        }
+        if (m_isSaveDisabled && (m_hasErrors || m_hasWarnings)) {
+            enableSave();
         }
     }
 }

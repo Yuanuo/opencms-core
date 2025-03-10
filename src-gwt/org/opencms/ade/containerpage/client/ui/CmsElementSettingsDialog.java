@@ -28,6 +28,7 @@
 package org.opencms.ade.containerpage.client.ui;
 
 import org.opencms.ade.containerpage.client.CmsContainerpageController;
+import org.opencms.ade.containerpage.client.CmsContainerpageController.I_ReloadHandler;
 import org.opencms.ade.containerpage.client.Messages;
 import org.opencms.ade.containerpage.client.ui.groupeditor.CmsInheritanceContainerEditor;
 import org.opencms.ade.containerpage.shared.CmsContainerElement;
@@ -62,7 +63,6 @@ import org.opencms.gwt.client.ui.input.form.CmsWidgetFactoryRegistry;
 import org.opencms.gwt.client.ui.input.form.I_CmsFormSubmitHandler;
 import org.opencms.gwt.client.ui.input.form.I_CmsFormWidgetMultiFactory;
 import org.opencms.gwt.client.util.CmsDomUtil;
-import org.opencms.gwt.client.util.I_CmsSimpleCallback;
 import org.opencms.gwt.shared.CmsAdditionalInfoBean;
 import org.opencms.gwt.shared.CmsCoreData.AdeContext;
 import org.opencms.gwt.shared.CmsGwtConstants;
@@ -183,9 +183,6 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
         }
     }
 
-    /** The hidden field widget name. */
-    private static final String HIDDEN_FIELD_WIDGET = "hidden";
-
     /** The container page controller. */
     CmsContainerpageController m_controller;
 
@@ -285,10 +282,13 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
         }
 
         boolean isEditableModelGroup = CmsCoreProvider.get().getUserInfo().isDeveloper()
-            && m_controller.getData().isModelGroup()
+            && m_controller.getData().isModelGroup();
+        boolean hasGroupTypeOption = isEditableModelGroup
             && ((m_controller.getModelGroupElementId() == null)
                 || CmsContainerpageController.getServerId(elementBean.getClientId()).equals(
-                    m_controller.getModelGroupElementId()));
+                    m_controller.getModelGroupElementId()))
+            && !m_elementWidget.hasModelGroupParent();
+
         boolean isDeveloper = CmsCoreProvider.get().getUserInfo().isDeveloper();
         m_originalFormatter = currentFormatterConfig.getKeyOrId();
 
@@ -356,10 +356,13 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
                 ));
                 modelGroupFieldSet.getElement().getStyle().setMarginTop(10, Unit.PX);
 
-                if (isEditableModelGroup && !elementWidget.hasModelGroupParent()) {
+                if (hasGroupTypeOption) {
                     addModelGroupSettings(elementBean, elementWidget, modelGroupFieldSet);
-                } else if (!elementWidget.isModelGroup()) {
-                    addCreateNewCheckbox(elementBean, modelGroupFieldSet);
+                }
+                if (!elementWidget.isModelGroup() && !hasGroupTypeOption) {
+                    if (!isEditableModelGroup || settingsConfig.isCopyGroup()) {
+                        addCreateNewCheckbox(elementBean, modelGroupFieldSet);
+                    }
                 }
                 if (modelGroupFieldSet.getWidgetCount() > 0) {
                     fieldSetPanel.getMainPanel().insert(modelGroupFieldSet, 1);
@@ -395,7 +398,7 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
                 contextsFieldset.setLegend(m_contextInfo.getSettingDefinition().getNiceName());
                 contextsFieldset.getElement().getStyle().setMarginTop(10, Style.Unit.PX);
                 m_contextsWidget = new CmsMultiCheckBox(
-                    CmsStringUtil.splitAsMap(m_contextInfo.getSettingDefinition().getWidgetConfiguration(), "|", ":"));
+                    CmsStringUtil.splitOptions(m_contextInfo.getSettingDefinition().getWidgetConfiguration()));
                 for (CmsCheckBox checkbox : m_contextsWidget.getCheckboxes()) {
                     Style checkboxStyle = checkbox.getElement().getStyle();
                     checkbox.getButton().getElement().getStyle().setFontWeight(Style.FontWeight.NORMAL);
@@ -585,7 +588,7 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
             String fieldId = field.getId();
             CmsXmlContentProperty propDef = settingsConfig.get(fieldId);
             // skip hidden fields
-            if (!HIDDEN_FIELD_WIDGET.equals(propDef.getWidget())) {
+            if (!CmsGwtConstants.HIDDEN_SETTINGS_WIDGET_NAME.equals(propDef.getWidget())) {
                 String initialValue = m_settings.get(fieldId);
                 if (initialValue == null) {
 
@@ -692,34 +695,47 @@ public class CmsElementSettingsDialog extends CmsFormDialog implements I_CmsForm
             }
         }
         final String changeModelGroupId = modelGroupId;
+        I_ReloadHandler reloadHandler = new I_ReloadHandler() {
+
+            CmsContainerPageElementPanel m_newElement;
+            CmsContainerPageElementPanel m_oldElement;
+
+            @Override
+            public void finish() {
+
+                if (isTemplateContextChanged()) {
+                    // if the context multiselect box isn't displayed, of course it can't change values,
+                    // and this code won't be executed.
+                    CmsContainerpageController.get().handleChangeTemplateContext(
+                        m_newElement,
+                        filteredFieldValues.get(CmsTemplateContextInfo.SETTING));
+                }
+                if (hasFormatterChanges) {
+                    updateCss();
+                }
+                if (m_newElement.getElement().getInnerHTML().contains(CmsGwtConstants.FORMATTER_RELOAD_MARKER)
+                    && !CmsContainerpageController.get().isGroupcontainerEditing()) {
+                    CmsContainerpageController.get().reloadPage();
+                }
+                if (m_modelGroupSelect != null) {
+                    m_controller.setModelGroupElementId(changeModelGroupId);
+                }
+                m_controller.sendElementEditedSettings(m_newElement, m_oldElement);
+            }
+
+            @Override
+            public void onReload(CmsContainerPageElementPanel oldElement, CmsContainerPageElementPanel newElement) {
+
+                m_oldElement = oldElement;
+                m_newElement = newElement;
+            }
+
+        };
         m_controller.reloadElementWithSettings(
             m_elementWidget,
             m_elementBean.getClientId(),
             filteredFieldValues,
-            new I_CmsSimpleCallback<CmsContainerPageElementPanel>() {
-
-                public void execute(CmsContainerPageElementPanel result) {
-
-                    if (isTemplateContextChanged()) {
-                        // if the context multiselect box isn't displayed, of course it can't change values,
-                        // and this code won't be executed.
-                        CmsContainerpageController.get().handleChangeTemplateContext(
-                            result,
-                            filteredFieldValues.get(CmsTemplateContextInfo.SETTING));
-                    }
-                    if (hasFormatterChanges) {
-                        updateCss();
-                    }
-                    if (result.getElement().getInnerHTML().contains(CmsGwtConstants.FORMATTER_RELOAD_MARKER)
-                        && !CmsContainerpageController.get().isGroupcontainerEditing()) {
-                        CmsContainerpageController.get().reloadPage();
-                    }
-                    if (m_modelGroupSelect != null) {
-                        m_controller.setModelGroupElementId(changeModelGroupId);
-                    }
-                }
-
-            });
+            reloadHandler);
     }
 
     /**

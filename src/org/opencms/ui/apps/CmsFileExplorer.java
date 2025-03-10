@@ -52,6 +52,7 @@ import org.opencms.ui.components.CmsErrorDialog;
 import org.opencms.ui.components.CmsExtendedSiteSelector;
 import org.opencms.ui.components.CmsFileTable;
 import org.opencms.ui.components.CmsResourceIcon;
+import org.opencms.ui.components.CmsResourceTable;
 import org.opencms.ui.components.CmsResourceTableProperty;
 import org.opencms.ui.components.CmsToolBar;
 import org.opencms.ui.components.CmsUploadButton;
@@ -63,11 +64,14 @@ import org.opencms.ui.contextmenu.CmsResourceContextMenuBuilder;
 import org.opencms.ui.dialogs.CmsCopyMoveDialog;
 import org.opencms.ui.dialogs.CmsDeleteDialog;
 import org.opencms.ui.dialogs.CmsNewDialog;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.CmsWorkplace;
 import org.opencms.workplace.explorer.CmsResourceUtil;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -100,6 +104,7 @@ import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
 import com.vaadin.ui.CssLayout;
 import com.vaadin.ui.HorizontalSplitPanel;
+import com.vaadin.ui.JavaScript;
 import com.vaadin.ui.Notification;
 import com.vaadin.ui.UI;
 import com.vaadin.ui.themes.ValoTheme;
@@ -134,7 +139,7 @@ import com.vaadin.v7.ui.Tree.TreeDragMode;
 @SuppressWarnings("deprecation")
 public class CmsFileExplorer
 implements I_CmsWorkplaceApp, I_CmsCachableApp, ViewChangeListener, I_CmsWindowCloseListener, I_CmsHasShortcutActions,
-I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
+I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler, CmsResourceTable.ColumnSettingChangeHandler {
 
     /** The drop handler for copy/move operations. */
     public class ExplorerDropHandler implements DropHandler {
@@ -660,6 +665,7 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         m_shortcutActions.put(ACTION_SWITCH_ONLINE_CMD, switchOnline);
 
         m_fileTable = new CmsFileTable(this);
+        m_fileTable.setColumnSettingChangeHandler(this);
         m_fileTable.setSizeFull();
         m_fileTable.setMenuBuilder(new CmsResourceContextMenuBuilder());
         m_fileTable.setFolderSelectHandler(this);
@@ -985,6 +991,12 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
         context.setAppInfo(inf);
 
         initToolbarButtons(context);
+        try {
+            JavaScript.getCurrent().execute(
+                new String(
+                    CmsFileUtil.readFully(getClass().getResourceAsStream("update-crumb-wrapper-parent.js")),
+                    StandardCharsets.UTF_8));
+        } catch (IOException e) {}
         m_fileTable.updateColumnWidths(A_CmsUI.get().getPage().getBrowserWindowWidth() - LAYOUT_SPLIT_POSITION);
     }
 
@@ -994,6 +1006,18 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
     public boolean isCachable() {
 
         return true;
+    }
+
+    /**
+     * @see org.opencms.ui.components.CmsResourceTable.ColumnSettingChangeHandler#onColumnSettingsChanged()
+     */
+    @Override
+    public void onColumnSettingsChanged() {
+
+        OpenCms.getWorkplaceAppManager().storeAppSettings(
+            A_CmsUI.getCmsObject(),
+            CmsFileExplorerSettings.class,
+            m_fileTable.getTableSettings());
     }
 
     /**
@@ -1071,18 +1095,18 @@ I_CmsContextProvider, CmsFileTable.I_FolderSelectHandler {
                 changeSite(siteRoot, path, true);
             } else if ((siteRoot != null)
                 && !CmsStringUtil.comparePaths(siteRoot, cms.getRequestContext().getSiteRoot())) {
-                    String saveState = m_currentState;
-                    changeSite(siteRoot, path);
-                    if (!getSelectionFromState(saveState).isEmpty()) {
-                        m_fileTable.setValue(Collections.singleton(getSelectionFromState(saveState)));
-                    }
-                } else {
-                    String saveState = m_currentState;
-                    openPath(path, true);
-                    if (!getSelectionFromState(saveState).isEmpty()) {
-                        m_fileTable.setValue(Collections.singleton(getSelectionFromState(saveState)));
-                    }
+                String saveState = m_currentState;
+                changeSite(siteRoot, path);
+                if (!getSelectionFromState(saveState).isEmpty()) {
+                    m_fileTable.setValue(Collections.singleton(getSelectionFromState(saveState)));
                 }
+            } else {
+                String saveState = m_currentState;
+                openPath(path, true);
+                if (!getSelectionFromState(saveState).isEmpty()) {
+                    m_fileTable.setValue(Collections.singleton(getSelectionFromState(saveState)));
+                }
+            }
         }
     }
 

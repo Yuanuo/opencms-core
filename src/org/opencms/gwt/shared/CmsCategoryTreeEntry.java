@@ -44,6 +44,12 @@ public class CmsCategoryTreeEntry extends CmsCategoryBean {
     /** The children. */
     private List<CmsCategoryTreeEntry> m_children = Lists.newArrayList();
 
+    /** 'Forced visible' state. */
+    private Boolean m_forcedVisible;
+
+    /** Category is among the 'recently used' ones for the current user.  */
+    private boolean m_used;
+
     /**
      * Clone constructor.<p>
      *
@@ -83,6 +89,18 @@ public class CmsCategoryTreeEntry extends CmsCategoryBean {
     }
 
     /**
+     * Gets the 'forced visible' status.
+     *
+     * <p>A category tree entry with this status set to 'true' should be shown even if it is marked as hidden.
+     *
+     * @return the 'forced visible' status
+     */
+    public Boolean getForcedVisible() {
+
+        return m_forcedVisible;
+    }
+
+    /**
      * Gets the title of the category, or the name if the title is not set.<p>
      *
      * @return the title or name
@@ -97,6 +115,16 @@ public class CmsCategoryTreeEntry extends CmsCategoryBean {
     }
 
     /**
+     * Checks if the category is among the 'recently used' ones for the current user.
+     *
+     * @return true if the category was recently used
+     */
+    public boolean isUsed() {
+
+        return m_used;
+    }
+
+    /**
      * Sets the children.<p>
      *
      * @param children the children to set
@@ -104,5 +132,25 @@ public class CmsCategoryTreeEntry extends CmsCategoryBean {
     public void setChildren(List<CmsCategoryTreeEntry> children) {
 
         m_children = children;
+    }
+
+    /**
+     * Sets the 'forced visible' status.
+     *
+     * @param visibility the new value
+     */
+    public void setForcedVisible(Boolean visibility) {
+
+        m_forcedVisible = visibility;
+    }
+
+    /**
+     * Sets the 'recently used' state.
+     *
+     * @param used the new 'recently used' state
+     */
+    public void setUsed(boolean used) {
+
+        m_used = used;
     }
 }

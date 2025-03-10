@@ -38,6 +38,7 @@ import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
+import org.opencms.gwt.shared.CmsGwtConstants;
 import org.opencms.i18n.CmsEncoder;
 import org.opencms.i18n.CmsLocaleManager;
 import org.opencms.main.CmsException;
@@ -51,6 +52,7 @@ import org.opencms.xml.CmsXmlContentDefinition;
 import org.opencms.xml.CmsXmlException;
 import org.opencms.xml.CmsXmlGenericWrapper;
 import org.opencms.xml.CmsXmlUtils;
+import org.opencms.xml.containerpage.mutable.CmsMutableContainerPage;
 import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentMacroVisitor;
 import org.opencms.xml.content.CmsXmlContentProperty;
@@ -71,6 +73,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -130,6 +133,9 @@ public class CmsXmlContainerPage extends CmsXmlContent {
         /** Container attribute value node name. */
         Value;
     }
+
+    /** Sitemap attribute to re-enable storing setting values that match the default. */
+    public static final String ATTR_STORE_DEFAULT_SETTINGS = "template.store.default.settings";
 
     /** Name for old internal setting names that are not used with the SYSTEM:: prefix in code. */
     public static final Set<String> LEGACY_SYSTEM_SETTING_NAMES = Collections.unmodifiableSet(
@@ -264,10 +270,30 @@ public class CmsXmlContainerPage extends CmsXmlContent {
     /**
      * Gets the container page content as a bean.<p>
      *
+     * <p>Always creates a new copy of the bean.
+     *
      * @param cms the current CMS context
      * @return the bean containing the container page data
      */
     public CmsContainerPageBean getContainerPage(CmsObject cms) {
+
+        CmsContainerPageBean result = getOriginalContainerPage(cms);
+        if (result != null) {
+            // Copy everything
+            result = CmsMutableContainerPage.fromImmutable(result).toImmutable();
+            return result;
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Gets the container page content as a bean.<p>
+     *
+     * @param cms the current CMS context
+     * @return the bean containing the container page data
+     */
+    public CmsContainerPageBean getOriginalContainerPage(CmsObject cms) {
 
         Locale masterLocale = CmsLocaleManager.MASTER_LOCALE;
         Locale localeToLoad = null;
@@ -1021,6 +1047,81 @@ public class CmsXmlContainerPage extends CmsXmlContent {
                 // the properties
 
                 Map<String, String> processedSettings = processSettingsForSaveV2(adeConfig, properties);
+                final String valAlways = "always";
+                final String valFalse = "false";
+                //
+                // Use the 'template.store.default.settings' sitemap attribute to decide how to handle element settings:
+                //
+                // always -> write default values for all settings
+                // false -> remove default values for all settings (the current default)
+                // true (or any other value than "always" or "false") -> use setting values from the container page bean passed in
+                //
+                // the value "true" corresponds to the old default behavior, which causes default settings for an element to be written to the page when editing that element's settings,
+                // but not e.g. when adding a new element to a page or touching a container page.
+                //
+                String storeDefaultSettings = adeConfig.getAttribute(ATTR_STORE_DEFAULT_SETTINGS, valFalse);
+                if (valFalse.equals(storeDefaultSettings) || valAlways.equals(storeDefaultSettings)) {
+                    if (formatter == null) {
+                        // old schema-based formatter configuration or old functions
+                        CmsFormatterConfiguration formatterConfig = adeConfig.getFormatters(cms, elementRes);
+                        List<I_CmsFormatterBean> formatters = formatterConfig.getFormattersForKey(formatterKey);
+                        if (formatters.size() > 0) {
+                            formatter = formatters.get(0);
+                        }
+                    }
+                    Map<String, CmsXmlContentProperty> settingDefs = OpenCms.getADEManager().getFormatterSettings(
+                        cms,
+                        adeConfig,
+                        formatter,
+                        elementRes,
+                        cms.getRequestContext().getLocale(),
+                        null);
+
+                    // when removing settings, we want to remove all defaults, but when adding settings, we never want to add the hidden ones, so we use two different maps for these two use cases
+                    Map<String, String> settingDefaults = new HashMap<>();
+                    Map<String, String> visibleSettingDefaults = new HashMap<>();
+                    for (Map.Entry<String, CmsXmlContentProperty> entry : settingDefs.entrySet()) {
+                        if (!CmsGwtConstants.HIDDEN_SETTINGS_WIDGET_NAME.equals(entry.getValue().getWidget())) {
+                            visibleSettingDefaults.put(entry.getKey(), entry.getValue().getDefault());
+                        }
+                        settingDefaults.put(entry.getKey(), entry.getValue().getDefault());
+                    }
+
+                    if (valFalse.equals(storeDefaultSettings)) {
+
+                        Iterator<Map.Entry<String, String>> entryIter = processedSettings.entrySet().iterator();
+                        Map<String, String> removedEntries = new HashMap<>();
+                        while (entryIter.hasNext()) {
+                            Map.Entry<String, String> settingEntry = entryIter.next();
+                            if (settingDefaults.containsKey(settingEntry.getKey())
+                                && Objects.equals(
+                                    settingEntry.getValue(),
+                                    settingDefaults.get(settingEntry.getKey()))) {
+                                removedEntries.put(settingEntry.getKey(), settingEntry.getValue());
+                                entryIter.remove();
+                            }
+                        }
+                        if ((removedEntries.size() > 0) && LOG.isDebugEnabled()) {
+                            LOG.debug(
+                                (m_file != null ? (m_file.getRootPath() + ": ") : "")
+                                    + "Removed default settings for "
+                                    + elementRes.getRootPath()
+                                    + ":"
+                                    + removedEntries);
+                        }
+                    } else if (valAlways.equals(storeDefaultSettings)) {
+                        for (Map.Entry<String, String> entry : visibleSettingDefaults.entrySet()) {
+                            if (!processedSettings.containsKey(entry.getKey())) {
+                                String defaultValue = entry.getValue();
+                                if (defaultValue != null) {
+                                    processedSettings.put(entry.getKey(), defaultValue);
+                                }
+                            }
+                        }
+                        processedSettings = sortSettingsForSave(processedSettings);
+                    }
+                }
+
                 Map<String, CmsXmlContentProperty> propertiesConf = OpenCms.getADEManager().getElementSettings(
                     cms,
                     elementRes);

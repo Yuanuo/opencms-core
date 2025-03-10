@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.google.gwt.core.shared.SerializableThrowable;
 import com.google.gwt.user.client.rpc.RemoteService;
 
 /**
@@ -352,6 +353,17 @@ public interface I_CmsVfsService extends RemoteService {
     String getSitePath(CmsUUID structureId) throws CmsRpcException;
 
     /**
+     * Gets the site paths corresponding to a list of structure ids.
+     *
+     * <p>If for any of the structure ids in the input list the corresponding resource can not be read, it will be skipped.
+     *
+     * @param ids a list of structure ids
+     * @return the list of paths corresponding to the structure ids
+     * @throws CmsRpcException
+     */
+    List<String> getSitePaths(List<CmsUUID> ids) throws CmsRpcException;
+
+    /**
      * Gets the structure id for a given site path.
      *
      * @param vfsPath the site path
@@ -463,7 +475,7 @@ public interface I_CmsVfsService extends RemoteService {
      *
      * @throws CmsRpcException if something goes wrong
      */
-    void saveProperties(CmsPropertyChangeSet changes, boolean updateIndex) throws CmsRpcException;
+    void saveProperties(CmsPropertyChangeSet changes, boolean updateIndex) throws SerializableThrowable;
 
     /**
      * Returns the absolute link to the given root path.<p>

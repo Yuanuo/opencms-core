@@ -27,6 +27,8 @@
 
 package org.opencms.ade.configuration;
 
+import org.opencms.ade.configuration.CmsADEConfigDataInternal.ConfigReference;
+import org.opencms.ade.configuration.CmsADEConfigDataInternal.ConfigReferenceMeta;
 import org.opencms.ade.configuration.formatters.CmsFormatterChangeSet;
 import org.opencms.ade.configuration.formatters.CmsFormatterConfigurationCache;
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
@@ -141,6 +143,9 @@ public class CmsConfigurationReader {
 
     /** Node name for the attribute editor configuration reference. */
     public static final String N_ATTRIBUTE_EDITOR_CONFIG = "AttributeEditorConfig";
+
+    /** Node name for the 'Check reuse' option. */
+    public static final String N_CHECK_REUSE = "CheckReuse";
 
     /** The CopyInModels node name. */
     public static final String N_COPY_IN_MODELS = "CopyInModels";
@@ -654,11 +659,17 @@ public class CmsConfigurationReader {
         boolean isModuleConfig = OpenCms.getResourceManager().getResourceType(
             content.getFile().getTypeId()).getTypeName().equals(CmsADEManager.MODULE_CONFIG_TYPE);
 
-        List<CmsUUID> masterConfigIds = new ArrayList<>();
+        List<ConfigReference> masterConfigIds = new ArrayList<>();
         for (I_CmsXmlContentValueLocation masterConfigLoc : root.getSubValues(N_MASTER_CONFIG)) {
+            CmsXmlVfsFileValue value = (CmsXmlVfsFileValue)masterConfigLoc.getValue();
+            CmsLink link = value.getUncheckedLink();
+            ConfigReferenceMeta meta = null;
+            if (link != null) {
+                meta = new ConfigReferenceMeta(link.getParameterMap());
+            }
             CmsUUID id = masterConfigLoc.asId(m_cms);
             if (id != null) {
-                masterConfigIds.add(id);
+                masterConfigIds.add(new ConfigReference(id, meta));
             }
         }
 
@@ -952,6 +963,16 @@ public class CmsConfigurationReader {
             }
         }
 
+        I_CmsXmlContentValueLocation checkReuseLoc = node.getSubValue(N_CHECK_REUSE);
+        Boolean checkReuse = null;
+        if (checkReuseLoc != null) {
+            try {
+                checkReuse = Boolean.valueOf(checkReuseLoc.getValue().getStringValue(m_cms));
+            } catch (Exception e) {
+                LOG.warn(e.getLocalizedMessage(), e);
+            }
+        }
+
         List<I_CmsFormatterBean> formatters = new ArrayList<I_CmsFormatterBean>();
         for (I_CmsXmlContentValueLocation formatterLoc : node.getSubValues(N_FORMATTER)) {
             CmsFormatterBean formatter = parseFormatter(typeName, formatterLoc);
@@ -974,7 +995,8 @@ public class CmsConfigurationReader {
             showInDefaultView,
             copyInModels,
             order,
-            elementDeleteMode);
+            elementDeleteMode,
+            checkReuse);
         m_resourceTypeConfigs.add(typeConfig);
     }
 
@@ -1094,8 +1116,22 @@ public class CmsConfigurationReader {
         } else {
             iconClasses = CmsIconUtil.getIconClasses(typeName, null, false);
         }
+        List<CmsUUID> folders = new ArrayList<>();
+        for (I_CmsXmlContentValueLocation folderLoc : node.getSubValues(N_FOLDER)) {
+            CmsXmlVfsFileValue folderValue = (CmsXmlVfsFileValue)folderLoc.getValue();
+            CmsLink folderLink = folderValue.getUncheckedLink();
+            if ((folderLink != null) && (folderLink.getStructureId() != null)) {
+                folders.add(folderLink.getStructureId());
+            }
+        }
 
-        CmsDetailPageInfo detailPage = new CmsDetailPageInfo(structureId, page, typeName, qualifier, iconClasses);
+        CmsDetailPageInfo detailPage = new CmsDetailPageInfo(
+            structureId,
+            page,
+            typeName,
+            qualifier,
+            folders,
+            iconClasses);
         m_detailPageConfigs.add(detailPage);
 
     }

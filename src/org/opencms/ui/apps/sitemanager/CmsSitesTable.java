@@ -33,6 +33,7 @@ import org.opencms.file.CmsResource;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
+import org.opencms.security.CmsRole;
 import org.opencms.site.CmsSite;
 import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsCssIcon;
@@ -129,11 +130,60 @@ public class CmsSitesTable extends Table implements I_CmsFilterableTable {
         }
     }
 
+    /**
+     * Context menu entry for site export.
+     */
+    public class ExportEntry implements I_CmsSimpleContextMenuEntry<Set<String>> {
+
+        /**
+         * Creates a new entry.
+         */
+        public ExportEntry() {
+
+        }
+
+        /**
+         * @see org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry#executeAction(java.lang.Object)
+         */
+        public void executeAction(Set<String> context) {
+
+            CmsExportSiteForm form = new CmsExportSiteForm(
+                A_CmsUI.getCmsObject(),
+                m_manager,
+                context.iterator().next());
+            m_manager.openDialog(form, CmsVaadinUtils.getMessageText(Messages.GUI_SITE_EXPORT_DIALOG_CAPTION_0));
+        }
+
+        /**
+         * @see org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry#getTitle(java.util.Locale)
+         */
+        public String getTitle(Locale locale) {
+
+            return Messages.get().getBundle(locale).key(Messages.GUI_SITE_EXPORT_0);
+        }
+
+        /**
+         * @see org.opencms.ui.contextmenu.I_CmsSimpleContextMenuEntry#getVisibility(java.lang.Object)
+         */
+        public CmsMenuItemVisibilityMode getVisibility(Set<String> data) {
+
+            if ((data == null) || (data.size() != 1)) {
+                return CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+            }
+
+            return m_manager.isExportEnabled()
+                && OpenCms.getRoleManager().hasRole(A_CmsUI.getCmsObject(), CmsRole.DATABASE_MANAGER)
+                ? CmsMenuItemVisibilityMode.VISIBILITY_ACTIVE
+                : CmsMenuItemVisibilityMode.VISIBILITY_INVISIBLE;
+        }
+
+    }
+
     /**Table properties. */
     protected enum TableProperty {
 
         /**Status. */
-        Changed("", Boolean.class, new Boolean(false)),
+        Changed("", Boolean.class, Boolean.valueOf(false)),
         /**Status. */
         CmsSite("", CmsSite.class, null),
         /**OU. */
@@ -141,21 +191,21 @@ public class CmsSitesTable extends Table implements I_CmsFilterableTable {
         /**Icon. */
         Icon(null, Label.class, new Label(new CmsCssIcon(OpenCmsTheme.ICON_SITE).getHtml(), ContentMode.HTML)),
         /**Last login. */
-        Is_Webserver("", Boolean.class, new Boolean(true)),
+        Is_Webserver("", Boolean.class, Boolean.valueOf(true)),
         /**IsIndirect?. */
-        New("", Boolean.class, new Boolean(false)),
+        New("", Boolean.class, Boolean.valueOf(false)),
         /**Is the user disabled? */
-        OK("", Boolean.class, new Boolean(true)),
+        OK("", Boolean.class, Boolean.valueOf(true)),
         /**Path. */
         Path(Messages.GUI_SITE_PATH_0, String.class, ""),
         /**Description. */
         Server(Messages.GUI_SITE_SERVER_0, String.class, ""),
         /**From Other ou?. */
-        SSL("", Integer.class, new Integer(1)),
+        SSL("", Integer.class, Integer.valueOf(1)),
         /**Name. */
         Title(Messages.GUI_SITE_TITLE_0, String.class, ""),
         /**Is the user new? */
-        Under_Other_Site("", Boolean.class, new Boolean(false));
+        Under_Other_Site("", Boolean.class, Boolean.valueOf(false));
 
         /**Default value for column.*/
         private Object m_defaultValue;
@@ -621,6 +671,7 @@ public class CmsSitesTable extends Table implements I_CmsFilterableTable {
             m_menuEntries.add(new DeleteEntry());
             m_menuEntries.add(new ExplorerEntry());
             m_menuEntries.add(new PageEditorEntry());
+            m_menuEntries.add(new ExportEntry());
         }
         return m_menuEntries;
     }
@@ -652,10 +703,10 @@ public class CmsSitesTable extends Table implements I_CmsFilterableTable {
                 item.getItemProperty(TableProperty.CmsSite).setValue(site);
                 item.getItemProperty(TableProperty.Server).setValue(site.getUrl());
                 item.getItemProperty(TableProperty.Title).setValue(site.getTitle());
-                item.getItemProperty(TableProperty.Is_Webserver).setValue(new Boolean(site.isWebserver()));
+                item.getItemProperty(TableProperty.Is_Webserver).setValue(Boolean.valueOf(site.isWebserver()));
                 item.getItemProperty(TableProperty.Path).setValue(site.getSiteRoot());
                 if (OpenCms.getSiteManager().isOnlyOfflineSite(site)) {
-                    item.getItemProperty(TableProperty.New).setValue(new Boolean(true));
+                    item.getItemProperty(TableProperty.New).setValue(Boolean.valueOf(true));
                     item.getItemProperty(TableProperty.Icon).setValue(
                         new Label(icon.getHtmlWithOverlay(), ContentMode.HTML));
                 } else {
@@ -675,12 +726,12 @@ public class CmsSitesTable extends Table implements I_CmsFilterableTable {
                 item.getItemProperty(TableProperty.Icon).setValue(new Label(icon.getHtml(), ContentMode.HTML));
                 item.getItemProperty(TableProperty.Server).setValue(site.getUrl());
                 item.getItemProperty(TableProperty.Title).setValue(site.getTitle());
-                item.getItemProperty(TableProperty.Is_Webserver).setValue(new Boolean(site.isWebserver()));
+                item.getItemProperty(TableProperty.Is_Webserver).setValue(Boolean.valueOf(site.isWebserver()));
                 item.getItemProperty(TableProperty.Path).setValue(site.getSiteRoot());
-                item.getItemProperty(TableProperty.OK).setValue(new Boolean(false));
+                item.getItemProperty(TableProperty.OK).setValue(Boolean.valueOf(false));
                 if (!site.getSiteRootUUID().isNullUUID()) {
                     if (m_manager.getRootCmsObject().existsResource(site.getSiteRootUUID())) {
-                        item.getItemProperty(TableProperty.Changed).setValue(new Boolean(true));
+                        item.getItemProperty(TableProperty.Changed).setValue(Boolean.valueOf(true));
                         item.getItemProperty(TableProperty.Icon).setValue(
                             new Label(icon.getHtmlWithOverlay(), ContentMode.HTML));
                     }

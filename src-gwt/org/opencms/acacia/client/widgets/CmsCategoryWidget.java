@@ -59,9 +59,12 @@ import com.google.gwt.user.client.DOM;
 import com.google.gwt.user.client.Event;
 import com.google.gwt.user.client.Event.NativePreviewEvent;
 import com.google.gwt.user.client.Event.NativePreviewHandler;
-import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.ui.Composite;
 import com.google.gwt.user.client.ui.PopupPanel;
+
+import elemental2.dom.DOMRect;
+import elemental2.dom.DomGlobal;
+import jsinterop.base.Js;
 
 /**
  * Provides a standard HTML form category widget, for use on a widget dialog.<p>
@@ -83,11 +86,11 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
             Event nativeEvent = Event.as(event.getNativeEvent());
             switch (DOM.eventGetType(nativeEvent)) {
                 case Event.ONMOUSEWHEEL:
-                    int x_coords = nativeEvent.getClientX();
-                    int y_coords = (nativeEvent.getClientY() + Window.getScrollTop());
-
-                    if (((x_coords > (m_xcoordspopup + 605)) || (x_coords < (m_xcoordspopup)))
-                        || ((y_coords > ((m_ycoordspopup + 390))) || (y_coords < ((m_ycoordspopup))))) {
+                    int x = nativeEvent.getClientX();
+                    int y = nativeEvent.getClientY();
+                    elemental2.dom.Element popupElem = Js.cast(m_cmsPopup.getElement());
+                    DOMRect rect = popupElem.getBoundingClientRect();
+                    if ((x < rect.left) || (x > rect.right) || (y < rect.top) || (y > rect.bottom)) {
                         closePopup();
                     }
                     break;
@@ -101,17 +104,17 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
     /** Configuration parameter to set the category to display. */
     private static final String CONFIGURATION_CATEGORY = "category";
 
-    /** Set the reference url relative to which category repositories are shown. */
-    private static final String CONFIGURATION_REFPATH = "refpath";
+    /** Configuration parameter to set the collapsing state when opening the selection. */
+    private static final String CONFIGURATION_COLLAPSED = "collapsed";
 
     /** Configuration parameter to set the 'selection type' parameter. */
     private static final String CONFIGURATION_PARENTSELECTION = "parentselection";
 
+    /** Set the reference url relative to which category repositories are shown. */
+    private static final String CONFIGURATION_REFPATH = "refpath";
+
     /** Configuration parameter to set the 'selection type' parameter. */
     private static final String CONFIGURATION_SELECTIONTYPE = "selectiontype";
-
-    /** Configuration parameter to set the collapsing state when opening the selection. */
-    private static final String CONFIGURATION_COLLAPSED = "collapsed";
 
     /** Configuration parameter to set flag, indicating if categories should be shown separated by repository. */
     private static final String CONFIGURATION_SHOW_WITH_REPOSITORY = "showwithrepository";
@@ -130,12 +133,6 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
 
     /** List of all category folder. */
     protected List<CmsCategoryTreeEntry> m_resultList;
-
-    /** The x-coords of the popup. */
-    protected int m_xcoordspopup;
-
-    /** The y-coords of the popup. */
-    protected int m_ycoordspopup;
 
     /** The category field. */
     CmsCategoryTree m_cmsCategoryTree;
@@ -161,20 +158,21 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
     /** Single category folder. */
     private String m_category = "";
 
-    /** List of all possible category folder. */
-    private String m_refPath;
-
     /** Sets the value if the parent should be selected with the children. */
     private boolean m_children;
-
-    /** Is true if only one value is set in xml. */
-    private boolean m_isSingleValue;
 
     /** If true, the category selection opens with collapsed category trees. */
     private boolean m_collapsed;
 
+    /** Is true if only one value is set in xml. */
+    private boolean m_isSingleValue;
+
+    /** List of all possible category folder. */
+    private String m_refPath;
+
     /** If true, the categories are shown separate for each repository. */
     private boolean m_showWithRepository;
+
 
     /**
      * Constructs an CmsComboWidget with the in XSD schema declared configuration.<p>
@@ -366,11 +364,24 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
      * Is called to open the popup.<p>
      */
     protected void openPopup() {
-
+        elemental2.dom.Element myElem = Js.cast(getElement());
+        boolean center = false;
+        int spaceForTree = (int)(DomGlobal.window.innerHeight - myElem.getBoundingClientRect().bottom) - 115;
+        if (spaceForTree < 300) {
+            spaceForTree = 300;
+            center = true;
+        }
         if (m_cmsPopup == null) {
+            int width = Math.max(getOffsetWidth(), CmsPopup.WIDE_WIDTH);
+            m_cmsPopup = new CmsPopup(Messages.get().key(Messages.GUI_DIALOG_CATEGORIES_TITLE_0), width);
 
-            m_cmsPopup = new CmsPopup(Messages.get().key(Messages.GUI_DIALOG_CATEGORIES_TITLE_0), CmsPopup.WIDE_WIDTH);
-            m_cmsCategoryTree = new CmsCategoryTree(m_selected, 300, m_isSingleValue, m_resultList, m_collapsed);
+
+            m_cmsCategoryTree = new CmsCategoryTree(
+                m_selected,
+                spaceForTree,
+                m_isSingleValue,
+                m_resultList,
+                m_collapsed);
             m_cmsPopup.add(m_cmsCategoryTree);
             m_cmsPopup.setModal(false);
             m_cmsPopup.setAutoHideEnabled(true);
@@ -395,9 +406,11 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
         }
         m_previewHandlerRegistration = Event.addNativePreviewHandler(new CloseEventPreviewHandler());
         m_cmsCategoryTree.truncate("CATEGORIES", CmsPopup.WIDE_WIDTH - 20);
-        m_cmsPopup.showRelativeTo(m_categoryField);
-        m_xcoordspopup = m_cmsPopup.getPopupLeft();
-        m_ycoordspopup = m_cmsPopup.getPopupTop();
+        if (center) {
+            m_cmsPopup.center();
+        } else {
+            m_cmsPopup.showRelativeTo(m_categoryField);
+        }
     }
 
     /**
@@ -444,7 +457,13 @@ public class CmsCategoryWidget extends Composite implements I_CmsEditWidget, I_C
                     @Override
                     public void execute() {
 
-                        CmsCoreProvider.getService().getCategories(category, true, refPath, showWithRepository, this);
+                        CmsCoreProvider.getService().getCategories(
+                            category,
+                            true,
+                            refPath,
+                            showWithRepository,
+                            m_selected,
+                            this);
 
                     }
 
