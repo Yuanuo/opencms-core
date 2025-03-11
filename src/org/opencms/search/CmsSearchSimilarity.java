@@ -85,18 +85,6 @@ public class CmsSearchSimilarity extends Similarity {
     }
 
     /**
-     * Returns true iff overlap tokens are discounted from the document's length.
-     *
-     * @return true iff overlap tokens are discounted from the document's length.
-     *
-     * @see #setDiscountOverlaps(boolean)
-     */
-    public boolean getDiscountOverlaps() {
-
-        return m_bm25Sim.getDiscountOverlaps();
-    }
-
-    /**
      * @see org.apache.lucene.search.similarities.Similarity#scorer(float, org.apache.lucene.search.CollectionStatistics, org.apache.lucene.search.TermStatistics[])
      */
     @Override
