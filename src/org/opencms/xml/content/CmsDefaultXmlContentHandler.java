@@ -4807,10 +4807,9 @@ public class CmsDefaultXmlContentHandler implements I_CmsXmlContentHandler, I_Cm
         }
         fieldMapping.setParam(paramValue);
         fieldMapping.setLocale(locale);
-            fieldMapping.setDefaultValue(element.attributeValue(APPINFO_ATTR_DEFAULT));
-            if (fieldMapping instanceof CmsSearchFieldMapping) {
-                ((CmsSearchFieldMapping) fieldMapping).joinBy = element.attributeValue("joinby", "\n");
-            }
+        fieldMapping.setDefaultValue(element.attributeValue(APPINFO_ATTR_DEFAULT));
+        if (fieldMapping instanceof CmsSearchFieldMapping) {
+            ((CmsSearchFieldMapping) fieldMapping).joinBy = element.attributeValue("joinby", "\n");
         }
         return fieldMapping;
     }

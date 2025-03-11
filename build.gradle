@@ -78,10 +78,6 @@ repositories {
     maven {
         url 'https://maven.vaadin.com/vaadin-addons'
     }
-    maven {
-        allowInsecureProtocol = true
-        url "http://maven.vaadin.com/vaadin-addons"
-    }
 }
 
 if (!project.hasProperty('max_heap_size')){
@@ -159,10 +155,10 @@ configurations {
         extendsFrom compile
     }
 
-    modulesImplementation {
+    modulesCompile {
         description = 'used to compile the modules classes'
         transitive = false
-        extendsFrom implementation
+        extendsFrom compile
     }
 
     // Default configuration of the java-library plugin
@@ -176,9 +172,9 @@ configurations {
         transitive = false
     }
 
-    testImplementation{
+    testCompile{
         transitive = false
-        extendsFrom modulesImplementation
+        extendsFrom modulesCompile
     }
 
     // Default configuration of the java-library plugin
@@ -187,10 +183,10 @@ configurations {
         extendsFrom testCompile
     }
 
-    gwtImplementation {
+    gwtCompile {
         description = 'needed to generate the GWT JavaScript resources'
         transitive = false
-        extendsFrom modulesImplementation
+        extendsFrom modulesCompile
     }
 
     // Default configuration of the java-library plugin
@@ -202,7 +198,7 @@ configurations {
     testGwtCompile{
         description = 'needed to run GWT test cases'
         transitive = false
-        extendsFrom gwtImplementation
+        extendsFrom gwtCompile
     }
 
     // Default configuration of the java-library plugin
@@ -226,7 +222,7 @@ configurations {
 
     setupCompile {
         transitive = false
-        extendsFrom modulesImplementation
+        extendsFrom modulesCompile
     }
 
     // Default configuration of the java-library plugin
@@ -279,7 +275,7 @@ task copyDeps(type: Copy) {
 }
 
 task copyCompileDeps(type: Copy) {
-    from configurations.implementation
+    from configurations.compile
     into "${buildDir}/deps"
 }
 
