@@ -266,7 +266,7 @@ eclipse.classpath.plusConfigurations = configurations.findAll { it.name.endsWith
 eclipse.classpath.downloadSources=true
 
 wrapper {
-    gradleVersion = '7.5.1'
+    gradleVersion = '8.10'
 }
 
 task copyDeps(type: Copy) {
