@@ -1044,9 +1044,9 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
             timeResultProcessing = -System.currentTimeMillis();
 
             if (hits != null) {
-                long hitCount = hits.totalHits.value() > hits.scoreDocs.length
+                long hitCount = hits.totalHits.value > hits.scoreDocs.length
                 ? hits.scoreDocs.length
-                : hits.totalHits.value();
+                : hits.totalHits.value;
                 int page = params.getSearchPage();
                 long start = -1, end = -1;
                 if ((params.getMatchesPerPage() > 0) && (page > 0) && (hitCount > 0)) {
@@ -1117,7 +1117,7 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
         if (LOG.isDebugEnabled()) {
             timeTotal += System.currentTimeMillis();
             Object[] logParams = new Object[] {
-                Long.valueOf(hits == null ? 0 : hits.totalHits.value()),
+                Long.valueOf(hits == null ? 0 : hits.totalHits.value),
                 Long.valueOf(timeTotal),
                 Long.valueOf(timeLucene),
                 Long.valueOf(timeResultProcessing)};

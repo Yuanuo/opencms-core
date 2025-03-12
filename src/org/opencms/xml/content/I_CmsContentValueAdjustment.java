@@ -25,55 +25,26 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.opencms.jsp.util;
+package org.opencms.xml.content;
 
-import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.file.CmsObject;
+import org.opencms.xml.A_CmsXmlDocument;
 
 import java.util.Locale;
 
 /**
- * Contains common methods for various beans used to generate the template documentation.
+ * Interface for classes to adjust XML content values before using them, e.g. for indexing.
  */
-public interface I_CmsInfoWrapper {
+public interface I_CmsContentValueAdjustment {
 
     /**
-     * Gets the description in the current locale.
-     *
-     * @return the description
+     * Returns the adjustment for the provided value.
+     * @param cms the current context
+     * @param content the XML content
+     * @param locale the locale to adjust the value for
+     * @param xpath the path to the value
+     * @param value the original value
+     * @return the adjusted value
      */
-    String getDescription();
-
-    /**
-     * Gets the description in the given locale.
-     *
-     * @param locale the locale to use
-     * @return the description
-     */
-    String getDescription(Locale locale);
-
-    /**
-     * Gets the description in the given locale.
-     *
-     * @param locale the locale to use
-     * @return the description
-     */
-    default String getDescription(String locale) {
-
-        return getDescription(CmsLocaleManager.getLocale(locale));
-    }
-
-    /**
-     * Returns the localization key for the description if one was used, and null otherwise.
-     *
-     * @return the localization key
-     */
-    String getDescriptionKey();
-
-    /**
-     * Gets the raw description, without resolving any macros.
-     *
-     * @return the raw description
-     */
-    String getDescriptionRaw();
-
+    String getAdjustedValue(CmsObject cms, A_CmsXmlDocument content, Locale locale, String xpath, String value);
 }

@@ -25,55 +25,59 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.opencms.jsp.util;
+package org.opencms.ade.containerpage.shared;
 
-import org.opencms.i18n.CmsLocaleManager;
+import org.opencms.util.CmsUUID;
 
-import java.util.Locale;
+import com.google.gwt.user.client.rpc.IsSerializable;
 
 /**
- * Contains common methods for various beans used to generate the template documentation.
+ * Represents the status of a container page save operation.
  */
-public interface I_CmsInfoWrapper {
+public class CmsPageSaveStatus implements IsSerializable {
+
+    /** The id of the saved page. */
+    private CmsUUID m_pageId;
+
+    /** The time directly after the page has been saved. */
+    private long m_timestamp;
 
     /**
-     * Gets the description in the current locale.
+     * Creates a new instance.
      *
-     * @return the description
+     * @param pageId the id of the saved page
+     * @param timestamp the time after the page has been saved
      */
-    String getDescription();
+    public CmsPageSaveStatus(CmsUUID pageId, long timestamp) {
 
-    /**
-     * Gets the description in the given locale.
-     *
-     * @param locale the locale to use
-     * @return the description
-     */
-    String getDescription(Locale locale);
-
-    /**
-     * Gets the description in the given locale.
-     *
-     * @param locale the locale to use
-     * @return the description
-     */
-    default String getDescription(String locale) {
-
-        return getDescription(CmsLocaleManager.getLocale(locale));
+        super();
+        m_pageId = pageId;
+        m_timestamp = timestamp;
     }
 
     /**
-     * Returns the localization key for the description if one was used, and null otherwise.
-     *
-     * @return the localization key
+     * Hidden default constructor for serialization.
      */
-    String getDescriptionKey();
+    protected CmsPageSaveStatus() {}
 
     /**
-     * Gets the raw description, without resolving any macros.
+     * Gets the time at which the page was saved.
      *
-     * @return the raw description
+     * @return the time at which the page was saved
      */
-    String getDescriptionRaw();
+    public long getTimestamp() {
+
+        return m_timestamp;
+    }
+
+    /**
+     * Gets the id of the saved page.
+     *
+     * @return the id of the saved page
+     */
+    public CmsUUID getPageId() {
+
+        return m_pageId;
+    }
 
 }
