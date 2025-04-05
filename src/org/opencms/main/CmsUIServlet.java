@@ -137,9 +137,12 @@ public class CmsUIServlet extends VaadinServlet implements SystemMessagesProvide
                 for (String cssURI : OpenCms.getWorkplaceAppManager().getWorkplaceCssUris()) {
                     doc.head().append("<link rel=\"stylesheet\" href=\"" + CmsWorkplace.getResourceUri(cssURI) + "\">");
                 }
+                doc.head().append(
+                    "<script>window.addEventListener('pageshow', function(e) { if (e.persisted) { window.location.reload(); } });</script>");
             } catch (Exception e) {
                 LOG.error(e.getLocalizedMessage(), e);
             }
+            response.setHeader(CmsRequestUtil.HEADER_CACHE_CONTROL, "no-store");
         }
     };
 
