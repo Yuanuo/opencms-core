@@ -329,7 +329,8 @@ public class OpenCmsServlet extends HttpServlet implements I_CmsRequestHandler {
             int runlevel = OpenCmsCore.getInstance().getRunLevel();
 
             // write OpenCms server identification in the response header
-            res.setHeader(CmsRequestUtil.HEADER_SERVER, OpenCmsCore.getInstance().getSystemInfo().getVersion());
+            res.setHeader(CmsRequestUtil.HEADER_SERVER, OpenCmsCore.getInstance().getSystemInfo().getServerName()
+                                                        + "/" + OpenCmsCore.getInstance().getSystemInfo().getVersionNumber());
 
             if (runlevel != OpenCms.RUNLEVEL_4_SERVLET_ACCESS) {
                 // not the "normal" servlet runlevel
