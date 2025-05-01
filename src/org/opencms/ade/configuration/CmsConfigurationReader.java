@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (C) Alkacon Software (http://www.alkacon.com)
+ * Copyright (C) Alkacon Software (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -529,7 +529,15 @@ public class CmsConfigurationReader {
         m_modelPageConfigs = Lists.newArrayList();
         m_propertyConfigs = Lists.newArrayList();
         m_resourceTypeConfigs = Lists.newArrayList();
-
+        CmsUUID baseId = null;
+        if (basePath != null) {
+            try {
+                CmsResource folderRes = m_cms.readResource(basePath, CmsResourceFilter.IGNORE_EXPIRATION);
+                baseId = folderRes.getStructureId();
+            } catch (Exception e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
         if (!content.hasLocale(DEFAULT_LOCALE)) {
             return CmsADEConfigDataInternal.emptyConfiguration(basePath);
         }
@@ -696,6 +704,7 @@ public class CmsConfigurationReader {
             content.getFile(),
             isModuleConfig,
             basePath,
+            baseId,
             masterConfigIds,
             m_resourceTypeConfigs,
             galleryDisabledTypesMode,

@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -105,7 +105,7 @@ public class CmsAccountsApp extends A_CmsWorkplaceApp implements I_CmsPrincipalS
     /**
      * Bean for the state of the app.<p>
      */
-    class CmsStateBean {
+    static class CmsStateBean {
 
         /**the filter for tables. */
         private String m_filter;
@@ -839,7 +839,7 @@ public class CmsAccountsApp extends A_CmsWorkplaceApp implements I_CmsPrincipalS
      * @param type the tree type
      * @param cmsAccountsApp the app instance
      * @param buttonPressed true if toggle button for users is active
-
+    
      * @return the user table
      */
     protected I_CmsFilterableTable createUserTable(
@@ -1139,7 +1139,6 @@ public class CmsAccountsApp extends A_CmsWorkplaceApp implements I_CmsPrincipalS
         // do nothing
     }
 
-
     /**
      * Opens a dialog for a new item (ou, group or user).<p>
      */
@@ -1151,6 +1150,7 @@ public class CmsAccountsApp extends A_CmsWorkplaceApp implements I_CmsPrincipalS
         window.setCaption(CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_ADD_ELEMENT_0));
         A_CmsUI.get().addWindow(window);
     }
+
     /**
      * opens a principle select dialog.<p>
      */
@@ -1261,11 +1261,12 @@ public class CmsAccountsApp extends A_CmsWorkplaceApp implements I_CmsPrincipalS
             }
         });
 
-        m_importExport = CmsToolBar.createButton(FontOpenCms.DOWNLOAD, CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_IMEXPORT_CONTEXTMENUNAME_0));
+        m_importExport = CmsToolBar.createButton(
+            FontOpenCms.DOWNLOAD,
+            CmsVaadinUtils.getMessageText(Messages.GUI_USERMANAGEMENT_USER_IMEXPORT_CONTEXTMENUNAME_0));
         m_importExport.addClickListener(event -> {
             CmsOUTable.openImportExportDialog(A_CmsUI.getCmsObject(), m_stateBean.getPath());
         });
-
 
         m_toggleButtonRole = CmsToolBar.createButton(
             FontOpenCms.USERS,

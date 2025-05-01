@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -1647,9 +1647,6 @@ public class CmsContainerpageService extends CmsGwtService implements I_CmsConta
         boolean isSystemResource = elementResource.getRootPath().startsWith(CmsResource.VFS_FOLDER_SYSTEM + "/");
         CmsRelationFilter relationFilter = CmsRelationFilter.relationsToStructureId(structureId);
         List<CmsRelation> relationsToElement = cms.readRelations(relationFilter);
-        for (CmsRelation relation : relationsToElement) {
-            System.out.println("FROM: " + relation.getSourcePath() + " TYPE: " + relation.getType().getName());
-        }
         Iterator<CmsRelation> iter = relationsToElement.iterator();
 
         // ignore XML_STRONG (i.e. container element) relations from the container page, this must be checked on the client side.

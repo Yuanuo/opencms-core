@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -27,6 +27,7 @@
 
 package org.opencms.ui.components;
 
+import org.opencms.db.CmsResourceState;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
@@ -145,11 +146,24 @@ public class CmsResourceInfo extends CustomLayout {
      */
     public CmsResourceInfo(String top, String bottom, Resource iconResource) {
 
+        this(top, bottom, iconResource, null);
+    }
+
+    /**
+     * Constructor.<p>
+     *
+     * @param top the title
+     * @param bottom the sub title
+     * @param iconResource the icon resource path
+     * @param resourceState the resource state
+     */
+    public CmsResourceInfo(String top, String bottom, Resource iconResource, CmsResourceState resourceState) {
+
         this();
         m_topText.setValue(top);
         m_topInput.setValue(top);
         m_bottomText.setValue(CmsJspElFunctions.stripHtml(bottom));
-        m_icon.initContent(null, iconResource, null, false, true);
+        m_icon.initContent(null, iconResource, resourceState, false, true);
     }
 
     /**

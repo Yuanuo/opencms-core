@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (C) Alkacon Software (http://www.alkacon.com)
+ * Copyright (C) Alkacon Software (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -30,6 +30,7 @@ package org.opencms.ade.configuration;
 import org.opencms.ade.containerpage.shared.CmsCntPageData.ElementDeleteMode;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProperty;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsRequestContext;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
@@ -56,6 +57,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 
 /**
@@ -409,6 +411,22 @@ public class CmsResourceTypeConfig implements I_CmsConfigurationObject<CmsResour
         String folderPath = getFolderPath(userCms, pageFolderRootPath);
         CmsVfsUtil.createFolder(userCms, folderPath);
         String destination = CmsStringUtil.joinPaths(folderPath, getNamePattern(true));
+        if (modelResource != null) {
+            try {
+                CmsProperty prop = userCms.readPropertyObject(
+                    modelResource,
+                    CmsPropertyDefinition.PROPERTY_CONTENT_NAME_PATTERN,
+                    true);
+                String copyNamePattern = StringUtils.trim(prop.getValue());
+                if ((copyNamePattern != null) && !"none".equals(copyNamePattern)) {
+                    destination = CmsStringUtil.joinPaths(
+                        CmsResource.getParentFolder(modelResource.getRootPath()),
+                        copyNamePattern);
+                }
+            } catch (Exception e) {
+                LOG.warn(e.getLocalizedMessage(), e);
+            }
+        }
         String creationPath = OpenCms.getResourceManager().getNameGenerator().getNewFileName(rootCms, destination, 5);
         // set the content locale
         Locale contentLocale = userCms.getRequestContext().getLocale();

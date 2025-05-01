@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -39,6 +39,7 @@ import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.types.CmsResourceTypeXmlContainerPage;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
+import org.opencms.main.OpenCms;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 
@@ -71,6 +72,9 @@ public class CmsADEConfigCacheState {
 
     /** The CMS context used for VFS operations. */
     private CmsObject m_cms;
+
+    /** Cached set of names of content types anywhere in the configuration. */
+    private volatile Set<String> m_contentTypes;
 
     /** Cache for detail page lists. */
     private Map<String, List<String>> m_detailPageCache;
@@ -107,9 +111,6 @@ public class CmsADEConfigCacheState {
 
     /** Cached list of subsites to be included in the site selector. */
     private volatile List<String> m_subsitesForSiteSelector;
-
-    /** Cached set of names of content types anywhere in the configuration. */
-    private volatile Set<String> m_contentTypes;
 
     /**
      * Creates a new configuration cache state.<p>
@@ -270,8 +271,8 @@ public class CmsADEConfigCacheState {
 
     /**
      * Gets the set of content types configured anywhere in sitemap configurations.
-     * 
-     * @return the set of content types 
+     *
+     * @return the set of content types
      */
     public Set<String> getContentTypes() {
 
@@ -690,6 +691,12 @@ public class CmsADEConfigCacheState {
                 fillMasterConfigurations(configList, new ConfigReferenceInstance(currentConfig), new HashSet<>());
             }
         }
-        return new CmsADEConfigData(data, this, new CmsADEConfigurationSequence(configList));
+        CmsADEConfigData result = new CmsADEConfigData(data, this, new CmsADEConfigurationSequence(configList));
+        List<I_CmsSitemapExtraInfo> extraInfo = new ArrayList<>();
+        for (I_CmsSitemapExtraInfoProvider provider : OpenCms.getADEManager().getSitemapExtraInfoProviders()) {
+            extraInfo.add(provider.getExtraInfo(m_cms));
+        }
+        result.m_extraInfo = extraInfo;
+        return result;
     }
 }

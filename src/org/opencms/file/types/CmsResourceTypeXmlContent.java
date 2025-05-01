@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software GmbH & Co. KG, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -27,6 +27,7 @@
 
 package org.opencms.file.types;
 
+import org.opencms.ade.containerpage.CmsDetailOnlyContainerUtil;
 import org.opencms.configuration.CmsParameterConfiguration;
 import org.opencms.db.CmsSecurityManager;
 import org.opencms.file.CmsFile;
@@ -52,6 +53,7 @@ import org.opencms.security.CmsPermissionSet;
 import org.opencms.staticexport.CmsLinkTable;
 import org.opencms.util.CmsMacroResolver;
 import org.opencms.util.CmsStringUtil;
+import org.opencms.util.CmsVfsUtil;
 import org.opencms.workplace.editors.I_CmsPreEditorActionDefinition;
 import org.opencms.workplace.editors.directedit.I_CmsEditHandler;
 import org.opencms.xml.CmsXmlContentDefinition;
@@ -465,21 +467,29 @@ public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
             String rootDest = cms.getRequestContext().addSiteRoot(destination);
             CmsObject rootCms = OpenCms.initCmsObject(cms);
             rootCms.getRequestContext().setSiteRoot("");
-            String srcParent = CmsResource.getParentFolder(resource.getRootPath());
-            String srcName = CmsResource.getName(resource.getRootPath());
             String destParent = CmsResource.getParentFolder(rootDest);
-            String destName = CmsResource.getName(rootDest);
-            if (srcParent.equals(destParent) && !srcName.equals(destName)) {
-                List<CmsResource> detailOnlyPages = getDetailContainerResources(cms, resource);
-                for (CmsResource page : detailOnlyPages) {
-                    if (page.getState().isDeleted()) {
-                        continue;
-                    }
-                    String newPath = CmsStringUtil.joinPaths(CmsResource.getParentFolder(page.getRootPath()), destName);
+
+            List<CmsResource> detailOnlyPages = getDetailContainerResources(cms, resource);
+            for (CmsResource page : detailOnlyPages) {
+                if (page.getState().isDeleted()) {
+                    continue;
+                }
+                String pageParent = CmsResource.getParentFolder(page.getRootPath());
+                int detailContainerFolderIndex = pageParent.indexOf(
+                    "/" + CmsDetailOnlyContainerUtil.DETAIL_CONTAINERS_FOLDER_NAME + "/");
+                if (detailContainerFolderIndex != -1) {
+                    String newPath = CmsStringUtil.joinPaths(
+                        destParent,
+                        pageParent.substring(detailContainerFolderIndex),
+                        CmsResource.getName(rootDest));
                     CmsLockActionRecord lockRecord = null;
                     try {
                         lockRecord = CmsLockUtil.ensureLock(cms, page);
-                        rootCms.moveResource(page.getRootPath(), newPath);
+                        String newParent = CmsResource.getParentFolder(newPath);
+                        if (!page.getRootPath().equals(newPath)) {
+                            CmsVfsUtil.createFolder(rootCms, newParent);
+                            rootCms.moveResource(page.getRootPath(), newPath);
+                        }
                     } catch (Exception e) {
                         LOG.error(e.getLocalizedMessage(), e);
                     } finally {

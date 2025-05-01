@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -45,10 +45,8 @@ public final class Messages {
     /** Message constant for key in the resource bundle. */
     public static final String ERR_LOCK_TITLE_RESOURCE_CHANGED_0 = "ERR_LOCK_TITLE_RESOURCE_CHANGED_0";
 
-
     /** Message constant for key in the resource bundle. */
     public static final String GUI_TOOLBAR_PLACE_ELEMENT_0 = "GUI_TOOLBAR_PLACE_ELEMENT_0";
-
 
     /** Message constant for key in the resource bundle. */
     public static final String ERR_LOCK_TITLE_RESOURCE_LOCKED_0 = "ERR_LOCK_TITLE_RESOURCE_LOCKED_0";
@@ -319,6 +317,9 @@ public final class Messages {
 
     /** Name of the used resource bundle. */
     private static final String BUNDLE_NAME = "org.opencms.ade.containerpage.clientmessages";
+
+    /** Message constant for key in the resource bundle. */
+    public static final String GUI_PAGE_EDITOR_TITLE_BOTTOM_0 = "GUI_PAGE_EDITOR_TITLE_BOTTOM_0";
 
     /** Static instance member. */
     private static CmsMessages INSTANCE;

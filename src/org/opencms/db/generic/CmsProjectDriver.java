@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software GmbH & Co. KG, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -668,11 +668,18 @@ public class CmsProjectDriver implements I_CmsDriver, I_CmsProjectDriver {
 
         try {
             conn = m_sqlManager.getConnection(dbc);
-            stmt = m_sqlManager.getPreparedStatement(conn, "C_STATICEXPORT_DELETE_PUBLISHED_LINKS");
-            stmt.setString(1, resourceName);
-            stmt.setInt(2, linkType);
-            stmt.setString(3, linkParameter);
-            stmt.executeUpdate();
+            if (linkParameter == null) {
+                stmt = m_sqlManager.getPreparedStatement(conn, "C_STATICEXPORT_DELETE_RFSPATH_PUBLISHED_LINKS");
+                stmt.setString(1, resourceName);
+                stmt.setInt(2, linkType);
+                stmt.executeUpdate();
+            } else {
+                stmt = m_sqlManager.getPreparedStatement(conn, "C_STATICEXPORT_DELETE_PUBLISHED_LINKS");
+                stmt.setString(1, resourceName);
+                stmt.setInt(2, linkType);
+                stmt.setString(3, linkParameter);
+                stmt.executeUpdate();
+            }
         } catch (SQLException e) {
             throw new CmsDbSqlException(
                 Messages.get().container(Messages.ERR_GENERIC_SQL_1, CmsDbSqlException.getErrorQuery(stmt)),

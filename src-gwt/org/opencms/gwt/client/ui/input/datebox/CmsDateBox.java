@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -62,7 +62,6 @@ import com.google.gwt.event.dom.client.KeyPressEvent;
 import com.google.gwt.event.dom.client.KeyPressHandler;
 import com.google.gwt.event.dom.client.KeyUpEvent;
 import com.google.gwt.event.dom.client.KeyUpHandler;
-import com.google.gwt.event.dom.client.MouseDownEvent;
 import com.google.gwt.event.logical.shared.CloseEvent;
 import com.google.gwt.event.logical.shared.CloseHandler;
 import com.google.gwt.event.logical.shared.ValueChangeEvent;
@@ -321,10 +320,7 @@ implements HasValue<Date>, I_CmsFormWidget, I_CmsHasInit, HasKeyPressHandlers, I
         m_picker.addValueChangeHandler(dateBoxHandler);
 
         m_box.addBlurHandler(dateBoxHandler);
-        m_box.addDomHandler(event -> {
-            onDateBoxClick();
-        }, MouseDownEvent.getType());
-
+        m_box.addClickHandler(dateBoxHandler);
         m_box.addKeyUpHandler(dateBoxHandler);
         m_am.addClickHandler(dateBoxHandler);
         m_pm.addClickHandler(dateBoxHandler);
@@ -627,14 +623,18 @@ implements HasValue<Date>, I_CmsFormWidget, I_CmsHasInit, HasKeyPressHandlers, I
         if (!CmsStringUtil.isEmpty(value)) {
             try {
                 long time = Long.parseLong(value);
-                setValue(new Date(time));
+                Date date = new Date(time);
+                m_oldValue = date;
+                setValue(date);
             } catch (NumberFormatException e) {
                 // if the String value is none long number make the field empty
                 setValue(null);
+                m_oldValue = null;
             }
         } else {
             // if the value is <code>null</code> make the field empty
             setValue(null);
+            m_oldValue = null;
         }
     }
 

@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software GmbH & Co. KG, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -102,16 +102,16 @@ public class CmsPropertyDefinition implements Cloneable, Comparable<CmsPropertyD
     /** The name of the VFS property that controls the caching. */
     public static final String PROPERTY_CACHE = "cache";
 
+    /**
+     * Property for configuring background color for a category in the explorer's category column.
+     **/
+    public static final String PROPERTY_CATEGORY_BACKGROUND = "category.background";
+
     /** Property used to hide categories from the category widgets in the page/content editor.
      *
      * <p>If this property is set to 'true' on a category, it should never be set to 'false' on one of its subcategory.
      * */
     public static final String PROPERTY_CATEGORY_HIDDEN = "category.hidden";
-
-    /**
-     * Property for configuring background color for a category in the explorer's category column.
-     **/
-    public static final String PROPERTY_CATEGORY_BACKGROUND = "category.background";
 
     /** The property to read an additional category folder from.  */
     public static final String PROPERTY_CATEGORY_REPOSITORY = "category.repository";
@@ -124,6 +124,9 @@ public class CmsPropertyDefinition implements Cloneable, Comparable<CmsPropertyD
 
     /** Property for the content encoding. */
     public static final String PROPERTY_CONTENT_ENCODING = "content-encoding";
+
+    /** If configured on a folder, when copying contents in the folder or any of its subfolders through ADE, the copies will be placed in the same folder as the original, and given a file name according to the name pattern. */
+    public static final String PROPERTY_CONTENT_NAME_PATTERN = "content.namepattern";
 
     /** Property for the content encoding. */
     public static final String PROPERTY_COPYRIGHT = "Copyright";

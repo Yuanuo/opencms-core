@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -28,6 +28,8 @@
 package org.opencms.ade.sitemap;
 
 import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.CmsADEConfigData.AttributeMode;
+import org.opencms.ade.configuration.CmsADEConfigDataInternal.AttributeValue;
 import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.ade.configuration.CmsFunctionAvailability;
 import org.opencms.ade.configuration.CmsFunctionReference;
@@ -578,8 +580,16 @@ public class CmsVfsSitemapService extends CmsGwtService implements I_CmsSitemapS
                 CmsMacroResolver.newWorkplaceLocaleResolver(cms));
 
             HashMap<String, String> values = new HashMap<>();
+            Map<String, AttributeValue> attributes = config.getAttributes(AttributeMode.excludeInjectedForThisLevel);
             for (String key : definitions.keySet()) {
-                values.put(key, config.getAttribute(key, ""));
+                AttributeValue val = attributes.get(key);
+                String strVal;
+                if (val == null) {
+                    strVal = "";
+                } else {
+                    strVal = val.getValue();
+                }
+                values.put(key, strVal);
             }
             String unlockUrl = CmsStringUtil.joinPaths(
                 OpenCms.getStaticExportManager().getVfsPrefix(),

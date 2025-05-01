@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -338,9 +338,10 @@ public class CmsContainerpageEditor extends A_CmsEntryPoint {
         m_toolbar.getQuickLauncher().setHandler(containerpageHandler);
         String title = controller.getData().getAppTitle();
         if (title == null) {
-            title = Messages.get().key(Messages.GUI_PAGE_EDITOR_TITLE_0);
+            m_toolbar.setAppTitle(Messages.get().key(Messages.GUI_PAGE_EDITOR_TITLE_0));
+        } else {
+            m_toolbar.setAppTitle(title);
         }
-        m_toolbar.setAppTitle(title);
 
         m_publish = new CmsToolbarPublishButton(containerpageHandler);
         m_publish.addClickHandler(clickHandler);
@@ -380,8 +381,6 @@ public class CmsContainerpageEditor extends A_CmsEntryPoint {
         m_context = new CmsToolbarContextButton(containerpageHandler);
         m_context.addClickHandler(clickHandler);
         m_toolbar.insertRight(m_context, 0);
-
-
 
         CmsToolbarFavLocationButton favLocButton = new CmsToolbarFavLocationButton(containerpageHandler);
         favLocButton.addClickHandler(clickHandler);

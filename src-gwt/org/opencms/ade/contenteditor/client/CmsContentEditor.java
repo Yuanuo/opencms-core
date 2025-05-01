@@ -2,7 +2,7 @@
  * This library is part of OpenCms -
  * the Open Source Content Management System
  *
- * Copyright (c) Alkacon Software GmbH & Co. KG (http://www.alkacon.com)
+ * Copyright (c) Alkacon Software GmbH & Co. KG (https://www.alkacon.com)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -15,10 +15,10 @@
  * Lesser General Public License for more details.
  *
  * For further information about Alkacon Software, please see the
- * company website: http://www.alkacon.com
+ * company website: https://www.alkacon.com
  *
  * For further information about OpenCms, please see the
- * project website: http://www.opencms.org
+ * project website: https://www.opencms.org
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
@@ -1621,7 +1621,7 @@ public final class CmsContentEditor extends CmsEditorBase {
 
         initClosingHandler();
         setContentDefinition(contentDefinition);
-        initToolbar();
+        initToolbar(inline);
         updateValidation();
         if (inline && (formParent != null)) {
             if ((mainLocale != null)
@@ -2508,13 +2508,23 @@ public final class CmsContentEditor extends CmsEditorBase {
 
     /**
      * Generates the button bar displayed beneath the editable fields.<p>
+     *
+     * @param inline true if we are in inline editing mode
      */
-    private void initToolbar() {
+    private void initToolbar(boolean inline) {
 
         m_hasErrors = false;
         m_hasWarnings = false;
         m_toolbar = new CmsToolbar();
-        m_toolbar.setAppTitle(Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_0));
+        if (!inline) {
+            m_toolbar.setComplexTitle(
+                Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_0),
+                Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_BOTTOM_0));
+        } else {
+            m_toolbar.setComplexTitle(
+                Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_0),
+                Messages.get().key(Messages.GUI_CONTENT_EDITOR_TITLE_BOTTOM_PAGE_EDITOR_0));
+        }
         m_publishButton = createButton(
             I_CmsButton.ButtonData.PUBLISH_BUTTON.getTitle(),
             I_CmsButton.ButtonData.PUBLISH_BUTTON.getIconClass());
