@@ -7,6 +7,7 @@ apply plugin: 'eclipse'
 
 buildscript {
     dependencies {
+        classpath group: 'org.apache.ant', name: 'ant', version: '1.10.15'
         classpath group: 'com.liferay', name: 'com.liferay.gradle.plugins.tlddoc.builder', version: '2.0.1'
     }
     repositories {
@@ -66,7 +67,7 @@ if (hasExtModules) {
 
 repositories {
     mavenLocal()
-    if (project.hasProperty('additional_repositories')){
+    if (project.hasProperty('additional_repositories') && !additional_repositories.isEmpty()){
         additional_repositories.split(';').each{ repo ->
             maven { url repo }
         }
@@ -252,7 +253,7 @@ eclipse.classpath.plusConfigurations = configurations.findAll { it.name.endsWith
 eclipse.classpath.downloadSources=true
 
 wrapper {
-    gradleVersion = '8.10'
+    gradleVersion = '8.14'
 }
 
 task copyDeps(type: Copy) {
