@@ -431,6 +431,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
                 CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE,
                 true).getValue();
             if (propValue != null) {
+                if ("content".equalsIgnoreCase(propValue.trim())) {
+                    return false;
+                }
                 if (!("false".equalsIgnoreCase(propValue.trim()))) {
                     return true;
                 }

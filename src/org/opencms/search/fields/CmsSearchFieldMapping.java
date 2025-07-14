@@ -30,6 +30,7 @@ package org.opencms.search.fields;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
 import org.opencms.file.CmsProperty;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsUser;
 import org.opencms.file.I_CmsResource;
@@ -211,13 +212,19 @@ public class CmsSearchFieldMapping implements I_CmsSearchFieldMapping {
             case 1: // property
                 if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(getParam())) {
                     content = CmsProperty.get(getParam(), properties).getValue();
-                    CmsSearchUtil.stripHtmlFromPropertyIfNecessary(getParam(), content);
+                    content = CmsSearchUtil.stripHtmlFromPropertyIfNecessary(getParam(), content);
+                    if (getParam().startsWith(CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE) && "content".equals(content)) {
+                        content = extractionResult.getContentItems().get(I_CmsExtractionResult.ITEM_TITLE);
+                    }
                 }
                 break;
             case 2: // property-search
                 if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(getParam())) {
                     content = CmsProperty.get(getParam(), propertiesSearched).getValue();
-                    CmsSearchUtil.stripHtmlFromPropertyIfNecessary(getParam(), content);
+                    content = CmsSearchUtil.stripHtmlFromPropertyIfNecessary(getParam(), content);
+                    if (getParam().startsWith(CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE) && "content".equals(content)) {
+                        content = "false";
+                    }
                 }
                 break;
             case 3: // item (retrieve value for the given XPath from the content items)

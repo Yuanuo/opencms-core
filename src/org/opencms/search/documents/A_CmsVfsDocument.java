@@ -29,6 +29,8 @@ package org.opencms.search.documents;
 
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
+import org.opencms.file.CmsProject;
+import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
@@ -39,6 +41,7 @@ import org.opencms.search.extractors.I_CmsExtractionResult;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 
 import org.apache.commons.logging.Log;
 
@@ -149,6 +152,17 @@ public abstract class A_CmsVfsDocument implements I_CmsDocumentFactory {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("Extracting content for '" + resource.getRootPath() + "' successful.");
                     }
+
+                    if (content != null && index.getProject().equals(CmsProject.ONLINE_PROJECT_NAME)) {
+                        // do property lookup with folder search
+                        String exclude = cms.readPropertyObject(resource, CmsPropertyDefinition.PROPERTY_SEARCH_EXCLUDE, true).getValue();
+                        if (exclude != null && "content".equalsIgnoreCase(exclude.trim())) {
+                            for (Locale locale : content.getLocales()) {
+                                content.getContentItems(locale).put(I_CmsExtractionResult.ITEM_CONTENT, content.getContentItems(locale).get(I_CmsExtractionResult.ITEM_TITLE));
+                            }
+                        }
+                    }
+
                     if ((cache != null) && (resource.getSiblingCount() > 1)) {
                         // save extracted content to the cache
                         cache.saveCacheObject(cacheName, content);
