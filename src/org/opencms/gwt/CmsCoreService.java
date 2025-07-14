@@ -1384,6 +1384,12 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
         CmsCategoryService catService = CmsCategoryService.getInstance();
         try {
             CmsResource resource = cms.readResource(structureId, CmsResourceFilter.IGNORE_EXPIRATION);
+            if (resource.isFolder()) {
+                for (CmsResource childFile : cms.readResources(resource, CmsResourceFilter.IGNORE_EXPIRATION.addRequireFile(), true)) {
+                    setResourceCategories(childFile.getStructureId(), new ArrayList<>(categories));
+                }
+                return; // Dont adding category to folder
+            }
             ensureLock(resource);
             String sitePath = cms.getSitePath(resource);
             List<CmsCategory> previousCategories = catService.readResourceCategories(cms, resource);
