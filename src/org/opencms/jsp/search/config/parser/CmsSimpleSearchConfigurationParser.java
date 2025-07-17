@@ -101,32 +101,32 @@ public class CmsSimpleSearchConfigurationParser extends CmsJSONSearchConfigurati
 
             switch (this) {
                 case DATE_ASC:
-                    return new CmsSearchConfigurationSortOption("date.asc", "date_asc", getSortDateField(l) + " asc");
+                    return new CmsSearchConfigurationSortOption("date.asc", "date_asc", "score desc," + getSortDateField(l) + " asc");
                 case DATE_DESC:
                     return new CmsSearchConfigurationSortOption(
                         "date.desc",
                         "date_desc",
-                        getSortDateField(l) + " desc");
+                            "score desc," + getSortDateField(l) + " desc");
                 case TITLE_ASC:
                     return new CmsSearchConfigurationSortOption(
                         "title.asc",
                         "title_asc",
-                        getSortTitleField(l) + " asc");
+                            "score desc," + getSortTitleField(l) + " asc");
                 case TITLE_DESC:
                     return new CmsSearchConfigurationSortOption(
                         "title.desc",
                         "title_desc",
-                        getSortTitleField(l) + " desc");
+                            "score desc," + getSortTitleField(l) + " desc");
                 case ORDER_ASC:
                     return new CmsSearchConfigurationSortOption(
                         "order.asc",
                         "order_asc",
-                        getSortOrderField(l) + " asc");
+                            "score desc," + getSortOrderField(l) + " asc");
                 case ORDER_DESC:
                     return new CmsSearchConfigurationSortOption(
                         "order.desc",
                         "order_desc",
-                        getSortOrderField(l) + " desc");
+                            "score desc," + getSortOrderField(l) + " desc");
                 default:
                     throw new IllegalArgumentException();
             }
