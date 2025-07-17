@@ -94,7 +94,14 @@ public class CmsSearchControllerCommon implements I_CmsSearchControllerCommon {
         String queryString = m_state.getQuery();
         if (!m_config.getIgnoreQueryParam()) {
             if (m_config.getEscapeQueryChars()) {
+                boolean exactQuery = queryString.startsWith("\"") && queryString.endsWith("\"") && queryString.length() > 1;
+                if (exactQuery) {
+                    queryString = queryString.substring(1, queryString.length() - 1).trim();
+                }
                 queryString = ClientUtils.escapeQueryChars(queryString);
+                if (exactQuery && !queryString.isEmpty()) {
+                    queryString = "\"" + queryString + "\"";
+                }
             }
             if (queryString.isEmpty() && m_config.getSearchForEmptyQueryParam()) {
                 queryString = "*";
