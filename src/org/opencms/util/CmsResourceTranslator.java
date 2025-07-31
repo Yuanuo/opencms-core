@@ -30,6 +30,7 @@ package org.opencms.util;
 import org.opencms.main.CmsLog;
 
 import java.util.Random;
+import java.util.function.Function;
 
 import org.apache.commons.logging.Log;
 import org.apache.oro.text.PatternCache;
@@ -97,6 +98,8 @@ public class CmsResourceTranslator {
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsResourceTranslator.class);
+
+    private static Function<String, String> m_baseTranslator;
 
     /** Keep an array of Perl5Util to randomly select for use, because using just a single one causes contention problems under load (since they're synchronized). */
     private Perl5Util[] m_perl5Utils = new Perl5Util[32];
@@ -166,6 +169,7 @@ public class CmsResourceTranslator {
 
         StringBuffer result;
         String current = resourceName;
+        current = null == m_baseTranslator ? current : m_baseTranslator.apply(current);
         int size = current.length() * 2;
 
         Perl5Util perl5Util = getPerl5Util();
