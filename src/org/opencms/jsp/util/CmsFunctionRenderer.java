@@ -192,6 +192,7 @@ public class CmsFunctionRenderer {
             if (function != null) {
                 CmsUUID jspId = function.getRealJspId();
                 if (jspId != null) {
+                try {
                     CmsJspTagInclude.includeTagAction(
                         m_context,
                         m_cms.getRequestContext().removeSiteRoot(function.getRealJspRootPath()),
@@ -203,6 +204,9 @@ public class CmsFunctionRenderer {
                         CmsRequestUtil.getAttributeMap(m_request),
                         m_request,
                         m_response);
+                } catch (JspException e) {
+                    LOG.error(e.getLocalizedMessage(), e);
+                }
                 } else {
                     m_context.getOut().print(defaultHtml(m_request));
                 }
