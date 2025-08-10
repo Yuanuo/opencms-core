@@ -30,6 +30,7 @@ package org.opencms.search;
 import org.opencms.ade.containerpage.CmsDetailOnlyContainerUtil;
 import org.opencms.configuration.CmsConfigurationException;
 import org.opencms.db.CmsDriverManager;
+import org.opencms.db.CmsModificationContext;
 import org.opencms.db.CmsPublishedResource;
 import org.opencms.db.CmsResourceState;
 import org.opencms.file.CmsObject;
@@ -80,6 +81,7 @@ import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
 import org.opencms.util.A_CmsModeStringEnumeration;
 import org.opencms.util.CmsFileUtil;
+import org.opencms.util.CmsPriorityLock;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.util.CmsWaitHandle;
@@ -101,7 +103,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.apache.commons.logging.Log;
@@ -113,6 +119,8 @@ import org.apache.solr.client.solrj.impl.HttpSolrClient.Builder;
 import org.apache.solr.core.CoreContainer;
 import org.apache.solr.core.CoreDescriptor;
 import org.apache.solr.core.SolrCore;
+
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 /**
  * Implements the general management and configuration of the search and
@@ -649,10 +657,169 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                 m_offlineIndexThread.getWaitHandle().release();
             }
         }
+
+    }
+
+    /**
+     * Helper class for batching resources arising from multiple independent 'instant publish' operations for indexing.
+     * <p>This is to reduce overhead for indexing, while still limiting the indexing batch size to not block 'interactive' publishing too much.
+     * <p>The batching is time-based, i.e. file changes in a given time span (currently 2 seconds) are collected and then indexed together.
+     * <p>However, changes that include publish resources with state 'deleted' (actual deletions or move operations) are never batched together with others, to avoid complications.
+     */
+    protected class InstantPublishIndexingQueue {
+
+        /** Current map of batched resources to publish, grouped by id. */
+        private Map<CmsUUID, List<CmsPublishedResource>> m_currentBatch = new HashMap<>();
+
+        /** The task for flushing the queue. */
+        private ScheduledFuture<?> m_flushTask;
+
+        /** The executor used to do the actual indexing. */
+        private ThreadPoolExecutor m_executor;
+
+        private ScheduledThreadPoolExecutor m_flushExecutor;
+
+        private LinkedBlockingQueue<Runnable> m_workQueue = new LinkedBlockingQueue<>();
+
+        /**
+         * Creates a new instance.
+         */
+        public InstantPublishIndexingQueue() {
+
+            m_executor = new ThreadPoolExecutor(
+                0,
+                1,
+                10,
+                TimeUnit.SECONDS,
+                m_workQueue,
+                new ThreadFactoryBuilder().setNameFormat("instant-publish-indexer-%d").build());
+            m_flushExecutor = new ScheduledThreadPoolExecutor(
+                1,
+                new ThreadFactoryBuilder().setNameFormat("instant-publish-flush-%d").build());
+        }
+
+        /**
+         * Adds the resources from a publish job to the queue.
+         *
+         * @param publishJobResources the publish job resources
+         */
+        public synchronized void addPublishJob(List<CmsPublishedResource> publishJobResources) {
+
+            boolean needToFlush = false;
+            Map<CmsUUID, List<CmsPublishedResource>> publishMap = new HashMap<>();
+            for (CmsPublishedResource resource : publishJobResources) {
+                publishMap.computeIfAbsent(resource.getStructureId(), id -> new ArrayList<>()).add(resource);
+            }
+            for (CmsUUID id : publishMap.keySet()) {
+                if (isMove(m_currentBatch.get(id))) {
+                    needToFlush = true;
+                }
+            }
+            if (needToFlush) {
+                if (m_flushTask != null) {
+                    m_flushTask.cancel(false);
+                    m_flushTask = null;
+                }
+                flush();
+            }
+            m_currentBatch.putAll(publishMap);
+            if (m_flushTask == null) {
+                m_flushTask = m_flushExecutor.schedule(
+                    this::flush,
+                    CmsModificationContext.getOnlineFolderOptions().getIndexingInterval(),
+                    TimeUnit.MILLISECONDS);
+            }
+
+        }
+
+        /**
+         * Checks if there is currently any work left to do for the instant publish indexing queue.
+         */
+        public synchronized boolean hasWorkToDo() {
+
+            return (m_currentBatch.size() > 0) || (m_executor.getActiveCount() > 0) || !m_workQueue.isEmpty();
+        }
+
+        /**
+         * Shuts down the queue.
+         */
+        public void shutdown() {
+
+            // Tasks running in the flush executor produce tasks for the indexing executor, so we shut down the former before the latter to avoid skipping indexing during shutdown
+            m_flushExecutor.shutdown();
+            try {
+                m_flushExecutor.awaitTermination(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+            m_executor.shutdown();
+            try {
+                m_executor.awaitTermination(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
+
+        /**
+         * Flushes the currently collected batch of published resources and submits them for indexing.
+         */
+        protected synchronized void flush() {
+
+            m_flushTask = null;
+
+            List<CmsPublishedResource> resources = new ArrayList<>();
+            for (List<CmsPublishedResource> entriesForId : m_currentBatch.values()) {
+                resources.addAll(entriesForId);
+            }
+            m_currentBatch.clear();
+            if (resources.size() > 0) {
+                m_executor.submit(() -> tryIndex(resources));
+            }
+        }
+
+        /**
+         * Indexes the given list of published resources.
+         *
+         * @param resourceList the resources to index
+         */
+        protected void tryIndex(List<CmsPublishedResource> resourceList) {
+
+            try {
+                List<CmsPublishedResource> resourcesToIndex = computeUpdateResources(m_adminCms, resourceList);
+                long start = System.currentTimeMillis();
+                ONLINE_LOCK.lock(false);
+                try {
+                    updateAllIndexes(m_adminCms, resourcesToIndex, null);
+                } finally {
+                    ONLINE_LOCK.unlock();
+                    long end = System.currentTimeMillis();
+                    LOG.info(
+                        "Instant publish indexing of a batch of size "
+                            + resourcesToIndex.size()
+                            + " took "
+                            + (end - start)
+                            + "ms");
+                }
+            } catch (Exception e) {
+                LOG.error(e.getLocalizedMessage(), e);
+            }
+        }
+
+        private boolean isMove(Collection<CmsPublishedResource> publishedResources) {
+
+            return (publishedResources != null)
+                && (publishedResources.size() == 2)
+                && publishedResources.stream().map(res -> res.getState()).collect(Collectors.toSet()).equals(
+                    Set.of(CmsResource.STATE_DELETED, CmsResource.STATE_NEW));
+        }
+
     }
 
     /** This needs to be a fair lock to preserve order of threads accessing the search manager. */
-    private static final ReentrantLock SEARCH_MANAGER_LOCK = new ReentrantLock(true);
+    private static final CmsPriorityLock OFFLINE_LOCK = new CmsPriorityLock();
+
+    /** This needs to be a fair lock to preserve order of threads accessing the search manager. */
+    private static final CmsPriorityLock ONLINE_LOCK = new CmsPriorityLock();
 
     /** The default value used for generating search result excerpts (1024 chars). */
     public static final int DEFAULT_EXCERPT_LENGTH = 1024;
@@ -689,6 +856,9 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
         CmsResourceTypeXmlContainerPage.MODEL_GROUP_TYPE_NAME,
         CmsResourceTypeXmlContainerPage.GROUP_CONTAINER_TYPE_NAME,
         CmsResourceTypeXmlContainerPage.INHERIT_CONTAINER_TYPE_NAME};
+
+    /** The indexing queue for the 'instant publish' feature. */
+    private InstantPublishIndexingQueue m_instantPublishIndexQueue = new InstantPublishIndexingQueue();
 
     /** The administrator OpenCms user context to access OpenCms VFS resources. */
     protected CmsObject m_adminCms;
@@ -1037,17 +1207,34 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                 if (LOG.isDebugEnabled()) {
                     LOG.debug(Messages.get().getBundle().key(Messages.LOG_EVENT_PUBLISH_PROJECT_1, publishHistoryId));
                 }
-                updateAllIndexes(m_adminCms, publishHistoryId, getEventReport(event));
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug(
-                        Messages.get().getBundle().key(
-                            Messages.LOG_EVENT_PUBLISH_PROJECT_FINISHED_1,
-                            publishHistoryId));
+                boolean instantPublish = Boolean.TRUE.equals(
+                    event.getData().get(I_CmsEventListener.KEY_INSTANT_PUBLISH));
+                if (instantPublish) {
+                    String publishIdStr = (String)event.getData().get(I_CmsEventListener.KEY_PUBLISHID);
+                    if (CmsUUID.isValidUUID(publishIdStr)) {
+                        CmsUUID publishId = new CmsUUID(publishIdStr);
+                        List<CmsPublishedResource> publishedResources;
+                        try {
+                            publishedResources = m_adminCms.readPublishedResources(publishId);
+                            m_instantPublishIndexQueue.addPublishJob(publishedResources);
+                        } catch (CmsException e) {
+                            LOG.error(e.getLocalizedMessage(), e);
+                        }
+                    }
+                } else {
+                    updateAllIndexes(m_adminCms, publishHistoryId, getEventReport(event));
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug(
+                            Messages.get().getBundle().key(
+                                Messages.LOG_EVENT_PUBLISH_PROJECT_FINISHED_1,
+                                publishHistoryId));
+                    }
                 }
                 break;
             case I_CmsEventListener.EVENT_REINDEX_OFFLINE:
             case I_CmsEventListener.EVENT_REINDEX_ONLINE:
                 boolean isOnline = I_CmsEventListener.EVENT_REINDEX_ONLINE == event.getType();
+                CmsPriorityLock lock = isOnline ? ONLINE_LOCK : OFFLINE_LOCK;
                 Map<String, Object> eventData = event.getData();
                 CmsUUID userId = (CmsUUID)eventData.get(I_CmsEventListener.KEY_USER_ID);
                 CmsUser user = null;
@@ -1059,8 +1246,9 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                         LOG.debug(t.getMessage(), t);
                     }
                 }
+                lock.lock(true);
                 try {
-                    SEARCH_MANAGER_LOCK.lock();
+
                     if (LOG.isDebugEnabled()) {
                         LOG.debug(Messages.get().getBundle().key(Messages.LOG_EVENT_REINDEX_STARTED_0));
                     }
@@ -1102,7 +1290,6 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                         updateIndexOffline(report, publishedResourcesToIndex);
                     }
                     cms = null;
-                    SEARCH_MANAGER_LOCK.unlock();
                     if (null != user) {
                         Locale l = OpenCms.getWorkplaceManager().getWorkplaceLocale(user);
                         OpenCms.getSessionManager().sendBroadcast(
@@ -1116,9 +1303,6 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     }
 
                 } catch (Throwable e) {
-                    if (SEARCH_MANAGER_LOCK.isHeldByCurrentThread()) {
-                        SEARCH_MANAGER_LOCK.unlock();
-                    }
                     if (null != user) {
                         Locale l = OpenCms.getWorkplaceManager().getWorkplaceLocale(user);
                         OpenCms.getSessionManager().sendBroadcast(
@@ -1134,6 +1318,8 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     } else if (LOG.isErrorEnabled()) {
                         LOG.error(Messages.get().getBundle().key(Messages.ERR_EVENT_REINDEX_FAILED_1, event.getData()));
                     }
+                } finally {
+                    lock.unlock();
                 }
                 break;
             default:
@@ -1910,34 +2096,39 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
      */
     public void rebuildAllIndexes(I_CmsReport report) throws CmsException {
 
+        OFFLINE_LOCK.lock(true);
         try {
-            SEARCH_MANAGER_LOCK.lock();
+            ONLINE_LOCK.lock(true);
+            try {
 
-            CmsMessageContainer container = null;
-            for (int i = 0, n = m_indexes.size(); i < n; i++) {
-                // iterate all configured search indexes
-                I_CmsSearchIndex searchIndex = m_indexes.get(i);
-                try {
-                    // update the index
-                    updateIndex(searchIndex, report, null);
-                } catch (CmsException e) {
-                    container = new CmsMessageContainer(
-                        Messages.get(),
-                        Messages.ERR_INDEX_REBUILD_ALL_1,
-                        new Object[] {searchIndex.getName()});
-                    LOG.error(
-                        Messages.get().getBundle().key(Messages.ERR_INDEX_REBUILD_ALL_1, searchIndex.getName()),
-                        e);
+                CmsMessageContainer container = null;
+                for (int i = 0, n = m_indexes.size(); i < n; i++) {
+                    // iterate all configured search indexes
+                    I_CmsSearchIndex searchIndex = m_indexes.get(i);
+                    try {
+                        // update the index
+                        updateIndex(searchIndex, report, null);
+                    } catch (CmsException e) {
+                        container = new CmsMessageContainer(
+                            Messages.get(),
+                            Messages.ERR_INDEX_REBUILD_ALL_1,
+                            new Object[] {searchIndex.getName()});
+                        LOG.error(
+                            Messages.get().getBundle().key(Messages.ERR_INDEX_REBUILD_ALL_1, searchIndex.getName()),
+                            e);
+                    }
                 }
-            }
-            // clean up the extraction result cache
-            cleanExtractionCache();
-            if (container != null) {
-                // throw stored exception
-                throw new CmsSearchException(container);
+                // clean up the extraction result cache
+                cleanExtractionCache();
+                if (container != null) {
+                    // throw stored exception
+                    throw new CmsSearchException(container);
+                }
+            } finally {
+                ONLINE_LOCK.unlock();
             }
         } finally {
-            SEARCH_MANAGER_LOCK.unlock();
+            OFFLINE_LOCK.unlock();
         }
     }
 
@@ -1951,16 +2142,19 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
      */
     public void rebuildIndex(String indexName, I_CmsReport report) throws CmsException {
 
+        I_CmsSearchIndex index = getIndex(indexName);
+        CmsPriorityLock lock = I_CmsSearchIndex.REBUILD_MODE_OFFLINE.equals(index.getRebuildMode())
+        ? OFFLINE_LOCK
+        : ONLINE_LOCK;
+        lock.lock(true);
         try {
-            SEARCH_MANAGER_LOCK.lock();
-            // get the search index by name
-            I_CmsSearchIndex index = getIndex(indexName);
             // update the index
             updateIndex(index, report, null);
             // clean up the extraction result cache
             cleanExtractionCache();
         } finally {
-            SEARCH_MANAGER_LOCK.unlock();
+            lock.unlock();
+
         }
     }
 
@@ -1974,27 +2168,30 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
      */
     public void rebuildIndexes(List<String> indexNames, I_CmsReport report) throws CmsException {
 
-        try {
-            SEARCH_MANAGER_LOCK.lock();
-            Iterator<String> i = indexNames.iterator();
-            while (i.hasNext()) {
-                String indexName = i.next();
-                // get the search index by name
-                I_CmsSearchIndex index = getIndex(indexName);
-                if (index != null) {
-                    // update the index
+        Iterator<String> i = indexNames.iterator();
+        while (i.hasNext()) {
+            String indexName = i.next();
+            // get the search index by name
+            I_CmsSearchIndex index = getIndex(indexName);
+            if (index != null) {
+                CmsPriorityLock lock = I_CmsSearchIndex.REBUILD_MODE_OFFLINE.equals(index.getRebuildMode())
+                ? OFFLINE_LOCK
+                : ONLINE_LOCK;
+                try {
+                    lock.lock(true);
                     updateIndex(index, report, null);
-                } else {
-                    if (LOG.isWarnEnabled()) {
-                        LOG.warn(Messages.get().getBundle().key(Messages.LOG_NO_INDEX_WITH_NAME_1, indexName));
-                    }
+                } finally {
+                    lock.unlock();
+
+                }
+            } else {
+                if (LOG.isWarnEnabled()) {
+                    LOG.warn(Messages.get().getBundle().key(Messages.LOG_NO_INDEX_WITH_NAME_1, indexName));
                 }
             }
-            // clean up the extraction result cache
-            cleanExtractionCache();
-        } finally {
-            SEARCH_MANAGER_LOCK.unlock();
         }
+        // clean up the extraction result cache
+        cleanExtractionCache();
     }
 
     /**
@@ -2567,6 +2764,8 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
      */
     public void shutDown() {
 
+        m_instantPublishIndexQueue.shutdown();
+
         if (m_offlineIndexThread != null) {
             m_offlineIndexThread.shutDown();
         }
@@ -2973,8 +3172,8 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
     protected void updateAllIndexes(CmsObject adminCms, CmsUUID publishHistoryId, I_CmsReport report) {
 
         int oldPriority = Thread.currentThread().getPriority();
+        ONLINE_LOCK.lock(true);
         try {
-            SEARCH_MANAGER_LOCK.lock();
             Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
             List<CmsPublishedResource> publishedResources;
             try {
@@ -2986,70 +3185,10 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     e);
                 return;
             }
-            Set<CmsUUID> bothNewAndDeleted = getIdsOfPublishResourcesWhichAreBothNewAndDeleted(publishedResources);
-            // When published resources with both states 'new' and 'deleted' exist in the same publish job history, the resource has been moved
-
-            List<CmsPublishedResource> updateResources = new ArrayList<CmsPublishedResource>();
-            for (CmsPublishedResource res : publishedResources) {
-                if (res.getState().isUnchanged()) {
-                    // unchanged resources don't need to be indexed after publish
-                    continue;
-                }
-                if (res.getState().isDeleted() || res.getState().isNew() || res.getState().isChanged()) {
-                    if (updateResources.contains(res)) {
-                        // resource may have been added as a sibling of another resource
-                        // in this case we make sure to use the value from the publish list because of the "deleted" flag
-                        boolean hasMoved = bothNewAndDeleted.contains(res.getStructureId())
-                            || (res.getMovedState() == CmsPublishedResource.STATE_MOVED_DESTINATION)
-                            || (res.getMovedState() == CmsPublishedResource.STATE_MOVED_SOURCE);
-                        // check it this is a moved resource with source / target info, in this case we need both entries
-                        if (!hasMoved) {
-                            // if the resource was moved, we must contain both entries
-                            updateResources.remove(res);
-                        }
-                        // "equals()" implementation of published resource checks for id,
-                        // so the removed value may have a different "deleted" or "modified" status value
-                        updateResources.add(res);
-                    } else {
-                        // resource not yet contained in the list
-                        updateResources.add(res);
-                        // check for the siblings (not for deleted resources, these are already gone)
-                        if (!res.getState().isDeleted() && (res.getSiblingCount() > 1)) {
-                            // this resource has siblings
-                            try {
-                                // read siblings from the online project
-                                List<CmsResource> siblings = adminCms.readSiblings(
-                                    res.getRootPath(),
-                                    CmsResourceFilter.ALL);
-                                Iterator<CmsResource> itSib = siblings.iterator();
-                                while (itSib.hasNext()) {
-                                    // check all siblings
-                                    CmsResource sibling = itSib.next();
-                                    CmsPublishedResource sib = new CmsPublishedResource(sibling);
-                                    if (!updateResources.contains(sib)) {
-                                        // ensure sibling is added only once
-                                        updateResources.add(sib);
-                                    }
-                                }
-                            } catch (CmsException e) {
-                                // ignore, just use the original resource
-                                if (LOG.isWarnEnabled()) {
-                                    LOG.warn(
-                                        Messages.get().getBundle().key(
-                                            Messages.LOG_UNABLE_TO_READ_SIBLINGS_1,
-                                            res.getRootPath()),
-                                        e);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            addAdditionallyAffectedResources(adminCms, updateResources);
+            List<CmsPublishedResource> updateResources = computeUpdateResources(adminCms, publishedResources);
             updateAllIndexes(adminCms, updateResources, report);
         } finally {
-            SEARCH_MANAGER_LOCK.unlock();
+            ONLINE_LOCK.unlock();
             Thread.currentThread().setPriority(oldPriority);
         }
     }
@@ -3067,7 +3206,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
         I_CmsReport report) {
 
         try {
-            SEARCH_MANAGER_LOCK.lock();
+            ONLINE_LOCK.lock(true);
             if (!updateResources.isEmpty()) {
                 // sort the resource to update
                 Collections.sort(updateResources);
@@ -3090,7 +3229,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
             // clean up the extraction result cache
             cleanExtractionCache();
         } finally {
-            SEARCH_MANAGER_LOCK.unlock();
+            ONLINE_LOCK.unlock();
         }
 
     }
@@ -3112,8 +3251,11 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
     throws CmsException {
 
         if (shouldUpdateAtAll(index)) {
+            CmsPriorityLock lock = I_CmsSearchIndex.REBUILD_MODE_OFFLINE.equals(index.getRebuildMode())
+            ? OFFLINE_LOCK
+            : ONLINE_LOCK;
             try {
-                SEARCH_MANAGER_LOCK.lock();
+                lock.lock(true);
 
                 // copy the stored admin context for the indexing
                 CmsObject cms = OpenCms.initCmsObject(m_adminCms);
@@ -3141,7 +3283,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     updateIndexIncremental(cms, index, report, resourcesToIndex);
                 }
             } finally {
-                SEARCH_MANAGER_LOCK.unlock();
+                lock.unlock();
             }
         }
     }
@@ -3302,9 +3444,11 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
         List<CmsPublishedResource> resourcesToIndex)
     throws CmsException {
 
+        CmsPriorityLock lock = I_CmsSearchIndex.REBUILD_MODE_OFFLINE.equals(index.getRebuildMode())
+        ? OFFLINE_LOCK
+        : ONLINE_LOCK;
+        lock.lock(true);
         try {
-            SEARCH_MANAGER_LOCK.lock();
-
             // update the existing index
             List<CmsSearchIndexUpdateData> updateCollections = new ArrayList<CmsSearchIndexUpdateData>();
 
@@ -3402,7 +3546,7 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                     I_CmsReport.FORMAT_HEADLINE);
             }
         } finally {
-            SEARCH_MANAGER_LOCK.unlock();
+            lock.unlock();
         }
     }
 
@@ -3461,6 +3605,72 @@ public class CmsSearchManager implements I_CmsScheduledJob, I_CmsEventListener {
                 }
             }
         }
+    }
+
+    private List<CmsPublishedResource> computeUpdateResources(
+        CmsObject cms,
+        List<CmsPublishedResource> publishedResources) {
+
+        Set<CmsUUID> bothNewAndDeleted = getIdsOfPublishResourcesWhichAreBothNewAndDeleted(publishedResources);
+        // When published resources with both states 'new' and 'deleted' exist in the same publish job history, the resource has been moved
+
+        List<CmsPublishedResource> updateResources = new ArrayList<CmsPublishedResource>();
+        for (CmsPublishedResource res : publishedResources) {
+            if (res.getState().isUnchanged()) {
+                // unchanged resources don't need to be indexed after publish
+                continue;
+            }
+            if (res.getState().isDeleted() || res.getState().isNew() || res.getState().isChanged()) {
+                if (updateResources.contains(res)) {
+                    // resource may have been added as a sibling of another resource
+                    // in this case we make sure to use the value from the publish list because of the "deleted" flag
+                    boolean hasMoved = bothNewAndDeleted.contains(res.getStructureId())
+                        || (res.getMovedState() == CmsPublishedResource.STATE_MOVED_DESTINATION)
+                        || (res.getMovedState() == CmsPublishedResource.STATE_MOVED_SOURCE);
+                    // check it this is a moved resource with source / target info, in this case we need both entries
+                    if (!hasMoved) {
+                        // if the resource was moved, we must contain both entries
+                        updateResources.remove(res);
+                    }
+                    // "equals()" implementation of published resource checks for id,
+                    // so the removed value may have a different "deleted" or "modified" status value
+                    updateResources.add(res);
+                } else {
+                    // resource not yet contained in the list
+                    updateResources.add(res);
+                    // check for the siblings (not for deleted resources, these are already gone)
+                    if (!res.getState().isDeleted() && (res.getSiblingCount() > 1)) {
+                        // this resource has siblings
+                        try {
+                            // read siblings from the online project
+                            List<CmsResource> siblings = cms.readSiblings(res.getRootPath(), CmsResourceFilter.ALL);
+                            Iterator<CmsResource> itSib = siblings.iterator();
+                            while (itSib.hasNext()) {
+                                // check all siblings
+                                CmsResource sibling = itSib.next();
+                                CmsPublishedResource sib = new CmsPublishedResource(sibling);
+                                if (!updateResources.contains(sib)) {
+                                    // ensure sibling is added only once
+                                    updateResources.add(sib);
+                                }
+                            }
+                        } catch (CmsException e) {
+                            // ignore, just use the original resource
+                            if (LOG.isWarnEnabled()) {
+                                LOG.warn(
+                                    Messages.get().getBundle().key(
+                                        Messages.LOG_UNABLE_TO_READ_SIBLINGS_1,
+                                        res.getRootPath()),
+                                    e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        addAdditionallyAffectedResources(cms, updateResources);
+        return updateResources;
     }
 
     /**

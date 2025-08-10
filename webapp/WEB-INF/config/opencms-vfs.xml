@@ -8,6 +8,7 @@
                 <loader class="org.opencms.loader.CmsDumpLoader" />
                 <loader class="org.opencms.loader.CmsImageLoader">
                     <param name="image.scaling.enabled">true</param>
+                    <param name="image.scaling.concurrency">6</param>
                 </loader>
                 <loader class="org.opencms.loader.CmsPointerLoader" />
                 <loader class="org.opencms.loader.CmsJspLoader">
@@ -463,6 +464,9 @@
                 <translation>s#opencms://system/shared/decoration/decoration\.xsd#opencms://system/config/decoration/decoration.xsd#</translation>
             </xsdtranslations>
         </translations>
+        <online-folders>
+        	<path>/system/shared/online</path>
+        </online-folders>
         <xmlcontent>
             <widgets>
                 <widget class="org.opencms.widgets.CmsCalendarWidget">

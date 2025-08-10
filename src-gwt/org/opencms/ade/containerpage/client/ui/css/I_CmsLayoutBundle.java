@@ -148,6 +148,12 @@ public interface I_CmsLayoutBundle extends ClientBundle {
         *
         * @return the CSS class name
         */
+        String inlineEditDisabled();
+
+        /** Access method.<p>
+        *
+        * @return the CSS class name
+        */
         String lockedElement();
 
         /** Access method.<p>
@@ -177,11 +183,6 @@ public interface I_CmsLayoutBundle extends ClientBundle {
         @ClassName("oc-small-element")
         String smallElement();
 
-        /** Access method.<p>
-         *
-         * @return the CSS class name
-         */
-        String toolbarToggle();
     }
 
     /** The drag and drop CSS classes used also within the container-page CSS. */

@@ -27,6 +27,7 @@
 
 package org.opencms.acacia.client.ui;
 
+import org.opencms.ade.containerpage.client.ui.css.I_CmsLayoutBundle;
 import org.opencms.gwt.client.util.CmsClientStringUtil;
 import org.opencms.gwt.client.util.CmsDomUtil;
 import org.opencms.gwt.client.util.CmsPositionBean;
@@ -53,6 +54,8 @@ import com.google.gwt.user.client.ui.FlowPanel;
 import com.google.gwt.user.client.ui.HTMLPanel;
 import com.google.gwt.user.client.ui.RootPanel;
 import com.google.gwt.user.client.ui.Widget;
+
+import jsinterop.base.Js;
 
 /**
  * In-line edit overlay covering rest of the page.<p>
@@ -154,6 +157,9 @@ public class CmsInlineEditOverlay extends Composite implements HasClickHandlers 
 
     /** Style of overlay. */
     private Style m_overlayTopStyle;
+
+    /** Elements marked as non inline editable, for which an overlay is displayed. */
+    private List<elemental2.dom.Element> m_disabledElements = new ArrayList<>();
 
     /**
      * Constructor.<p>
@@ -301,6 +307,30 @@ public class CmsInlineEditOverlay extends Composite implements HasClickHandlers 
     }
 
     /**
+     * Initializes the overlay for 'disabled' (not inline editable) elements.
+     */
+    public void initDisabled() {
+
+        clearDisabled();
+        elemental2.dom.Element elem = Js.cast(m_element);
+        List<elemental2.dom.Element> inactive = elem.querySelectorAll(
+            ".oc-container, .oc-not-inline-editable").asList();
+        for (elemental2.dom.Element candidate : inactive) {
+            boolean isRoot = true;
+            for (elemental2.dom.Element other : inactive) {
+                if ((other != candidate) && other.contains(candidate)) {
+                    isRoot = false;
+                    break;
+                }
+            }
+            if (isRoot) {
+                m_disabledElements.add(candidate);
+                candidate.classList.add(I_CmsLayoutBundle.INSTANCE.containerpageCss().inlineEditDisabled());
+            }
+        }
+    }
+
+    /**
      * Updates the position of the given button widget.<p>
      *
      * @param widget the button widget
@@ -358,6 +388,27 @@ public class CmsInlineEditOverlay extends Composite implements HasClickHandlers 
                 ((CmsInlineEntityWidget)widget).positionWidget();
             }
         }
+    }
+
+    /**
+     * @see com.google.gwt.user.client.ui.Composite#onDetach()
+     */
+    @Override
+    protected void onDetach() {
+
+        super.onDetach();
+        clearDisabled();
+
+    }
+
+    /**
+     * Clears the overlay for non inline editable elements.
+     */
+    private void clearDisabled() {
+
+        m_disabledElements.forEach(
+            elem2 -> elem2.classList.remove(I_CmsLayoutBundle.INSTANCE.containerpageCss().inlineEditDisabled()));
+        m_disabledElements.clear();
     }
 
     /**

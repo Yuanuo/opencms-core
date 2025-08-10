@@ -49,6 +49,7 @@ import org.opencms.db.CmsDbEntryNotFoundException;
 import org.opencms.db.CmsDefaultUsers;
 import org.opencms.db.CmsExportPoint;
 import org.opencms.db.CmsLoginManager;
+import org.opencms.db.CmsModificationContext;
 import org.opencms.db.CmsSecurityManager;
 import org.opencms.db.CmsSqlManager;
 import org.opencms.db.CmsSubscriptionManager;
@@ -63,6 +64,7 @@ import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsUser;
 import org.opencms.file.CmsVfsResourceNotFoundException;
+import org.opencms.file.quota.CmsFolderSizeTracker;
 import org.opencms.flex.CmsFlexCache;
 import org.opencms.flex.CmsFlexCacheConfiguration;
 import org.opencms.flex.CmsFlexController;
@@ -151,6 +153,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -377,6 +380,8 @@ public final class OpenCmsCore {
 
     /** The XML content type manager that contains the initialized XML content types. */
     private CmsXmlContentTypeManager m_xmlContentTypeManager;
+
+    private Future<CmsFolderSizeTracker> m_folderSizeTrackerFuture;
 
     /**
      * Protected constructor that will initialize the singleton OpenCms instance
@@ -688,6 +693,20 @@ public final class OpenCmsCore {
             m_flexCache.dumpKeys(buffer);
             return buffer.toString();
         } else {
+            return null;
+        }
+    }
+
+    /**
+     * Gets the folder size tracker.
+     * @return
+     */
+    protected CmsFolderSizeTracker getFolderSizeTracker() {
+
+        try {
+            return m_folderSizeTrackerFuture.get();
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
             return null;
         }
     }
@@ -1559,6 +1578,7 @@ public final class OpenCmsCore {
             3,
             new ThreadFactoryBuilder().setNameFormat("OpenCmsCore-exec-%d").build());
         // set resource init classes
+
         m_resourceInitHandlers = systemConfiguration.getResourceInitHandlers();
 
         // register request handler classes
@@ -1851,6 +1871,15 @@ public final class OpenCmsCore {
             StringTemplate stringTemplate = new org.antlr.stringtemplate.StringTemplate();
         } catch (Exception e) {
             CmsLog.INIT.error("Problem with initializing stringtemplate class: " + e.getLocalizedMessage(), e);
+        }
+
+        try {
+            CmsModificationContext.initialize(
+                m_securityManager,
+                initCmsObject(adminCms),
+                vfsConfiguation.getOnlineFolderOptions());
+        } catch (Exception e) {
+            CmsLog.INIT.error("Problem with initializing modification context");
         }
 
         try {
@@ -2408,7 +2437,7 @@ public final class OpenCmsCore {
 
                 try {
                     if (m_executor != null) {
-                        m_executor.shutdownNow();
+                        m_executor.shutdown();
                         m_executor.awaitTermination(30, TimeUnit.SECONDS);
                     }
                 } catch (Throwable e) {
@@ -2714,8 +2743,15 @@ public final class OpenCmsCore {
             } catch (CmsException e) {
                 throw new CmsInitException(Messages.get().container(Messages.ERR_CRITICAL_INIT_ADMINCMS_0), e);
             }
-
         }
+
+        try {
+            m_folderSizeTrackerFuture = m_executor.submit(
+                () -> new CmsFolderSizeTracker(m_configAdminCms).initialize());
+        } catch (Exception e) {
+            LOG.error(e.getLocalizedMessage(), e);
+        }
+
         // everything is initialized, now start publishing
         m_publishManager.startPublishing();
 
@@ -2732,7 +2768,7 @@ public final class OpenCmsCore {
         }
 
         try {
-            CmsDiagnosticsMXBean.register();
+            CmsDiagnosticsMXBean.register(m_configAdminCms);
         } catch (Throwable e) {
             CmsLog.INIT.error(e.getLocalizedMessage(), e);
         }

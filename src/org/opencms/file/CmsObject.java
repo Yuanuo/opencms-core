@@ -28,6 +28,7 @@
 package org.opencms.file;
 
 import org.opencms.db.CmsDbEntryNotFoundException;
+import org.opencms.db.CmsModificationContext;
 import org.opencms.db.CmsPublishedResource;
 import org.opencms.db.CmsResourceState;
 import org.opencms.db.CmsSecurityManager;
@@ -39,6 +40,8 @@ import org.opencms.file.CmsResource.CmsResourceDeleteMode;
 import org.opencms.file.history.CmsHistoryPrincipal;
 import org.opencms.file.history.CmsHistoryProject;
 import org.opencms.file.history.I_CmsHistoryResource;
+import org.opencms.file.quota.CmsFolderSizeEntry;
+import org.opencms.file.quota.CmsFolderSizeOptions;
 import org.opencms.file.types.CmsResourceTypeFolder;
 import org.opencms.file.types.CmsResourceTypePlain;
 import org.opencms.file.types.I_CmsResourceType;
@@ -78,6 +81,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import org.apache.commons.logging.Log;
 
@@ -996,7 +1000,41 @@ public final class CmsObject {
     public void deleteHistoricalVersions(int versionsToKeep, int versionsDeleted, long timeDeleted, I_CmsReport report)
     throws CmsException {
 
-        m_securityManager.deleteHistoricalVersions(m_context, versionsToKeep, versionsDeleted, timeDeleted, report);
+        m_securityManager.deleteHistoricalVersions(
+            m_context,
+            versionsToKeep,
+            versionsDeleted,
+            timeDeleted,
+            res -> true,
+            report);
+    }
+
+    /**
+     * Deletes the versions from the history tables, keeping the given number of versions per resource.<p>
+     *
+     * @param versionsToKeep number of versions to keep, is ignored if negative
+     * @param versionsDeleted number of versions to keep for deleted resources, is ignored if negative
+     * @param timeDeleted deleted resources older than this will also be deleted, is ignored if negative
+     * @param clearDeletedFilter a filter to evaluate whether a the history entry for deleted resources should be cleared
+     * @param report the report for output logging
+     *
+     * @throws CmsException if operation was not successful
+     */
+    public void deleteHistoricalVersions(
+        int versionsToKeep,
+        int versionsDeleted,
+        long timeDeleted,
+        Predicate<I_CmsHistoryResource> clearDeletedFilter,
+        I_CmsReport report)
+    throws CmsException {
+
+        m_securityManager.deleteHistoricalVersions(
+            m_context,
+            versionsToKeep,
+            versionsDeleted,
+            timeDeleted,
+            clearDeletedFilter,
+            report);
     }
 
     /**
@@ -2728,6 +2766,11 @@ public final class CmsObject {
         return m_securityManager.readFolder(m_context, addSiteRoot(resourcename), filter);
     }
 
+    public List<CmsFolderSizeEntry> readFolderSizeStats(CmsFolderSizeOptions options) throws CmsException {
+
+        return m_securityManager.readFolderSizeStats(m_context, options);
+    }
+
     /**
      * Reads the group of a project.<p>
      *
@@ -4179,7 +4222,11 @@ public final class CmsObject {
      */
     public CmsFile writeFile(CmsFile resource) throws CmsException {
 
-        return getResourceType(resource).writeFile(this, m_securityManager, resource);
+        return CmsModificationContext.doWithModificationContext(m_context, () -> {
+
+            return getResourceType(resource).writeFile(this, m_securityManager, resource);
+
+        });
     }
 
     /**
