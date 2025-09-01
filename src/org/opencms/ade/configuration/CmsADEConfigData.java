@@ -54,9 +54,11 @@ import org.opencms.main.CmsException;
 import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.main.OpenCmsServlet;
+import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
 import org.opencms.workplace.editors.directedit.CmsAdvancedDirectEditProvider.SitemapDirectEditPermissions;
+import org.opencms.xml.CmsLinkFinisher;
 import org.opencms.xml.CmsXmlContentDefinition;
 import org.opencms.xml.containerpage.CmsFormatterConfiguration;
 import org.opencms.xml.containerpage.CmsXmlDynamicFunctionHandler;
@@ -214,6 +216,15 @@ public class CmsADEConfigData {
     /** Sitemap attribute for the upload folder. */
     public static final String ATTR_BINARY_UPLOAD_TARGET = "binary.upload.target";
 
+    /** Sitemap attribute controlling the default files that should be truncated by the link finisher (comma separated). */
+    public static final String ATTR_TEMPLATE_LINK_DEFAULTFILES = "template.link.defaultfiles";
+
+    /** Sitemap attribute configuring the link finisher - currently only supports the mode 'foldername', every other value is interpreted as 'disabled'. */
+    public static final String ATTR_TEMPLATE_LINK_FINISHER = "template.link.finisher";
+
+    /** Attribute for regex to exclude links from being run through the finisher if they match. */
+    public static final String ATTRIBUTE_TEMPLATE_LINK_FINISHER_EXCLUDE = "template.link.finisher.exclude";
+
     /** Prefix for logging special request log messages. */
     public static final String REQ_LOG_PREFIX = "[CmsADEConfigData] ";
 
@@ -279,6 +290,8 @@ public class CmsADEConfigData {
                 return result;
             }
         });
+
+    private CmsLinkFinisher m_linkFinisher;
 
     /** Cached shared setting overrides. */
     private volatile ImmutableList<CmsUUID> m_sharedSettingOverrides;
@@ -871,6 +884,24 @@ public class CmsADEConfigData {
     }
 
     /**
+     * Gets the active content folder configuration.
+     *
+     * @return the active content folder configuration
+     */
+    public CmsContentFolderOption getContentFolderOption() {
+
+        if (m_data.getContentFolderOption() != null) {
+            return m_data.getContentFolderOption();
+        }
+        CmsADEConfigData parent = parent();
+        if (parent != null) {
+            return parent.getContentFolderOption();
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Gets the content folder path.<p>
      *
      * For example, if the configuration file is located at /sites/default/.content/.config, the content folder path is /sites/default/.content
@@ -1257,6 +1288,32 @@ public class CmsADEConfigData {
         Map<CmsUUID, I_CmsFormatterBean> result = Maps.newHashMap(cacheState.getFormatters());
         result.keySet().removeAll(getActiveFormatters().keySet());
         return result;
+    }
+
+    /**
+     * Creates a link finisher based on the configured sitemap attributes.
+     *
+     * @return the link finisher
+     */
+    public CmsLinkFinisher getLinkFinisher() {
+
+        if (m_linkFinisher == null) {
+
+            boolean enabled = "foldername".equals(getAttribute(ATTR_TEMPLATE_LINK_FINISHER, ""));
+            String suffixesStr = getAttribute(ATTR_TEMPLATE_LINK_DEFAULTFILES, null);
+            Collection<String> defaultFileNames;
+            if (suffixesStr != null) {
+                defaultFileNames = Collections.unmodifiableList(
+                    Arrays.asList(suffixesStr.split(",")).stream().map(suffix -> suffix.strip()).filter(
+                        suffix -> !CmsStringUtil.isEmptyOrWhitespaceOnly(suffix)).collect(Collectors.toList()));
+            } else {
+                defaultFileNames = OpenCms.getDefaultFiles();
+            }
+            String exclude = getAttribute(ATTRIBUTE_TEMPLATE_LINK_FINISHER_EXCLUDE, null);
+            m_linkFinisher = new CmsLinkFinisher(enabled, defaultFileNames, exclude);
+        }
+        return m_linkFinisher;
+
     }
 
     /**
@@ -2018,9 +2075,32 @@ public class CmsADEConfigData {
                 Collectors.toList()),
             true);
         if (m_data.isCreateContentsLocally()) {
+            CmsContentFolderOption contentFolderOption = getContentFolderOption();
+            CmsUUID folderId = null;
+            if (contentFolderOption != null) {
+                folderId = contentFolderOption.getFolderId();
+            }
+            String basePath = CmsStringUtil.joinPaths(m_data.getBasePath(), CmsADEManager.CONTENT_FOLDER_NAME);
+            if (folderId != null) {
+                try {
+                    CmsResource resource = getCms().readResource(folderId, CmsResourceFilter.ALL);
+                    if (!resource.isFolder()) {
+                        LOG.error(
+                            "Resource configured as content folder isn't a folder: "
+                                + resource.getRootPath()
+                                + " (context: "
+                                + getBasePath()
+                                + ")");
+                    } else {
+                        basePath = CmsFileUtil.removeTrailingSeparator(resource.getRootPath());
+                    }
+                } catch (Exception e) {
+                    LOG.error(e.getLocalizedMessage(), e);
+                }
+            }
+
             for (CmsResourceTypeConfig typeConfig : result) {
-                typeConfig.updateBasePath(
-                    CmsStringUtil.joinPaths(m_data.getBasePath(), CmsADEManager.CONTENT_FOLDER_NAME));
+                typeConfig.updateBasePath(basePath);
             }
         }
         if (filterDisabled) {
