@@ -84,6 +84,7 @@ import org.apache.commons.lang3.ClassUtils;
 import org.apache.commons.logging.Log;
 
 import com.google.common.base.Function;
+import com.google.common.base.Joiner;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
 import com.vaadin.server.ErrorMessage;
@@ -776,13 +777,28 @@ public final class CmsVaadinUtils {
             res.addContainerProperty(descID, String.class, "");
         }
 
-        for (I_CmsPrincipal group : list) {
+        for (I_CmsPrincipal principal : list) {
 
-            Item item = res.addItem(group);
-            item.getItemProperty(captionID).setValue(group.getSimpleName());
-            item.getItemProperty(ouID).setValue(group.getOuFqn());
+            Item item = res.addItem(principal);
+            String name = principal.getSimpleName();
+            if (principal instanceof CmsUser) {
+                CmsUser user = (CmsUser)principal;
+                List<String> nameComponents = new ArrayList<>();
+                for (String nameComponent : Arrays.asList(user.getFirstname(), user.getLastname())) {
+                    if (!CmsStringUtil.isEmptyOrWhitespaceOnly(nameComponent)) {
+                        nameComponents.add(nameComponent);
+                    }
+                }
+                String fullName = Joiner.on(' ').join(nameComponents);
+                if (!CmsStringUtil.isEmpty(fullName)) {
+                    name = name + " (" + fullName + ")";
+                }
+            }
+            item.getItemProperty(captionID).setValue(name);
+            item.getItemProperty(ouID).setValue(principal.getOuFqn());
             if (descID != null) {
-                item.getItemProperty(descID).setValue(group.getDescription(A_CmsUI.get().getLocale()));
+                String desc = principal.getDescription(A_CmsUI.get().getLocale());
+                item.getItemProperty(descID).setValue(desc);
             }
         }
 
@@ -1452,6 +1468,7 @@ public final class CmsVaadinUtils {
             byte[] designBytes = CmsFileUtil.readFully(designStream, true);
             final String encoding = "UTF-8";
             String design = new String(designBytes, encoding);
+
             CmsMacroResolver resolver = new CmsMacroResolver() {
 
                 @Override
@@ -1471,6 +1488,18 @@ public final class CmsVaadinUtils {
             }
             if (messages != null) {
                 resolver.setMessages(messages);
+            }
+
+            // workaround for existing HTML templates which use the incorrect <tag/> syntax, which sort of worked with previous versions of JSoup but not with the current one
+            String correctedDesign = design.replaceAll("<(?!meta )([A-Za-z0-9-]+)( [^/>]*)/>", "<$1$2></$1>");
+            if (!design.equals(correctedDesign)) {
+                LOG.warn(
+                    "Design was automatically corrected from \n"
+                        + design
+                        + "\n to \n"
+                        + correctedDesign
+                        + "\n\n--- Don't use XML-style empty-element syntax (<tag/>) in Vaadin HTML designs! ---\n");
+                design = correctedDesign;
             }
             String resolvedDesign = resolver.resolveMacros(design);
             Design.read(new ByteArrayInputStream(resolvedDesign.getBytes(encoding)), component);

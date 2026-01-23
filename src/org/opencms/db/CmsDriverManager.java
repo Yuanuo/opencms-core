@@ -151,6 +151,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -159,6 +160,8 @@ import java.util.stream.Collectors;
 
 import org.apache.commons.logging.Log;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
@@ -630,6 +633,9 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
     private volatile Integer m_lastPublishTag = null;
 
+    /** Cache for which OUs can be skipped for principal transfer when deleting a user. */
+    private Cache<String, Boolean> m_skipTransferPrincipalResourceCache;
+
     /**
      * Private constructor, initializes some required member variables.<p>
      */
@@ -791,7 +797,15 @@ public final class CmsDriverManager implements I_CmsEventListener {
                 I_CmsEventListener.EVENT_CLEAR_CACHES,
                 I_CmsEventListener.EVENT_CLEAR_PRINCIPAL_CACHES,
                 I_CmsEventListener.EVENT_USER_MODIFIED,
+                I_CmsEventListener.EVENT_RESOURCE_MODIFIED,
+                I_CmsEventListener.EVENT_OU_MODIFIED,
                 I_CmsEventListener.EVENT_PUBLISH_PROJECT});
+
+        // not sure the manual cache flushing based on events is sufficient in all cases for the 'is principal transfer skippable?' cache,
+        // so we limit it to a few minutes
+        Cache<String, Boolean> skipTransferPrincipalResourceCache = CacheBuilder.newBuilder().concurrencyLevel(
+            4).expireAfterWrite(5, TimeUnit.MINUTES).build();
+        driverManager.m_skipTransferPrincipalResourceCache = skipTransferPrincipalResourceCache;
 
         // return the configured driver manager
         return driverManager;
@@ -841,22 +855,11 @@ public final class CmsDriverManager implements I_CmsEventListener {
         }
         CmsRelation relation = new CmsRelation(resource, target, type);
         getVfsDriver(dbc).createRelation(dbc, dbc.currentProject().getUuid(), relation);
-        if (importCase) {
-            // fire the reindexing event, since - if offline indexing is not stopped,
-            // the content could be indexed without relations already and thus miss categories.
-            Map<String, Object> data = new HashMap<String, Object>(2);
-            data.put(I_CmsEventListener.KEY_PROJECTID, dbc.currentProject().getId());
-            data.put(I_CmsEventListener.KEY_RESOURCES, Collections.singletonList(resource));
-            I_CmsReport report = null;
-            if (dbc.getRequestContext() != null) {
-                report = new CmsLogReport(dbc.getRequestContext().getLocale(), getClass());
-            } else {
-                report = new CmsLogReport(CmsLocaleManager.getDefaultLocale(), getClass());
-            }
-            data.put(I_CmsEventListener.KEY_REPORT, report);
-            data.put(I_CmsEventListener.KEY_REINDEX_RELATED, Boolean.TRUE);
-            OpenCms.fireCmsEvent(new CmsEvent(I_CmsEventListener.EVENT_REINDEX_OFFLINE, data));
-        } else {
+        // IMPORTANT: In the import case, the importer has to ensure that the
+        // resource is reindexed offline after the relation has been added.
+        // We do not trigger reindexing here for each added relation due to performance issues.
+        // in the the non-import case reindexing is triggered by the update of the last modification date.
+        if (!importCase) {
             // log it
             log(
                 dbc,
@@ -1288,6 +1291,7 @@ public final class CmsDriverManager implements I_CmsEventListener {
 
             case I_CmsEventListener.EVENT_CLEAR_CACHES:
                 m_monitor.clearCache();
+                m_skipTransferPrincipalResourceCache.invalidateAll();
                 break;
             case I_CmsEventListener.EVENT_CLEAR_PRINCIPAL_CACHES:
                 m_monitor.clearPrincipalsCache();
@@ -1325,6 +1329,19 @@ public final class CmsDriverManager implements I_CmsEventListener {
                     }
                     m_monitor.flushCache(CacheType.HAS_ROLE, CacheType.ROLE_LIST);
                 }
+                break;
+            case I_CmsEventListener.EVENT_RESOURCE_MODIFIED:
+
+                Object resObj = event.getData().get(I_CmsEventListener.KEY_RESOURCE);
+                if ((resObj != null) && (resObj instanceof CmsResource)) {
+                    CmsResource resource = (CmsResource)resObj;
+                    if (resource.getRootPath().startsWith(CmsUserDriver.ORGUNIT_BASE_FOLDER)) {
+                        m_skipTransferPrincipalResourceCache.invalidateAll();
+                    }
+                }
+                break;
+            case I_CmsEventListener.EVENT_OU_MODIFIED:
+                m_skipTransferPrincipalResourceCache.invalidateAll();
                 break;
             default:
                 // noop
@@ -3478,13 +3495,48 @@ public final class CmsDriverManager implements I_CmsEventListener {
         }
         // remove all locks set for the deleted user
         m_lockManager.removeLocks(user.getId());
-        // offline
-        if (dbc.getProjectId().isNullUUID()) {
-            // offline project available
-            transferPrincipalResources(dbc, project, user.getId(), replacementUser.getId(), withACEs);
+
+        boolean skipTransfer = false;
+        try {
+
+            // Looking up the resources for the principal transfer is pretty expensive,
+            // but for webuser OUs without associated OU resources, it should be unnecessary.
+            // So we can save ourselves the work.
+            // We cache this "skippable" status on a per-OU basis, so we don't need to a do it for each
+            // user if we delete a lot of users in a row.
+            //
+            // Note: Even if there *were* resources which would be affected by transferPrincipalResources,
+            // skipping the transfer doesn't do any harm - the UI just displays the ID instead.
+
+            skipTransfer = m_skipTransferPrincipalResourceCache.get(user.getOuFqn(), () -> {
+
+                String ouName = CmsOrganizationalUnit.removeLeadingSeparator(user.getOuFqn());
+                CmsOrganizationalUnit ou = readOrganizationalUnit(dbc, ouName);
+                if (!ou.hasFlagWebuser()) {
+                    return false;
+                }
+                List<CmsResource> ouResources = getResourcesForOrganizationalUnit(dbc, ou);
+                return ouResources.size() == 0;
+            });
+        } catch (ExecutionException e) {
+            LOG.error(e.getLocalizedMessage(), e);
         }
-        // online
-        transferPrincipalResources(dbc, onlineProject, user.getId(), replacementUser.getId(), withACEs);
+        if (skipTransfer) {
+            LOG.info(
+                "Skipping principal transfer while deleting user "
+                    + user.getName()
+                    + " ("
+                    + user.getId()
+                    + ") because it is part of a webuser OU with no OU resources.");
+        } else {
+            // offline
+            if (dbc.getProjectId().isNullUUID()) {
+                // offline project available
+                transferPrincipalResources(dbc, project, user.getId(), replacementUser.getId(), withACEs);
+            }
+            // online
+            transferPrincipalResources(dbc, onlineProject, user.getId(), replacementUser.getId(), withACEs);
+        }
         getUserDriver(dbc).removeAccessControlEntriesForPrincipal(dbc, project, onlineProject, user.getId());
         getHistoryDriver(dbc).writePrincipal(dbc, user);
         getUserDriver(dbc).deleteUser(dbc, username);

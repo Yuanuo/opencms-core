@@ -109,6 +109,9 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     /** The locale synchronization values. */
     private Map<String, String> m_syncValues;
 
+    /** Is there an active content augmentation? */
+    private boolean m_hasAugmentation;
+
     /** The content title. */
     private String m_title;
 
@@ -258,10 +261,27 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
         int index = org.opencms.acacia.shared.CmsContentDefinition.extractIndex(attributeName);
         if (index > 0) {
             index--;
+
         }
-        attributeName = entity.getTypeName()
-            + "/"
-            + org.opencms.acacia.shared.CmsContentDefinition.removeIndex(attributeName);
+        String typeName = entity.getTypeName();
+
+        attributeName = typeName + "/" + org.opencms.acacia.shared.CmsContentDefinition.removeIndex(attributeName);
+        CmsEntityAttribute choiceAttr = entity.getAttribute(CmsType.CHOICE_ATTRIBUTE_NAME);
+        if ((choiceAttr != null) && choiceAttr.isComplexValue()) {
+            List<CmsEntity> choiceChildren = new ArrayList<>();
+            for (CmsEntity child : choiceAttr.getComplexValues()) {
+                if (child.getAttribute(attributeName) != null) {
+                    choiceChildren.add(child);
+                }
+            }
+            if (index < choiceChildren.size()) {
+                entity = choiceChildren.get(index);
+                index = 0;
+            } else {
+                return null;
+            }
+        }
+
         CmsEntityAttribute attribute = entity.getAttribute(attributeName);
         if (!((attribute == null) || (attribute.isComplexValue() && (path == null)))) {
             if (attribute.isSimpleValue()) {
@@ -564,6 +584,16 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     }
 
     /**
+     * Checks whether there is an active content augmentation.
+     *
+     * @return true if there is an active content augmentation
+     */
+    public boolean hasAugmentation() {
+
+        return m_hasAugmentation;
+    }
+
+    /**
      * Returns <code>true</code> if any editor change handlers have been configured for this content type.<p>
      *
      * @return <code>true</code> if any editor change handlers have been configured for this content type.<p>
@@ -661,6 +691,11 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     public void setDirectEdit(boolean isDirectEdit) {
 
         m_isDirectEdit = isDirectEdit;
+    }
+
+    public void setHasAugmentation(boolean hasAugmentation) {
+
+        m_hasAugmentation = hasAugmentation;
     }
 
     /**

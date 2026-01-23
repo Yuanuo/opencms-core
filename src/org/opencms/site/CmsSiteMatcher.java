@@ -32,6 +32,7 @@ import org.opencms.util.CmsStringUtil;
 
 import java.io.Serializable;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 
 import org.apache.commons.logging.Log;
@@ -148,67 +149,43 @@ public final class CmsSiteMatcher implements Cloneable, Serializable {
             init(WILDCARD, WILDCARD, 0, timeOffset);
             return;
         }
-        // remove whitespace
-        serverString = serverString.trim();
-
-        // remove fragment and query if present
-        int pos = serverString.indexOf("#");
-        if (pos > 0) {
-            serverString = serverString.substring(0, pos);
-        }
-        pos = serverString.indexOf("?");
-        if (pos > 0) {
-            serverString = serverString.substring(0, pos);
-        }
-        // cut trailing "/"
-        if (serverString.endsWith("/")) {
-            serverString = serverString.substring(0, serverString.length() - 1);
-        }
-        int serverPort;
-        String serverProtocol, serverName;
-        // check for protocol
-        pos = serverString.indexOf("://");
-        if (pos >= 0) {
-            serverProtocol = serverString.substring(0, pos);
-            serverString = serverString.substring(pos + 3);
-        } else {
-            serverProtocol = SCHEME_HTTP;
-        }
-        // check for server name and port
-        pos = serverString.indexOf(":");
-        if (pos >= 0) {
-            serverName = serverString.substring(0, pos);
-            try {
-                String port = serverString.substring(pos + 1);
-                pos = port.indexOf("/");
-                if (pos >= 0) {
-                    port = port.substring(0, pos);
+        try {
+            URI uri = new URI(serverString);
+            int serverPort;
+            String serverProtocol, serverName;
+            if (uri.getScheme() != null) {
+                serverProtocol = uri.getScheme();
+            } else {
+                // handle missing protocol, for backward compatibility
+                serverProtocol = SCHEME_HTTP;
+                uri = new URI(serverProtocol + "://" + serverString);
+            }
+            serverName = uri.getHost();
+            if (serverName == null) {
+                // handle weird cases like trailing dashes in a backward compatible way
+                LOG.error("Invalid server name: " + serverString);
+                String authority = uri.getAuthority();
+                String candidate = authority.replaceFirst(":[0-9]+$", "");
+                int atIndex = candidate.indexOf("@");
+                if (atIndex != -1) {
+                    candidate = candidate.substring(atIndex + 1);
                 }
-                serverPort = Integer.valueOf(port).intValue();
-            } catch (NumberFormatException e) {
+                serverName = candidate;
+            }
+            serverPort = uri.getPort();
+            if (serverPort == -1) {
                 if (SCHEME_HTTPS.equals(serverProtocol)) {
                     serverPort = PORT_HTTPS;
                 } else {
                     serverPort = PORT_HTTP;
                 }
             }
-        } else {
-            serverName = serverString;
-            if (SCHEME_HTTPS.equals(serverProtocol)) {
-                serverPort = PORT_HTTPS;
-            } else {
-                serverPort = PORT_HTTP;
-            }
-        }
+            init(serverProtocol, serverName, serverPort, timeOffset);
+        } catch (URISyntaxException e) {
+            LOG.error("Invalid server name: " + serverString, e);
+            init(WILDCARD, WILDCARD, 0, timeOffset);
 
-        // cut trailing path in server name
-        pos = serverName.indexOf("/");
-        if (pos >= 0) {
-            serverName = serverName.substring(0, pos);
         }
-
-        // initialize members
-        init(serverProtocol, serverName, serverPort, timeOffset);
     }
 
     /**
@@ -281,7 +258,8 @@ public final class CmsSiteMatcher implements Cloneable, Serializable {
      * @return true if the site matchers are equal
      */
     public boolean equalsIgnoreScheme(CmsSiteMatcher matcher) {
-        for (String scheme: Arrays.asList("http", "https")) {
+
+        for (String scheme : Arrays.asList("http", "https")) {
             if (this.forDifferentScheme(scheme).equals(matcher)) {
                 return true;
             }

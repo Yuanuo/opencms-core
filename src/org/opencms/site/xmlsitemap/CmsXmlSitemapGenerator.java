@@ -27,6 +27,8 @@
 
 package org.opencms.site.xmlsitemap;
 
+import org.opencms.ade.configuration.CmsADEConfigData;
+import org.opencms.ade.configuration.CmsADEManager;
 import org.opencms.ade.detailpage.CmsDetailPageInfo;
 import org.opencms.db.CmsAlias;
 import org.opencms.file.CmsObject;
@@ -51,6 +53,7 @@ import org.opencms.relations.CmsRelation;
 import org.opencms.relations.CmsRelationFilter;
 import org.opencms.relations.CmsRelationType;
 import org.opencms.site.CmsSite;
+import org.opencms.staticexport.CmsLinkManager;
 import org.opencms.util.CmsFileUtil;
 import org.opencms.util.CmsStringUtil;
 import org.opencms.util.CmsUUID;
@@ -134,6 +137,9 @@ public class CmsXmlSitemapGenerator {
     /** The default priority. */
     public static final double DEFAULT_PRIORITY = 0.5;
 
+    /** Sitemap attribute to exclude empty detail pages relevant for settings only. */
+    public static final String ATTR_DETAIL_SETTINGS_PAGE_EXCLUDE = "template.detailsettingspage.exclude";
+
     /** The logger instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsXmlSitemapGenerator.class);
 
@@ -206,7 +212,7 @@ public class CmsXmlSitemapGenerator {
      *
      * @param link the link to change
      * @param server the server URI string
-
+    
      * @return the changed link
      */
     public static String replaceServerUri(String link, String server) {
@@ -324,10 +330,20 @@ public class CmsXmlSitemapGenerator {
                 getChangeFrequency(propertyList),
                 getPriority(propertyList));
             urlBean.setOriginalResource(resource);
-            addResult(urlBean, 3);
-            if (isContainerPage) {
+            boolean isDefaultDetailPage = isDefaultDetailPage(resource);
+            List<I_CmsResourceType> types = getDetailTypesForPage(resource);
+            if (isDefaultDetailPage) { // default detail page
+                if (!excludeDetailPage(resource)) {
+                    addResult(urlBean, 3);
+                }
+            } else if (types.isEmpty()) { // not a detail page
+                addResult(urlBean, 3);
+            } else { // typed detail page
+                if (!excludeDetailPage(resource)) {
+                    addResult(urlBean, 3);
+                }
                 Locale locale = getLocale(resource, propertyList);
-                addDetailLinks(resource, locale);
+                addDetailLinks(resource, locale, types);
             }
         }
 
@@ -406,24 +422,7 @@ public class CmsXmlSitemapGenerator {
     protected void addDetailLinks(CmsResource containerPage, Locale locale) throws CmsException {
 
         List<I_CmsResourceType> types = getDetailTypesForPage(containerPage);
-        for (I_CmsResourceType type : types) {
-            List<CmsResource> resourcesForType = getDetailResources(type);
-            for (CmsResource detailRes : resourcesForType) {
-                if (!isValidDetailPageCombination(containerPage, locale, detailRes)) {
-                    continue;
-                }
-                List<CmsProperty> detailProps = m_guestCms.readPropertyObjects(detailRes, true);
-                String detailLink = getDetailLink(containerPage, detailRes, locale);
-                CmsXmlSitemapUrlBean detailUrlBean = new CmsXmlSitemapUrlBean(
-                    replaceServerUri(detailLink),
-                    detailRes.getDateLastModified(),
-                    getChangeFrequency(detailProps),
-                    getPriority(detailProps));
-                detailUrlBean.setOriginalResource(detailRes);
-                detailUrlBean.setDetailPageResource(containerPage);
-                addResult(detailUrlBean, 2);
-            }
-        }
+        addDetailLinks(containerPage, locale, types);
     }
 
     /**
@@ -483,6 +482,20 @@ public class CmsXmlSitemapGenerator {
         }
 
         return result;
+    }
+
+    /**
+     * Returns whether to exclude the given detail page.
+     * @param detailPage the detail page
+     * @return whether to exclude the given detail page
+     */
+    protected boolean excludeDetailPage(CmsResource detailPage) {
+
+        CmsADEConfigData adeConfigData = OpenCms.getADEManager().lookupConfigurationWithCache(
+            m_guestCms,
+            detailPage.getRootPath());
+        String exclude = adeConfigData.getAttribute(ATTR_DETAIL_SETTINGS_PAGE_EXCLUDE, null);
+        return Boolean.valueOf(exclude);
     }
 
     /**
@@ -682,6 +695,27 @@ public class CmsXmlSitemapGenerator {
     }
 
     /**
+     * Returns whether the given page is a default detail page.
+     * @param resource the page resource
+     * @return whether the given page is a default detail page
+     */
+    protected boolean isDefaultDetailPage(CmsResource resource) {
+
+        Collection<String> typesForPage = m_detailTypesByPage.get(resource.getRootPath());
+        String parentPath = CmsFileUtil.removeTrailingSeparator(CmsResource.getParentFolder(resource.getRootPath()));
+        Collection<String> typesForFolder = m_detailTypesByPage.get(parentPath);
+        Set<String> allTypes = new HashSet<String>();
+        allTypes.addAll(typesForPage);
+        allTypes.addAll(typesForFolder);
+        for (String typeName : allTypes) {
+            if (typeName.equals(CmsADEManager.DEFAULT_DETAILPAGE_TYPE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Checks whether the page/detail content combination is a valid detail page.<p>
      *
      * @param page the container page
@@ -732,6 +766,48 @@ public class CmsXmlSitemapGenerator {
             }
         } catch (CmsException e) {
             LOG.error(e.getLocalizedMessage(), e);
+        }
+    }
+
+    /**
+     * Adds the detail page links for a given page to the results.<p>
+     *
+     * @param containerPage the container page resource
+     * @param locale the locale of the container page
+     * @param types the detail types
+     *
+     * @throws CmsException if something goes wrong
+     */
+    private void addDetailLinks(CmsResource containerPage, Locale locale, List<I_CmsResourceType> types)
+    throws CmsException {
+
+        for (I_CmsResourceType type : types) {
+            List<CmsResource> resourcesForType = getDetailResources(type);
+            for (CmsResource detailRes : resourcesForType) {
+                if (!isValidDetailPageCombination(containerPage, locale, detailRes)) {
+                    continue;
+                }
+                List<CmsProperty> detailProps = m_guestCms.readPropertyObjects(detailRes, true);
+                String detailLink = getDetailLink(containerPage, detailRes, locale);
+                String detailLinkRootPath = detailLink;
+                try {
+                    detailLinkRootPath = (new URI(detailLink)).getPath();
+                    detailLinkRootPath = CmsLinkManager.removeOpenCmsContext(detailLinkRootPath);
+                    detailLinkRootPath = m_siteGuestCms.addSiteRoot(detailLinkRootPath);
+                } catch (URISyntaxException e) {
+                    // should not happen
+                }
+                if (!m_includeExcludeSet.isExcluded(detailLinkRootPath)) {
+                    CmsXmlSitemapUrlBean detailUrlBean = new CmsXmlSitemapUrlBean(
+                        replaceServerUri(detailLink),
+                        detailRes.getDateLastModified(),
+                        getChangeFrequency(detailProps),
+                        getPriority(detailProps));
+                    detailUrlBean.setOriginalResource(detailRes);
+                    detailUrlBean.setDetailPageResource(containerPage);
+                    addResult(detailUrlBean, 2);
+                }
+            }
         }
     }
 
@@ -805,5 +881,4 @@ public class CmsXmlSitemapGenerator {
         }
 
     }
-
 }
