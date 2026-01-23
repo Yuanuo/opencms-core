@@ -519,6 +519,11 @@ public class CmsLogin extends CmsJspLoginBean {
         }
 
         CmsObject cms = getCmsObject();
+        if (shouldUseNewLogin()) {
+            getResponse().sendRedirect(OpenCms.getLinkManager().substituteLink(cms, "/system/login"));
+            return "";
+        }
+
         if (shouldUseNewLogin() && (cms.getRequestContext().getCurrentUser().isGuestUser())) {
             if (getRequest().getParameter(PARAM_ACTION_LOGOUT) != null) {
                 getResponse().sendRedirect(OpenCms.getLinkManager().substituteLink(cms, "/system/login"));
