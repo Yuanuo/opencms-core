@@ -45,6 +45,9 @@ public class CmsSearchReplaceSettings implements Serializable {
     /** The serial version id. */
     private static final long serialVersionUID = 1122133222446934991L;
 
+    /** Flag indicating if matches should be excluded. */
+    private boolean m_excludeMatches;
+
     /** The force replacement flag. */
     private boolean m_forceReplace;
 
@@ -307,6 +310,11 @@ public class CmsSearchReplaceSettings implements Serializable {
         return m_ignoreSubSites;
     }
 
+    public boolean isExcludeMatches() {
+
+        return m_excludeMatches;
+    }
+
     /**
      * Returns the force replace flag, if <code>true</code> the replacement
      * will also be performed if the replacement String is empty.<p>
@@ -347,6 +355,11 @@ public class CmsSearchReplaceSettings implements Serializable {
     public void setElementResource(CmsResource resource) {
 
         m_element = resource;
+    }
+
+    public void setExcludeMatches(boolean excludeMatches) {
+
+        this.m_excludeMatches = excludeMatches;
     }
 
     /**

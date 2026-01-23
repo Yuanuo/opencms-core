@@ -170,6 +170,9 @@ public class CmsSourceSearchForm extends VerticalLayout {
     /** The downloader for the CSV export. */
     private FileDownloader m_downloader;
 
+    /** The exclude check box. */
+    private CheckBox m_exclude;
+
     /** Check box to ignore subsites. */
     private CheckBox m_ignoreSubSites;
 
@@ -453,12 +456,7 @@ public class CmsSourceSearchForm extends VerticalLayout {
             } else if (SearchType.renameContainer.equals(m_searchType.getValue())) {
                 settings.setReplacepattern(m_oldName.getValue() + ";" + m_newName.getValue());
             } else {
-                String replacePatternValue = m_replacePattern.getValue();
-                if ("!force!empty!".equalsIgnoreCase(replacePatternValue)) {
-                    settings.setForceReplace(true);
-                    replacePatternValue = "";
-                }
-                settings.setReplacepattern(replacePatternValue);
+                settings.setReplacepattern(m_replacePattern.getValue());
             }
         }
         settings.setForceReplace(m_replace.getValue().booleanValue());
@@ -492,6 +490,8 @@ public class CmsSourceSearchForm extends VerticalLayout {
             settings.setProperty((CmsPropertyDefinition)m_property.getValue());
             settings.setForceReplace(m_replace.getValue().booleanValue());
         }
+
+        settings.setExcludeMatches(m_exclude.getValue().booleanValue());
 
         m_app.search(settings, true);
     }

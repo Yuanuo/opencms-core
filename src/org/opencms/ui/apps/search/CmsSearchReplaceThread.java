@@ -540,6 +540,9 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
         String content = new String(contents, encoding);
 
         if (CmsSourceSearchForm.REGEX_ALL.equals(m_settings.getSearchpattern()) & !m_replace) {
+            if (m_settings.isExcludeMatches()) {
+                return null;
+            }
             m_matchedResources.add(file);
             getReport().print(Messages.get().container(Messages.RPT_SOURCESEARCH_MATCHED_0), I_CmsReport.FORMAT_OK);
             return null;
@@ -549,8 +552,10 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
 
         if (matcher.find()) {
             // search pattern did match here, so take this file in the list with matches resources
-            m_matchedResources.add(file);
-            getReport().print(Messages.get().container(Messages.RPT_SOURCESEARCH_MATCHED_0), I_CmsReport.FORMAT_OK);
+            if (!m_settings.isExcludeMatches()) {
+                m_matchedResources.add(file);
+                getReport().print(Messages.get().container(Messages.RPT_SOURCESEARCH_MATCHED_0), I_CmsReport.FORMAT_OK);
+            }
             if (m_replace) {
                 if (m_settings.getType().equals(SearchType.renameContainer)) {
 
@@ -564,6 +569,9 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
             }
         } else {
             // search pattern did not match
+            if (m_settings.isExcludeMatches()) {
+                m_matchedResources.add(file);
+            }
             getReport().print(
                 Messages.get().container(Messages.RPT_SOURCESEARCH_NOT_MATCHED_0),
                 I_CmsReport.FORMAT_NOTE);
@@ -611,13 +619,19 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                             matcher = Pattern.compile(m_settings.getSearchpattern()).matcher(oldVal);
                             if (matcher.find()) {
                                 matched = true;
-                                m_matchedResources.add(cmsFile);
+                                if (!m_settings.isExcludeMatches()) {
+                                    m_matchedResources.add(cmsFile);
+                                }
                                 if (m_replace) {
                                     String newVal = matcher.replaceAll(m_settings.getReplacepattern());
                                     if (!oldVal.equals(newVal)) {
                                         value.setStringValue(getCms(), newVal);
                                         modified = true;
                                     }
+                                }
+                            } else {
+                                if (m_settings.isExcludeMatches()) {
+                                    m_matchedResources.add(cmsFile);
                                 }
                             }
                         }
@@ -797,6 +811,9 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
 
         if (CmsSourceSearchForm.REGEX_ALL.equals(m_settings.getSearchpattern())) {
             for (CmsResource resource : resources) {
+                if (m_settings.isExcludeMatches()) {
+                    continue;
+                }
                 m_matchedResources.add(resource);
                 getReport().println(
                     Messages.get().container(Messages.RPT_SOURCESEARCH_MATCHED_0),
@@ -813,11 +830,16 @@ public class CmsSearchReplaceThread extends A_CmsReportThread {
                     CmsProperty prop = getCms().readPropertyObject(resource, m_settings.getProperty().getName(), false);
                     matcher = Pattern.compile(m_settings.getSearchpattern()).matcher(prop.getValue());
                     if (matcher.find()) {
-                        m_matchedResources.add(resource);
+                        if (!m_settings.isExcludeMatches()) {
+                            m_matchedResources.add(resource);
+                        }
                         getReport().println(
                             Messages.get().container(Messages.RPT_SOURCESEARCH_MATCHED_0),
                             I_CmsReport.FORMAT_OK);
                     } else {
+                        if (m_settings.isExcludeMatches()) {
+                            m_matchedResources.add(resource);
+                        }
                         getReport().println(
                             Messages.get().container(Messages.RPT_SOURCESEARCH_NOT_MATCHED_0),
                             I_CmsReport.FORMAT_NOTE);
