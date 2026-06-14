@@ -158,7 +158,7 @@ public class CmsFileTable extends CmsResourceTable {
         private static final long serialVersionUID = 3079590603587933576L;
 
         /**
-         * @see com.vaadin.ui.DefaultFieldFactory#createField(com.vaadin.v7.data.Container, java.lang.Object, java.lang.Object, com.vaadin.ui.Component)
+         * @see com.vaadin.v7.ui.DefaultFieldFactory#createField(com.vaadin.v7.data.Container, java.lang.Object, java.lang.Object, com.vaadin.ui.Component)
          */
         @Override
         public Field<?> createField(Container container, Object itemId, Object propertyId, Component uiContext) {
@@ -273,7 +273,9 @@ public class CmsFileTable extends CmsResourceTable {
                     result = result * (-1);
                 }
                 return result;
-            } else if (((CmsResourceTableProperty)propertyId).getColumnType().equals(String.class)) {
+            }
+
+            if (((CmsResourceTableProperty)propertyId).getColumnType().equals(String.class)) {
                 String value1 = (String)item1.getItemProperty(propertyId).getValue();
                 String value2 = (String)item2.getItemProperty(propertyId).getValue();
                 // Java collators obtained by java.text.Collator.getInstance(...) ignore spaces, and we don't want to ignore them, so we use

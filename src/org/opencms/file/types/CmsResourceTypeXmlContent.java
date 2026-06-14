@@ -69,7 +69,7 @@ import org.opencms.xml.types.CmsXmlHtmlValue;
 import org.opencms.xml.types.CmsXmlVarLinkValue;
 import org.opencms.xml.types.CmsXmlVfsFileValue;
 import org.opencms.xml.types.I_CmsXmlContentValue;
-import org.opencms.xml.types.I_CmsXmlContentValue.SearchContentType;
+import org.opencms.xml.types.I_CmsXmlContentValue.CmsSearchContentConfig;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -90,6 +90,9 @@ import com.google.common.collect.Lists;
  */
 public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
 
+    /** The name of this resource type. */
+    public static final String RESOURCE_TYPE_NAME = "xmlcontent";
+
     /** Request context attribute used to enable reverse availability mapping. */
     public static final String ATTR_REVERSE_AVAILABILITY_MAPPING = "REVERSE_AVAILABILITY_MAPPING";
 
@@ -98,9 +101,6 @@ public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
 
     /** The name for the choose model file form action. */
     public static final String DIALOG_CHOOSEMODEL = "choosemodel";
-
-    /** The name of this resource type. */
-    public static final String RESOURCE_TYPE_NAME = "xmlcontent";
 
     /** The log object for this class. */
     private static final Log LOG = CmsLog.getLog(CmsResourceTypeXmlContent.class);
@@ -582,14 +582,13 @@ public class CmsResourceTypeXmlContent extends A_CmsResourceTypeLinkParseable {
                         links.add(link);
                     }
                 }
-                if ((null != xmlContent.getHandler().getSearchContentConfig(value))
-                    && SearchContentType.CONTENT.equals(
-                        xmlContent.getHandler().getSearchContentConfig(value).getSearchContentType())) {
+                CmsSearchContentConfig searchContentConfig = xmlContent.getHandler().getSearchContentConfig(value);
+                if (CmsSearchContentConfig.addReIndexRelation(searchContentConfig)) {
                     String stringValue = value.getStringValue(cms);
                     try {
                         if ((null != stringValue) && !stringValue.trim().isEmpty() && cms.existsResource(stringValue)) {
                             CmsResource res = cms.readResource(stringValue);
-                            if (CmsResourceTypeXmlContent.isXmlContent(res)) {
+                            if (searchContentConfig.isResourceSuitableForReIndexRelation(res)) {
                                 CmsLink link = new CmsLink(
                                     "",
                                     CmsRelationType.INDEX_CONTENT,

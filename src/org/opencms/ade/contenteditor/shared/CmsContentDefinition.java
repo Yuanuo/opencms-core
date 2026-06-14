@@ -110,7 +110,7 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     private Map<String, String> m_syncValues;
 
     /** Is there an active content augmentation? */
-    private boolean m_hasAugmentation;
+    private boolean m_isTranslationEnabled;
 
     /** The content title. */
     private String m_title;
@@ -584,16 +584,6 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     }
 
     /**
-     * Checks whether there is an active content augmentation.
-     *
-     * @return true if there is an active content augmentation
-     */
-    public boolean hasAugmentation() {
-
-        return m_hasAugmentation;
-    }
-
-    /**
      * Returns <code>true</code> if any editor change handlers have been configured for this content type.<p>
      *
      * @return <code>true</code> if any editor change handlers have been configured for this content type.<p>
@@ -674,6 +664,16 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
     }
 
     /**
+     * Checks whether there is an active content augmentation.
+     *
+     * @return true if there is an active content augmentation
+     */
+    public boolean isTranslationEnabled() {
+
+        return m_isTranslationEnabled;
+    }
+
+    /**
      * Sets if the resource needs to removed on cancel.<p>
      *
      * @param deleteOnCancel <code>true</code> if the resource needs to removed on cancel
@@ -693,11 +693,6 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
         m_isDirectEdit = isDirectEdit;
     }
 
-    public void setHasAugmentation(boolean hasAugmentation) {
-
-        m_hasAugmentation = hasAugmentation;
-    }
-
     /**
      * Enables / disables marking of the element as 'reused' in the content editor.
      *
@@ -707,5 +702,10 @@ public class CmsContentDefinition extends org.opencms.acacia.shared.CmsContentDe
 
         m_reusedElement = reused;
 
+    }
+
+    public void setTranslationEnabled(boolean translationEnabled) {
+
+        m_isTranslationEnabled = translationEnabled;
     }
 }

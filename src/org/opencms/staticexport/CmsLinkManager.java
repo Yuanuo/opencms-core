@@ -106,6 +106,39 @@ public class CmsLinkManager {
     }
 
     /**
+     * For a given link, ensures that it starts with the given server prefix.
+     * @param link the link
+     * @param serverPrefix the server prefix
+     * @return the link starting with the given server prefix
+     */
+    public static String ensureServerPrefix(String link, String serverPrefix) {
+
+        if (CmsStringUtil.isEmptyOrWhitespaceOnly(link) || CmsStringUtil.isEmptyOrWhitespaceOnly(serverPrefix)) {
+            return link;
+        }
+        if (link.startsWith(serverPrefix)) {
+            return link;
+        }
+        try {
+            URI uri = new URI(link);
+            StringBuffer result = new StringBuffer(serverPrefix);
+            result.append(uri.getRawPath());
+            if (uri.getRawQuery() != null) {
+                result.append('?');
+                result.append(uri.getRawQuery());
+            }
+            if (uri.getRawFragment() != null) {
+                result.append('#');
+                result.append(uri.getRawFragment());
+            }
+            return result.toString();
+        } catch (Exception e) {
+            LOG.debug(e.getLocalizedMessage(), e);
+            return link;
+        }
+    }
+
+    /**
      * Calculates the absolute URI for the "relativeUri" with the given absolute "baseUri" as start. <p>
      *
      * If "relativeUri" is already absolute, it is returned unchanged.
@@ -466,7 +499,7 @@ public class CmsLinkManager {
     }
 
     /**
-     * Returns the perma link for the given resource and optional detail content.<p<
+     * Returns the perma link for the given resource and optional detail content.<p>
      *
      * @param cms the CMS context to use
      * @param resourceName the page to generate the perma link for
@@ -515,7 +548,7 @@ public class CmsLinkManager {
     }
 
     /**
-     * Returns the perma link for the current page based on the URI and detail content id stored in the CmsObject passed as a parameter.<p<
+     * Returns the perma link for the current page based on the URI and detail content id stored in the CmsObject passed as a parameter.<p>
      *
      * @param cms the CMS context to use to generate the permalink
      *
@@ -642,7 +675,7 @@ public class CmsLinkManager {
     /**
      * Returns the link for the given workplace resource.
      *
-     * This should only be used for resources under /system or /shared.<p<
+     * This should only be used for resources under /system or /shared.<p>
      *
      * @param cms the current OpenCms user context
      * @param resourceName the resource to generate the online link for
@@ -730,7 +763,7 @@ public class CmsLinkManager {
      *
      * @param cms the current OpenCms user context
      * @param link the link to process which is assumed to point to a VFS resource, with optional parameters
-
+     *
      * @return a link <i>from</i> the URI stored in the provided OpenCms user context
      *      <i>to</i> the VFS resource indicated by the given <code>link</code> in the current site
      */

@@ -48,6 +48,9 @@ import java.util.Locale;
 public class CmsXmlSeoConfiguration {
 
     /** Mode name constant. */
+    public static final Object MODE_LLMS_TXT = "llmstxt";
+
+    /** Mode name constant. */
     public static final Object MODE_ROBOTS_TXT = "robotstxt";
 
     /** Mode name constant. */
@@ -231,6 +234,16 @@ public class CmsXmlSeoConfiguration {
         if (serverUrlValue != null) {
             m_serverUrl = serverUrlValue.getStringValue(rootCms);
         }
+    }
+
+    /**
+     * Sets if container page modification dates should be computed.<p>
+     *
+     * @param computeContainerPageModificationDates flag if container page modification dates should be computed
+     */
+    public void setComputeContainerPageModificationDates(boolean computeContainerPageModificationDates) {
+
+        m_computeContainerPageDates = computeContainerPageModificationDates;
     }
 
     /**

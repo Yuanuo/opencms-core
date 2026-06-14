@@ -51,6 +51,7 @@
                         <mapping suffix=".otf" />
                         <mapping suffix=".ttc" />
                         <mapping suffix=".ttf" />
+                        <mapping suffix=".csv" />
                     </mappings>
                     <param name="gallery.type.names">downloadgallery</param>
                 </type>
@@ -88,6 +89,7 @@
                         <mapping suffix=".qt" />
                         <mapping suffix=".avi" />
                         <mapping suffix=".pkpass" />
+                        <mapping suffix=".ai" />
                     </mappings>
                     <param name="gallery.type.names">downloadgallery</param>
                 </type>
@@ -132,6 +134,7 @@
                     <param name="folder.class">org.opencms.workplace.galleries.CmsAjaxLinkGallery</param>
                 </type>
             </resourcetypes>
+            <storage-policy class="org.opencms.db.storage.policy.CmsNoExternalStoragePolicy" />
             <collectors>
                 <collector class="org.opencms.file.collectors.CmsPriorityResourceCollector" order="100" />
                 <collector class="org.opencms.file.collectors.CmsDefaultResourceCollector" order="110" />
@@ -630,4 +633,3 @@
         </xmlcontent>
     </vfs>
 </opencms>
-

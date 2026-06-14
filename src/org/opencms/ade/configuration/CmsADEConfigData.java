@@ -222,6 +222,9 @@ public class CmsADEConfigData {
     /** Sitemap attribute configuring the link finisher - currently only supports the mode 'foldername', every other value is interpreted as 'disabled'. */
     public static final String ATTR_TEMPLATE_LINK_FINISHER = "template.link.finisher";
 
+    /** Sitemap attribute that stores a server prefix for exported resources, only relevant when 'force absolute links' mode enabled. */
+    public static final String ATTRIBUTE_LINK_FORCEABSOLUTE_EXPORTPREFIX = "template.link.forceabsolute.exportprefix";
+
     /** Attribute for regex to exclude links from being run through the finisher if they match. */
     public static final String ATTRIBUTE_TEMPLATE_LINK_FINISHER_EXCLUDE = "template.link.finisher.exclude";
 
@@ -291,6 +294,7 @@ public class CmsADEConfigData {
             }
         });
 
+    /** The configured link finisher. */
     private CmsLinkFinisher m_linkFinisher;
 
     /** Cached shared setting overrides. */
@@ -1317,6 +1321,21 @@ public class CmsADEConfigData {
     }
 
     /**
+     * In case the 'force absolute links' mode is enabled, returns the optional server prefix for exported resources.
+     * If there is a server prefix configured here, this overrides any RFS rule configured for exported resources.
+     * @param cms the CMS context
+     * @return the optional server prefix for exported resources
+     */
+    public String getLinkForceAbsoluteExportPrefix(CmsObject cms) {
+
+        if (cms.getRequestContext().isForceAbsoluteLinks()) {
+            return getAttribute(CmsADEConfigData.ATTRIBUTE_LINK_FORCEABSOLUTE_EXPORTPREFIX, null);
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Gets the list of available model pages.<p>
      *
      * @return the list of available model pages
@@ -1486,6 +1505,32 @@ public class CmsADEConfigData {
     public Collection<CmsResourceTypeConfig> getSearchableTypes(CmsObject cms) {
 
         return getResourceTypes();
+    }
+
+    /**
+     * Looks up a path dependent secret in the secret store for the current sitemap config path.
+     *
+     *  <p>This is done as follows:
+     *  <p>For the root path of each subsitemap we are in, in ascending order, the key (prefix + &quot;.&quot; + path) is looked up.
+     *  The first match will be returned. As a special case, the key for the site root is always looked up, even if it's not configured as
+     *  a sitemap.
+     *
+     * @param prefix the key prefix
+     * @return the secret (or null, if nothing was found)
+     */
+    public String getSecretForUri(String prefix) {
+
+        if (getBasePath() == null) {
+            return null;
+        }
+        List<String> paths = OpenCms.getADEManager().getPathsForSecretLookup(getCms(), getBasePath());
+        for (String path : paths) {
+            String secret = OpenCms.getSecretStore().getSecret(prefix + "." + path);
+            if (secret != null) {
+                return secret;
+            }
+        }
+        return OpenCms.getSecretStore().getSecret(prefix);
     }
 
     /**

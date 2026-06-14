@@ -138,7 +138,7 @@
 
     <xsd:simpleType name="OpenCmsDefaultAppinfoSearchsettingSearchContentType">
         <xsd:restriction base="xsd:string">
-            <xsd:pattern value="true|TRUE|false|FALSE|content|CONTENT" />
+            <xsd:pattern value="true|TRUE|false|FALSE|content|CONTENT|update|UPDATE" />
         </xsd:restriction>
     </xsd:simpleType>
 
@@ -418,6 +418,7 @@
             <xsd:element name="NestedFormatter" type="xsd:string" minOccurs="0" maxOccurs="1" />
             <xsd:element name="Display" type="xsd:string" minOccurs="0" maxOccurs="1" />
             <xsd:element name="Synchronization" type="xsd:string" minOccurs="0" maxOccurs="1" />
+            <xsd:element name="Agents" type="xsd:string" minOccurs="0" maxOccurs="1" />
             <xsd:element name="ChangeHandler" type="OpenCmsChangeHandlerConfig" minOccurs="0" maxOccurs="unbounded" />
         </xsd:sequence>
     </xsd:complexType>

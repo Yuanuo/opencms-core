@@ -51,6 +51,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -174,6 +176,12 @@ public final class CmsStringUtil {
     /** Minute constant. */
     private static final long MINUTES = 1000 * 60;
 
+    /** Pattern matching sequences of non-slash characters. */
+    private static final Pattern NOT_SLASHES = Pattern.compile("[^/]+");
+
+    /** Cache for compiled regular expressions. */
+    private static final ConcurrentHashMap<String, Pattern> patternCache = new ConcurrentHashMap<String, Pattern>();
+
     /** Second constant. */
     private static final long SECONDS = 1000;
 
@@ -184,9 +192,6 @@ public final class CmsStringUtil {
 
     /** Regex that matches an xml head. */
     private static final Pattern XML_HEAD_REGEX = Pattern.compile("<\\s*\\?.*\\?\\s*>", Pattern.CASE_INSENSITIVE);
-
-    /** Pattern matching sequences of non-slash characters. */
-    private static final Pattern NOT_SLASHES = Pattern.compile("[^/]+");
 
     /**
      * Default constructor (empty), private because this class has only
@@ -238,6 +243,17 @@ public final class CmsStringUtil {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Compiles a regular expression, but uses a cache to avoid compiling the same regex multiple times.
+     *
+     * @param regex the regex to compile
+     * @return the pattern corresponding to the regex
+     */
+    public static Pattern cachePattern(String regex) {
+
+        return patternCache.computeIfAbsent(regex, Pattern::compile);
     }
 
     /**
@@ -1013,6 +1029,19 @@ public final class CmsStringUtil {
     }
 
     /**
+     * Checks if the given string contains a keyword that is not adjacent to non-space characters.
+     * @param text the text to find the keyword in
+     * @param keyword the keyword
+     *
+     * @return true if the text has the keyword
+     */
+    public static boolean hasKeyword(String text, String keyword) {
+
+        Pattern keywordPattern = cachePattern("(?<!\\S)" + Pattern.quote(keyword) + "(?!\\S)");
+        return keywordPattern.matcher(text).find();
+    }
+
+    /**
      * Inserts the given number of spaces at the start of each line in the given text.
      * <p>This is useful when writing toString() methods for complex nested objects.</p>
      *
@@ -1719,7 +1748,7 @@ public final class CmsStringUtil {
                     if (ch == 0) {
                         nextEntry = true;
                         state = S_KEY;
-                    } else  {
+                    } else {
                         if (valueBuffer != null) {
                             valueBuffer.append(ch);
                         }
@@ -1739,7 +1768,7 @@ public final class CmsStringUtil {
                     value = value.replaceFirst("\\s+$", "");
                 } else {
                     // we just have a key, so we trim it on the right as well to get the same result as splitAsMap
-                    value ="";
+                    value = "";
                     key = key.replaceFirst("\\s+$", "");
                 }
                 if (key.length() > 0) {
@@ -1905,12 +1934,45 @@ public final class CmsStringUtil {
     }
 
     /**
+     * Treats the given string as a whitespace-separated list of keywords and either adds a keyword to it or removes it.
+     *
+     * @param str the string to treat as a list of keyword
+     * @param keyword the keyword to add / remove
+     * @param enable true if the keyword should be added, false if it should be removed
+     *
+     * @return the modified string
+     */
+    public static String toggleKeyword(String str, String keyword, boolean enable) {
+
+        Pattern keywordPattern = cachePattern("(?<!\\S)" + Pattern.quote(keyword) + "(?!\\S)");
+        String textWithoutKeyword = keywordPattern.matcher(str).replaceAll("");
+        boolean alreadyHadKeyword = !textWithoutKeyword.equals(str);
+        if (alreadyHadKeyword) {
+            textWithoutKeyword = textWithoutKeyword.trim().replaceAll(" +", " ");
+        }
+        String result;
+        if (!alreadyHadKeyword && enable) {
+            result = str.stripTrailing();
+            if (result.length() > 0) {
+                result = result + " " + keyword;
+            } else {
+                result = keyword;
+            }
+        } else if (alreadyHadKeyword && !enable) {
+            result = textWithoutKeyword;
+        } else {
+            result = str;
+        }
+        return result;
+    }
+
+    /**
      * Returns the java String literal for the given String. <p>
      *
      * This is the form of the String that had to be written into source code
      * using the unicode escape sequence for special characters. <p>
      *
-     * Example: "&Auml" would be transformed to "\\u00C4".<p>
+     * Example: "&amp;Auml" would be transformed to "\\u00C4".<p>
      *
      * @param s a string that may contain non-ascii characters
      *
@@ -1931,6 +1993,54 @@ public final class CmsStringUtil {
             }
             result.append(unicode);
         }
+        return result.toString();
+    }
+
+    /**
+     * Transforms the values of a .properties formatted string while preserving
+     * comments, empty lines.
+     *
+     * <p>Does not support multi-line values or escape characters that would be valid in .properties files.
+     *
+     * @param properties the raw properties string.
+     * @param valueFunc  the function to apply to each property value.
+     * @return the transformed properties string.
+     */
+    public static String transformProperties(String properties, Function<String, String> valueFunc) {
+
+        if (properties == null) {
+            return null;
+        }
+
+        StringBuilder result = new StringBuilder();
+        String[] lines = properties.split("\n");
+        Pattern propPattern = Pattern.compile("^\\s*[^\\s=:]+?\\s*[=:]\\s*(.*)$");
+
+        for (String line : lines) {
+            if (line.endsWith("\\")) {
+                LOG.warn("multiline values not supported");
+                continue;
+            }
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#") || trimmed.startsWith("!") || line.endsWith("\\")) {
+                result.append(line);
+                result.append("\n");
+                continue;
+            }
+
+            Matcher matcher = propPattern.matcher(line);
+            if (matcher.find()) {
+                String replaced = line.substring(0, matcher.start(1))
+                    + valueFunc.apply(matcher.group(1))
+                    + line.substring(matcher.end(1));
+                result.append(replaced);
+                result.append("\n");
+            } else {
+                result.append(line);
+                result.append("\n");
+            }
+        }
+
         return result.toString();
     }
 

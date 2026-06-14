@@ -60,6 +60,7 @@ import org.opencms.ade.containerpage.shared.CmsReuseInfo;
 import org.opencms.ade.containerpage.shared.rpc.I_CmsContainerpageService;
 import org.opencms.ade.containerpage.shared.rpc.I_CmsContainerpageServiceAsync;
 import org.opencms.ade.contenteditor.client.CmsContentEditor;
+import org.opencms.ade.galleries.shared.CmsResourceTypeBean;
 import org.opencms.gwt.client.CmsCoreProvider;
 import org.opencms.gwt.client.I_CmsElementToolbarContext;
 import org.opencms.gwt.client.dnd.CmsCompositeDNDController;
@@ -97,6 +98,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.google.common.base.Optional;
 import com.google.common.collect.Lists;
@@ -280,7 +282,7 @@ public final class CmsContainerpageController {
 
         /**
          * Called after all other onReload calls for the current operation.
-         * */
+         */
         void finish();
 
         /**
@@ -547,7 +549,7 @@ public final class CmsContainerpageController {
         private Set<String> m_clientIds;
 
         /**
-        "         * Constructor.<p>
+         * Constructor.<p>
          *
          * @param clientIds the client id's
          * @param callback the call-back
@@ -921,6 +923,9 @@ public final class CmsContainerpageController {
 
     /** Alternative preview handler for events. */
     private NativePreviewHandler m_previewHandler;
+
+    /** The set of (currently) creatable types, as received from the gallery service. */
+    private Set<String> m_galleryCreatableTypes;
 
     /**
      * Constructor.<p>
@@ -2417,6 +2422,7 @@ public final class CmsContainerpageController {
         }
 
         updateGalleryData(false, null);
+        updateCreateData();
         addContainerpageEventHandler(event -> {
             updateDetailPreviewStyles();
         });
@@ -2486,6 +2492,19 @@ public final class CmsContainerpageController {
         return (m_data == null)
             || CmsStringUtil.isNotEmptyOrWhitespaceOnly(m_data.getNoEditReason())
             || (m_lockStatus == LockStatus.failed);
+    }
+
+    /**
+     * Checks if the given type name is contained in the list of currently creatable resource types (according to the gallery menu).
+     *
+     * @param type the type to check
+     * @return true if the type is creatable
+     */
+    public boolean isGalleryCreatableType(String type) {
+
+        /** If gallery data is not loaded for some reason, fall back to everything being allowed. */
+        boolean result = (m_galleryCreatableTypes == null) || m_galleryCreatableTypes.contains(type);
+        return result;
     }
 
     /**
@@ -3134,7 +3153,7 @@ public final class CmsContainerpageController {
      *
      * @param elementWidget the element to replace
      * @param elementId the id of the replacing content
-     * @param callback  the callback to execute after the element is replaced
+     * @param handler the handler to execute after the element is replaced
      */
     public void replaceElement(
         final CmsContainerPageElementPanel elementWidget,
@@ -4448,6 +4467,40 @@ public final class CmsContainerpageController {
         if (time != null) {
             m_loadTime = time.longValue();
         }
+    }
+
+    /**
+     * Updates the data on which types are creatable - used to determine whether the "copy" function can be used for container elements.
+     */
+    void updateCreateData() {
+
+        CmsRpcAction<Map<CmsUUID, List<CmsResourceTypeBean>>> dataAction = new CmsRpcAction<Map<CmsUUID, List<CmsResourceTypeBean>>>() {
+
+            @Override
+            public void execute() {
+
+                getContainerpageService().getGalleryTypesForMultipleViews(
+                    getEditableContainers(),
+                    getData().getElementViews().stream().map(view -> view.getElementViewId()).collect(
+                        Collectors.toList()),
+                    CmsCoreProvider.get().getUri(),
+                    getData().getDetailId(),
+                    getData().getLocale(),
+                    CmsContainerpageController.get().getData().getTemplateContextInfo(),
+                    this);
+
+            }
+
+            @Override
+            protected void onResponse(Map<CmsUUID, List<CmsResourceTypeBean>> result) {
+
+                Set<String> typeStrings = result.values().stream().flatMap(types -> types.stream()).filter(
+                    type -> type.isCreatableType()).map(type -> type.getResourceType()).collect(Collectors.toSet());
+                m_galleryCreatableTypes = new HashSet<>(typeStrings);
+            }
+        };
+        dataAction.execute();
+
     }
 
     /**

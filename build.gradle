@@ -1,28 +1,33 @@
+import groovy.xml.XmlParser
 import org.apache.tools.ant.filters.ReplaceTokens
+import org.gradle.api.logging.LogLevel
+import org.gradle.api.plugins.JavaBasePlugin
 
-apply plugin: 'java'
-apply plugin: 'maven-publish'
-apply plugin: 'signing'
-apply plugin: 'eclipse'
-
-
-buildscript {
-    dependencies {
-        classpath group: 'org.apache.ant', name: 'ant', version: '1.10.15'
-        classpath group: 'com.liferay', name: 'com.liferay.gradle.plugins.tlddoc.builder', version: '2.0.1'
-        classpath("io.github.gradle-nexus.publish-plugin:io.github.gradle-nexus.publish-plugin.gradle.plugin:2.0.0")
-    }
-    repositories {
-        mavenLocal()
-        mavenCentral()
-        gradlePluginPortal()
-    }
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id 'eclipse'
+    id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
+    id 'org.openrewrite.rewrite' version '7.+'
+    id("com.netflix.nebula.jakartaee-migration") version "2.0.2"
+    id 'com.diffplug.spotless' version '8.5.1'
 }
-apply plugin: 'com.liferay.tlddoc.builder'
-apply plugin: 'io.github.gradle-nexus.publish-plugin'
+
+def pVariant = providers.gradleProperty("opencms_variant").orElse("").map(variant -> variant ? "-$variant" : "")
+
+
 group = "org.opencms"
 
-buildDir = build_directory
+def configuredBuildDirectory = providers.gradleProperty('opencms_build_directory')
+    .orElse(providers.environmentVariable('OPENCMS_BUILD_DIR'))
+    .orElse(providers.gradleProperty('build_directory'))
+    .get()
+def eeTarget = providers.gradleProperty("eeTarget").get()
+
+
+
+layout.buildDirectory.set(file(configuredBuildDirectory))
 
 java {
     sourceCompatibility = JavaVersion.toVersion(java_target_version)
@@ -41,18 +46,37 @@ nexusPublishing {
     }
 }
 
+rewrite {
+	
+    configFile = file("rewrite.yml")
+    exportDatatables = true
+    exclusion("src-gwt/**")
+    exclusion("modules/**")
+
+}
+
+if (eeTarget == "jakarta") { 
+    jakartaeeMigration {
+        includeTransform('com.vaadin:vaadin-compatibility-server')
+        includeTransform('com.vaadin:vaadin-server')
+        configurations.all { config ->
+            transform(config)
+        }
+    }
+}
+
 
 
 // use the same properties file as the OpenCms core does for the version information
 // please note that in a Jenkins CI build, this properties file should be dynamically generated
-def externalVersionProps = file("${buildDir}/../version.properties");
+def externalVersionProps = [layout.buildDirectory.file("version.properties").get().asFile, layout.buildDirectory.file("../version.properties").get().asFile].find { it.exists() } ?: layout.buildDirectory.file("../version.properties").get().asFile
 def propFile;
 if (externalVersionProps.exists()){
-    println "Using external version properties file: $externalVersionProps"
+    logger.lifecycle("Using external version properties file: $externalVersionProps")
     propFile=externalVersionProps
 }else{
-    println 'Using internal version properties file'
-    propFile=file("$projectDir/src/org/opencms/main/version.properties")
+    logger.lifecycle('Using internal version properties file')
+    propFile=file("${projectDir}/src/org/opencms/main/version.properties")
 }
 
 Properties vprops = new Properties()
@@ -65,6 +89,10 @@ if (opencms_version) {
 
 // flag, indicating if javadoc should be skipped
 boolean addJavadoc = !(project.hasProperty('skip_javadoc') && skip_javadoc.toBoolean())
+def tomcatUpdateTarget = project.findProperty('tomcat_update_target')
+def hasTomcatUpdateTarget = tomcatUpdateTarget && file(tomcatUpdateTarget).exists()
+def moduleCopyTarget = project.findProperty('module_copy_target')
+def hasModuleCopyTarget = moduleCopyTarget && file(moduleCopyTarget).exists()
 
 // alternative variable name for the case where the version variable is used for something else, e.g. javadoc
 ext.ocmsVersion = vprops['version.number']
@@ -73,26 +101,30 @@ ext.ocmsVersion = vprops['version.number']
 def extModulesProject = findProject(':extmodules')
 def hasExtModules = null != extModulesProject
 if (hasExtModules) {
-    println 'Adding coreproject property to subprojects.'
+    logger.lifecycle('Adding coreproject property to subprojects.')
     subprojects {
         ext.coreproject = ':'
     }
 }
 
 repositories {
-    mavenLocal()
-    if (project.hasProperty('additional_repositories') && !additional_repositories.isEmpty()){
-        additional_repositories.split(';').each{ repo ->
-            maven { url repo }
+    if (project.hasProperty('additional_repositories') && additional_repositories?.trim()){
+        additional_repositories.split(';').findAll { it.trim() }.each { repo ->
+            maven { url = uri(repo) }
         }
     }
     mavenCentral()
     maven {
-        url 'https://maven.restlet.talend.com'
+        url = 'https://maven.restlet.talend.com'
     }
     maven {
-        url 'https://maven.vaadin.com/vaadin-addons'
+        url = 'https://maven.vaadin.com/vaadin-addons'
     }
+    maven {
+        url = 'https://logicaldoc.sourceforge.net/maven/'
+    }
+    
+    
 }
 
 if (!project.hasProperty('max_heap_size')){
@@ -100,7 +132,7 @@ if (!project.hasProperty('max_heap_size')){
 }
 
 project.ext.allModuleNames = modules_list.split(',')
-project.ext.modulesDistsDir = file("${project.buildDir}/modulesZip")
+project.ext.modulesDistsDir = layout.buildDirectory.dir("modulesZip").get().asFile
 
 
 sourceSets{
@@ -126,11 +158,19 @@ sourceSets{
         java.srcDirs=['src-setup']
         resources.srcDirs=['src-setup']
     }
+    tools {
+        java.srcDirs=['tools/storage/src']
+        resources.srcDirs=['tools/storage/src']
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += output + compileClasspath
+    }
     test {
         java {
             srcDirs=['test']
             exclude 'data/**'
         }
+        compileClasspath += sourceSets.tools.output
+        runtimeClasspath += sourceSets.tools.output
         resources {
             srcDirs=['test']
             exclude 'data/**'
@@ -148,6 +188,56 @@ sourceSets{
     }
 }
 
+def spotlessImportOrderFile = file("${projectDir}/.settings/opencms_rules.importorder")
+def spotlessFormatterConfigFile = file("${projectDir}/.settings/formatter_opencms_rules.xml")
+def spotlessEclipseVersion = '4.39'
+def hasSpotlessFilesProperty = project.hasProperty('spotlessFiles')
+def spotlessFilePaths = hasSpotlessFilesProperty
+    ? spotlessFiles.split(',').collect { it.trim() }.findAll { it }
+    : []
+def selectedSpotlessJavaTargets = []
+spotlessFilePaths.each { path ->
+    def targetFile = file(path)
+    if (!targetFile.exists()) {
+        throw new GradleException("spotlessFiles entry does not exist: $path")
+    }
+    selectedSpotlessJavaTargets.add(targetFile.isDirectory() ? fileTree(dir: targetFile, include: '**/*.java') : targetFile)
+}
+def spotlessJavaTargets = hasSpotlessFilesProperty
+    ? files(selectedSpotlessJavaTargets)
+    : files(
+        sourceSets.main.allJava,
+        sourceSets.modules.allJava,
+        sourceSets.gwt.allJava,
+        sourceSets.setup.allJava,
+        sourceSets.tools.allJava,
+        sourceSets.test.allJava,
+        sourceSets.testGwt.allJava)
+
+spotless {
+    java {
+        target spotlessJavaTargets
+
+        if (spotlessImportOrderFile.exists()) {
+            importOrderFile spotlessImportOrderFile
+        }
+        expandWildcardImports()
+        removeUnusedImports()
+        if (spotlessFormatterConfigFile.exists()) {
+            eclipse(spotlessEclipseVersion)
+                .configFile(spotlessFormatterConfigFile)
+                .sortMembersEnabled(true)
+                .sortMembersOrder("T,SF,F,C,SI,I,SM,M")
+                .sortMembersDoNotSortFields(true)
+                .sortMembersVisibilityOrderEnabled(true)
+                .sortMembersVisibilityOrder("B,R,D,V")
+        }
+        formatAnnotations()
+        trimTrailingWhitespace()
+        leadingTabsToSpaces(4)
+    }
+}
+
 configurations {
 
     distribution {
@@ -157,9 +247,9 @@ configurations {
     api {
         extendsFrom distribution
     }
-    
+
     usedApis {
-    	description = "APIs that should normally be provided by the servlet container, but are also needed for the CmsShell, so they're bundled in the WAR." 
+        description = "APIs that should normally be provided by the servlet container, but are also needed for the CmsShell, so they're bundled in the WAR."
     }
 
     compile {
@@ -196,11 +286,22 @@ configurations {
     // It corresponds to our compile configuration, that's why we have to use extendsFrom here
     testImplementation {
         extendsFrom testCompile
+        extendsFrom setupImplementation
+    }
+
+    toolsCompile {
+        description = 'used to compile standalone OpenCms command line tools'
+        extendsFrom compile
+    }
+
+    toolsImplementation {
+        extendsFrom toolsCompile
     }
 
     gwtCompile {
         description = 'needed to generate the GWT JavaScript resources'
         extendsFrom modulesCompile
+        exclude group: 'org.eclipse.jetty.http2'
     }
 
     // Default configuration of the java-library plugin
@@ -223,13 +324,19 @@ configurations {
     // Fix the jetty incompatibility for the version from distribution used by Solr and the one for the GWT test cases.
     testGwtRuntimeClasspath{
         resolutionStrategy {
-            force 'org.eclipse.jetty:jetty-client:9.4.50.v20221201'
+           eachDependency { DependencyResolveDetails details ->
+                 if (details.requested.group == 'org.eclipse.jetty') {
+                    details.useVersion '9.4.51.v20230217'
+                    details.because 'GWT JUnitShell requires consistent Jetty 9.4.x'
+                }
+            }
+            /*force 'org.eclipse.jetty:jetty-client:9.4.50.v20221201'
             force 'org.eclipse.jetty:jetty-http:9.4.50.v20221201'
             force 'org.eclipse.jetty:jetty-io:9.4.50.v20221201'
             force 'org.eclipse.jetty:jetty-util:9.4.50.v20221201'
             force 'org.eclipse.jetty.http2:http2-common:9.4.50.v20221201'
             force 'org.eclipse.jetty.http2:http2-client:9.4.50.v20221201'
-            force 'org.eclipse.jetty.http2:http2-http-client-transport:9.4.50.v20221201'
+            force 'org.eclipse.jetty.http2:http2-http-client-transport:9.4.50.v20221201'*/
         }
     }
 
@@ -242,10 +349,16 @@ configurations {
     setupImplementation {
         extendsFrom setupCompile
     }
+
+    tlddocTool {
+        description = 'Configures Tag Library Documentation Generator for this project.'
+        visible = false
+    }
 }
 
 // import dependencies
 apply from: 'dependencies.gradle'
+apply from: "dependencies_${eeTarget}.gradle"
 if (project.hasProperty('external_directories')){
     dependencies{
         moduleDeps fileTree(dir: external_directories).matching { include '**/lib/*.jar' }
@@ -267,22 +380,22 @@ eclipse.classpath.file {
       }
 }
 
-eclipse.classpath.plusConfigurations = configurations.findAll { it.name.endsWith('Compile') }
+eclipse.classpath.plusConfigurations = configurations.matching { it.name.endsWith('Compile') }
 
 eclipse.classpath.downloadSources=true
 
 wrapper {
-    gradleVersion = '8.14'
+    gradleVersion = '9.4.1'
 }
 
-task copyDeps(type: Copy) {
+tasks.register('copyDeps', Copy) {
     from configurations.distribution
-    into "${buildDir}/deps"
+    into layout.buildDirectory.dir("deps")
 }
 
-task copyCompileDeps(type: Copy) {
+tasks.register('copyCompileDeps', Copy) {
     from configurations.compile
-    into "${buildDir}/deps"
+    into layout.buildDirectory.dir("deps")
 }
 
 // Task from the java plugin
@@ -295,7 +408,7 @@ jar {
     }
     archiveBaseName = 'opencms-core'
     archiveFileName = 'opencms.jar'
-    group 'OpenCms core JARs'
+    group = 'OpenCms core JARs'
 
     include 'org/opencms/**'
     include 'org/vaadin/risto/**'
@@ -307,7 +420,7 @@ jar {
 
     if (externalVersionProps.exists()){
         exclude 'org/opencms/main/version.properties'
-        from ("${buildDir}/.."){
+        from (externalVersionProps.parentFile){
             include 'version.properties'
             into 'org/opencms/main'
         }
@@ -318,10 +431,10 @@ jar {
     }
 
     doLast {
-       if (project.hasProperty('tomcat_update_target') && file(tomcat_update_target).exists()){
-            println "copying ${project.buildDir}/libs/${archiveName} to ${tomcat_update_target}"
+        if (hasTomcatUpdateTarget) {
+            logger.lifecycle("copying ${archiveFile.get().asFile} to ${tomcat_update_target}")
             copy {
-                from  "${project.buildDir}/libs/${archiveName}"
+                from archiveFile
                 into tomcat_update_target
             }
         }
@@ -334,7 +447,7 @@ javadoc {
     doLast {
         copy {
             from  "${projectDir}/doc/javadoc/logos"
-            into "${buildDir}/docs/javadoc/logos"
+            into layout.buildDirectory.dir("docs/javadoc/logos")
         }
     }
 
@@ -353,19 +466,21 @@ javadoc {
     }
 }
 
-task javadocJar(type: Jar, dependsOn: javadoc) {
+tasks.register('javadocJar', Jar) {
+    dependsOn javadoc
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/javadoc"
+    from layout.buildDirectory.dir("docs/javadoc")
     archiveBaseName = 'opencms-core'
 }
 
-task sourcesJar(type: Jar) {
+tasks.register('sourcesJar', Jar) {
     from sourceSets.main.java.srcDirs
     archiveClassifier = 'sources'
     archiveBaseName = 'opencms-core'
 }
 
-task gwtJar(dependsOn: jar, type: Jar) {
+tasks.register('gwtJar', Jar) {
+    dependsOn jar
     from sourceSets.gwt.output
     from (sourceSets.gwt.java.srcDirs){ include '**/*.java' }
     from (sourceSets.main.java.srcDirs){
@@ -379,25 +494,26 @@ task gwtJar(dependsOn: jar, type: Jar) {
         include '**/xml/content/CmsXmlContentProperty.java'
         include '**/workplace/editors/CmsTinyMceToolbarHelper.java'
     }
-    includeEmptyDirs false
+    includeEmptyDirs = false
     archiveFileName = 'opencms-gwt.jar'
     archiveBaseName = 'opencms-gwt'
     exclude '**/.gitignore'
 }
 
-task modulesJar(type: Jar) {
+tasks.register('modulesJar', Jar) {
     from sourceSets.modules.output
     archiveFileName = 'opencms-modules.jar'
     archiveBaseName = 'opencms-modules'
-    group 'OpenCms core JARs'
+    group = 'OpenCms core JARs'
     exclude '**/.gitignore'
 }
 
-task javadocModules(type: Javadoc, dependsOn: jar) {
+tasks.register('javadocModules', Javadoc) {
+    dependsOn jar
     doLast {
         copy {
             from  "${projectDir}/doc/javadoc/logos"
-            into "${buildDir}/docs/javadocModules/logos"
+            into layout.buildDirectory.dir("docs/javadocModules/logos")
         }
     }
 
@@ -414,26 +530,28 @@ task javadocModules(type: Javadoc, dependsOn: jar) {
     }
     source = sourceSets.modules.allJava
     classpath = project.sourceSets.modules.compileClasspath
-    destinationDir = file("${buildDir}/docs/javadocModules")
+    destinationDir = layout.buildDirectory.dir("docs/javadocModules").get().asFile
 }
 
-task javadocJarModules(type: Jar, dependsOn: javadocModules) {
+tasks.register('javadocJarModules', Jar) {
+    dependsOn javadocModules
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/javadocModules"
+    from layout.buildDirectory.dir("docs/javadocModules")
     archiveBaseName = 'opencms-modules'
 }
 
-task sourcesJarModules(type: Jar) {
+tasks.register('sourcesJarModules', Jar) {
     from sourceSets.modules.java.srcDirs
     archiveClassifier = 'sources'
     archiveBaseName = 'opencms-modules'
 }
 
-task javadocGwt(type: Javadoc, dependsOn: jar) {
+tasks.register('javadocGwt', Javadoc) {
+    dependsOn jar
     doLast {
         copy {
             from  "${projectDir}/doc/javadoc/logos"
-            into "${buildDir}/docs/javadocGwt/logos"
+            into layout.buildDirectory.dir("docs/javadocGwt/logos")
         }
     }
 
@@ -450,16 +568,17 @@ task javadocGwt(type: Javadoc, dependsOn: jar) {
     }
     source = sourceSets.gwt.allJava
     classpath = project.sourceSets.gwt.compileClasspath
-    destinationDir = file("${buildDir}/docs/javadocGwt")
+    destinationDir = layout.buildDirectory.dir("docs/javadocGwt").get().asFile
 }
 
-task javadocJarGwt(type: Jar, dependsOn: javadocGwt) {
+tasks.register('javadocJarGwt', Jar) {
+    dependsOn javadocGwt
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/javadocGwt"
+    from layout.buildDirectory.dir("docs/javadocGwt")
     archiveBaseName = 'opencms-gwt'
 }
 
-task sourcesJarGwt(type: Jar) {
+tasks.register('sourcesJarGwt', Jar) {
     from sourceSets.gwt.java.srcDirs
     from (sourceSets.main.java.srcDirs){
         include '**/shared/**'
@@ -472,18 +591,18 @@ task sourcesJarGwt(type: Jar) {
         include '**/xml/content/CmsXmlContentProperty.java'
         include '**/workplace/editors/CmsTinyMceToolbarHelper.java'
     }
-    includeEmptyDirs false
+    includeEmptyDirs = false
     archiveClassifier = 'sources'
     archiveBaseName = 'opencms-gwt'
 }
 
-task workplaceTheme (type: JavaExec) {
+tasks.register('workplaceTheme', JavaExec) {
     doFirst {
-        println '======================================================'
-        println "Building workplace theme"
-        println "Generating $project.buildDir/workplaceThemes/opencms/styles.css"
-        println '======================================================'
-        def dir = file("$project.buildDir/workplaceThemes/opencms")
+        logger.lifecycle('======================================================')
+        logger.lifecycle("Building workplace theme")
+        logger.lifecycle("Generating ${layout.buildDirectory.dir("workplaceThemes/opencms/styles.css").get().asFile}")
+        logger.lifecycle('======================================================')
+        def dir = layout.buildDirectory.dir("workplaceThemes/opencms").get().asFile
         if (dir.exists()){
             delete(dir)
         }
@@ -500,18 +619,18 @@ task workplaceTheme (type: JavaExec) {
 
 
     args = [
-        "$projectDir/webapp/workplaceThemes/VAADIN/themes/opencms/styles.scss",
-        "$project.buildDir/workplaceThemes/opencms/styles.css"
+        "${projectDir}/webapp/workplaceThemes/VAADIN/themes/opencms/styles.scss",
+        layout.buildDirectory.file("workplaceThemes/opencms/styles.css").get().asFile
     ]
     maxHeapSize = max_heap_size
 }
-task opencmsFonts (type: JavaExec) {
+tasks.register('opencmsFonts', JavaExec) {
     doFirst {
-        println '======================================================'
-        println "Building OpenCms fonts CSS"
-        println "Generating $project.buildDir/workplaceThemes/opencmsFonts/opencmsFonts.css"
-        println '======================================================'
-        def dir = file("$project.buildDir/workplaceThemes/opencmsFonts")
+        logger.lifecycle('======================================================')
+        logger.lifecycle("Building OpenCms fonts CSS")
+        logger.lifecycle("Generating ${layout.buildDirectory.dir("workplaceThemes/opencmsFonts/opencmsFonts.css").get().asFile}")
+        logger.lifecycle('======================================================')
+        def dir = layout.buildDirectory.dir("workplaceThemes/opencmsFonts").get().asFile
         if (dir.exists()){
             delete(dir)
         }
@@ -529,26 +648,27 @@ task opencmsFonts (type: JavaExec) {
     // opencmsFonts are generated into a different directory than the /opencms/styles.css
     // to avoid conflicts or dependencies between the build tasks 'workplaceTheme' and 'opencmsFonts'
     args = [
-        "$projectDir/webapp/workplaceThemes/VAADIN/themes/opencms/opencmsFonts.scss",
-        "$project.buildDir/workplaceThemes/opencmsFonts/opencmsFonts.css"
+        "${projectDir}/webapp/workplaceThemes/VAADIN/themes/opencms/opencmsFonts.scss",
+        layout.buildDirectory.file("workplaceThemes/opencmsFonts/opencmsFonts.css").get().asFile
     ]
     maxHeapSize = max_heap_size
 }
 
 
 Properties gwtProps = new Properties()
-gwtProps.load(new FileInputStream("$projectDir/src-gwt/gwt-modules.properties"))
+gwtProps.load(new FileInputStream("${projectDir}/src-gwt/gwt-modules.properties"))
 project.ext.gwtModuleNames = gwtProps['gwtmodules']
 
-task resourcesJar(type: Jar, dependsOn: [workplaceTheme, opencmsFonts]){
+tasks.register('resourcesJar', Jar) {
+    dependsOn workplaceTheme, opencmsFonts
     doFirst {
-        println '======================================================'
-        println "Building Resources Jar"
-        println '======================================================'
+        logger.lifecycle('======================================================')
+        logger.lifecycle("Building Resources Jar")
+        logger.lifecycle('======================================================')
     }
     archiveBaseName = 'opencms-resources'
     archiveFileName = 'opencms-resources.jar'
-    group 'OpenCms core JARs'
+    group = 'OpenCms core JARs'
     allModuleNames.each{ moduleName ->
         from ("${projectDir}/modules/${moduleName}/static"){
             into "OPENCMS"
@@ -557,31 +677,31 @@ task resourcesJar(type: Jar, dependsOn: [workplaceTheme, opencmsFonts]){
     from ("${projectDir}/webapp/workplaceThemes"){
         exclude '**/*.scss'
     }
-    from ("${project.buildDir}/workplaceThemes/opencms"){
+    from (layout.buildDirectory.dir("workplaceThemes/opencms")){
         into 'VAADIN/themes/opencms'
     }
-    from ("${project.buildDir}/workplaceThemes/opencmsFonts"){
+    from (layout.buildDirectory.dir("workplaceThemes/opencmsFonts")){
         into 'VAADIN/themes/opencms'
     }
     gwtModuleNames.split(',').each{ gwtModule ->
         if (!'org.opencms.ui.WidgetSet'.equals(gwtModule)){
-            from( "${project.buildDir}/gwt/${gwtModule}") {
+            from(layout.buildDirectory.dir("gwt/${gwtModule}")) {
                 exclude '**/WEB-INF/**'
                 into "OPENCMS/gwt"
             }
         }
     }
 
-    from ("${project.buildDir}/gwt/org.opencms.ui.WidgetSet"){
+    from (layout.buildDirectory.dir("gwt/org.opencms.ui.WidgetSet")){
         include 'org.opencms.ui.WidgetSet/**'
         into 'VAADIN/widgetsets'
     }
 
     doLast {
-       if (project.hasProperty('tomcat_update_target') && file(tomcat_update_target).exists()){
-            println "copying ${project.buildDir}/libs/${archiveName} to ${tomcat_update_target}"
+        if (hasTomcatUpdateTarget) {
+            logger.lifecycle("copying ${archiveFile.get().asFile} to ${tomcat_update_target}")
             copy {
-                from  "${project.buildDir}/libs/${archiveName}"
+                from archiveFile
                 into tomcat_update_target
             }
         }
@@ -590,7 +710,8 @@ task resourcesJar(type: Jar, dependsOn: [workplaceTheme, opencmsFonts]){
 
 // iterate gwt modules and create the required tasks
 gwtModuleNames.split(',').each{ gwtModule ->
-    task "gwt_${gwtModule}" (dependsOn: gwtClasses, type: JavaExec) {
+    tasks.register("gwt_${gwtModule}", JavaExec) {
+        dependsOn gwtClasses
         ext.buildDir =  project.buildDir.toString()  +"/gwt/${gwtModule}"
         ext.extraDir =  project.buildDir.toString() + "/extra/${gwtModule}"
         inputs.files sourceSets.gwt.java.srcDirs
@@ -601,9 +722,9 @@ gwtModuleNames.split(',').each{ gwtModule ->
         outputs.upToDateSpec = new org.gradle.api.specs.AndSpec()
 
         doFirst {
-            println '======================================================'
-            println "Building GWT resources for ${gwtModule}"
-            println '======================================================'
+            logger.lifecycle('======================================================')
+            logger.lifecycle("Building GWT resources for ${gwtModule}")
+            logger.lifecycle('======================================================')
             // to clean the output directory, delete it first
             def dir = file(buildDir)
             if (dir.exists()){
@@ -633,7 +754,7 @@ gwtModuleNames.split(',').each{ gwtModule ->
 
 
         if (project.hasProperty('gwtDraft')) {
-            println "Using GWT draft mode for module $gwtModule"
+            logger.lifecycle("Using GWT draft mode for module $gwtModule")
             args =
                 [
                     gwtModule,
@@ -678,27 +799,89 @@ gwtModuleNames.split(',').each{ gwtModule ->
         maxHeapSize = max_heap_size
     }
 
-    tasks['resourcesJar'].dependsOn(tasks["gwt_${gwtModule}"])
+    tasks.named('resourcesJar') {
+        dependsOn tasks.named("gwt_${gwtModule}")
+    }
 }
 
 
 
-task setupJar(dependsOn: jar, type: Jar) {
+tasks.register('setupJar', Jar) {
+    dependsOn jar
     from sourceSets.setup.output
     archiveFileName = 'opencms-setup.jar'
     archiveBaseName = 'opencms-setup'
-    group 'OpenCms core JARs'
+    group = 'OpenCms core JARs'
     exclude '**/.gitignore'
 }
 
-task javadocSetup(type: Javadoc, dependsOn: jar) {
+tasks.register('storageMigrationJar', Jar) {
+    dependsOn jar, tasks.named('toolsClasses')
+    from sourceSets.tools.output
+    from sourceSets.main.output
+    from {
+        sourceSets.tools.runtimeClasspath.findAll {
+            it.isFile() && it.name.endsWith('.jar')
+        }.collect {
+            zipTree(it)
+        }
+    }
+    archiveFileName = 'opencms-storage-migration.jar'
+    archiveBaseName = 'opencms-storage-migration'
+    destinationDirectory = layout.buildDirectory.dir('tools/storage')
+    group = 'OpenCms core JARs'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude '**/.gitignore'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'META-INF/*.SF'
+    manifest {
+        attributes(
+            'Main-Class': 'org.opencms.tools.storage.CmsStorageMigrationTool',
+            'Implementation-Title': 'OpenCms Storage Migration Tool',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.register('storageMaintenanceJar', Jar) {
+    dependsOn jar, tasks.named('toolsClasses')
+    from sourceSets.tools.output
+    from sourceSets.main.output
+    from {
+        sourceSets.tools.runtimeClasspath.findAll {
+            it.isFile() && it.name.endsWith('.jar')
+        }.collect {
+            zipTree(it)
+        }
+    }
+    archiveFileName = 'opencms-storage-maintenance.jar'
+    archiveBaseName = 'opencms-storage-maintenance'
+    destinationDirectory = layout.buildDirectory.dir('tools/storage')
+    group = 'OpenCms core JARs'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude '**/.gitignore'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'META-INF/*.SF'
+    manifest {
+        attributes(
+            'Main-Class': 'org.opencms.tools.storage.CmsStorageMaintenanceTool',
+            'Implementation-Title': 'OpenCms Storage Maintenance Tool',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+tasks.register('javadocSetup', Javadoc) {
+    dependsOn jar
     source = sourceSets.setup.allJava
     classpath = project.sourceSets.setup.compileClasspath
-    destinationDir = file("${buildDir}/docs/javadocSetup")
+    destinationDir = layout.buildDirectory.dir("docs/javadocSetup").get().asFile
     doLast {
         copy {
             from  "${projectDir}/doc/javadoc/logos"
-            into "${buildDir}/docs/javadocSetup/logos"
+            into layout.buildDirectory.dir("docs/javadocSetup/logos")
         }
     }
 
@@ -715,29 +898,65 @@ task javadocSetup(type: Javadoc, dependsOn: jar) {
     }
 }
 
-task javadocJarSetup(type: Jar, dependsOn: javadocSetup) {
+tasks.register('javadocJarSetup', Jar) {
+    dependsOn javadocSetup
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/javadocSetup"
+    from layout.buildDirectory.dir("docs/javadocSetup")
     archiveBaseName = 'opencms-setup'
 }
 
-task sourcesJarSetup(type: Jar) {
+tasks.register('sourcesJarSetup', Jar) {
     from sourceSets.setup.java.srcDirs
     archiveClassifier = 'sources'
     archiveBaseName = 'opencms-setup'
 }
 
-tlddoc {
-    source 'webapp/WEB-INF/opencms.tld'
+def tlddocSources = files("${projectDir}/webapp/WEB-INF/opencms.tld")
+
+tasks.register('validateTLD') {
+    description = 'Validates TLD files.'
+    group = JavaBasePlugin.DOCUMENTATION_GROUP
+    inputs.files(tlddocSources)
+
+    doLast {
+        def parser = new XmlParser(false, true)
+
+        tlddocSources.files.each { file ->
+            parser.parse(file)
+        }
+    }
+}
+
+tasks.register('copyTLDDocResources', Copy) {
+    description = 'Copies tag library documentation resources.'
+    from('src/main/tlddoc')
+    into layout.buildDirectory.dir('docs/tlddoc')
+}
+
+tasks.register('tlddoc', JavaExec) {
+    dependsOn 'copyTLDDocResources', 'validateTLD'
+    description = 'Generates tag library documentation.'
+    group = JavaBasePlugin.DOCUMENTATION_GROUP
+    classpath = configurations.tlddocTool
+    mainClass = 'com.sun.tlddoc.TLDDoc'
+    maxHeapSize = '256m'
+    inputs.files(tlddocSources)
+    outputs.dir(layout.buildDirectory.dir('docs/tlddoc'))
+
+    doFirst {
+        args = ['-d', layout.buildDirectory.dir('docs/tlddoc').get().asFile.absolutePath] +
+            tlddocSources.files.collect { it.absolutePath }
+    }
 }
 
 
-task tlddocZip (type: Zip, dependsOn: tlddoc) {
+tasks.register('tlddocZip', Zip) {
+    dependsOn tlddoc
     archiveFileName = 'tld.zip'
-  from ("${project.docsDir}/tlddoc/") {
+    from (layout.buildDirectory.dir("docs/tlddoc")) {
     include '**/*'
   }
-    destinationDirectory = file("${project.docsDir}")
+    destinationDirectory = layout.buildDirectory.dir("docs")
 }
 
 def preserveLibModules = ''
@@ -773,7 +992,7 @@ allModuleNames.each{ moduleName ->
         preserveLibModules += "${moduleName},"
     }
 
-    task "dist_$moduleName" (type: Zip){
+    tasks.register("dist_$moduleName", Zip) {
         ext.moduleName = moduleName
         ext.moduleFolder = moduleFolder
         ext.dependencies = moduleDependencies
@@ -792,24 +1011,24 @@ allModuleNames.each{ moduleName ->
 
         // TODO: set the module version to match the manifest.xml
         archiveBaseName = moduleName
-        group 'OpenCms module ZIPs'
+        group = 'OpenCms module ZIPs'
         doFirst {
-            println '======================================================'
-            println "Building ZIP for $moduleName version $moduleVersion"
-            println '======================================================'
+            logger.lifecycle('======================================================')
+            logger.lifecycle("Building ZIP for $moduleName version $moduleVersion")
+            logger.lifecycle('======================================================')
         }
        doLast {
-               if (project.hasProperty('module_copy_target') && file(module_copy_target).exists()){
-                println "copying ${project.buildDir}/modulesZip/${archiveName} to ${module_copy_target}"
+            if (hasModuleCopyTarget) {
+                logger.lifecycle("copying ${archiveFile.get().asFile} to ${module_copy_target}")
                 copy {
-                    from  "${project.buildDir}/modulesZip/${archiveName}"
+                    from archiveFile
                     into module_copy_target
                 }
             }
         }
     }
     if (workplacelocalization != null){
-        task "jar_$moduleName" (type: Jar) {
+        tasks.register("jar_$moduleName", Jar) {
             ext.moduleName = moduleName
             ext.workplacelocalization=workplacelocalization
             manifest {
@@ -821,42 +1040,41 @@ allModuleNames.each{ moduleName ->
             from ("$moduleFolder/resources/system/workplace/locales/$workplacelocalization/messages")
             archiveFileName = moduleName+'.jar'
             archiveBaseName = moduleName
-            group 'OpenCms module JARs'
+            group = 'OpenCms module JARs'
             exclude '**/.gitignore'
             doFirst{
-                println '======================================================'
-                println "Building ${moduleName}.jar including $modulePackages"
-                println '======================================================'
+                logger.lifecycle('======================================================')
+                logger.lifecycle("Building ${moduleName}.jar including $modulePackages")
+                logger.lifecycle('======================================================')
             }
 
             doLast {
-                if (project.hasProperty('tomcat_update_target') && file(tomcat_update_target).exists()){
-                    println "copying ${project.buildDir}/libs/${archiveName} to ${tomcat_update_target}"
+                if (hasTomcatUpdateTarget) {
+                    logger.lifecycle("copying ${archiveFile.get().asFile} to ${tomcat_update_target}")
                     copy {
-                        from  "${project.buildDir}/libs/${archiveName}"
+                        from archiveFile
                         into tomcat_update_target
                     }
                 }
             }
         }
-        tasks["dist_$moduleName"].dependsOn("jar_$moduleName")
+        tasks.named("dist_$moduleName") {
+            dependsOn tasks.named("jar_$moduleName")
+    }
     }
 }
 
-task allModules(dependsOn: tasks.matching{ Task task -> task.name.startsWith('dist_')}) {
+tasks.register('allModules') {
+    dependsOn tasks.matching{ Task task -> task.name.startsWith('dist_')}
     doLast {
-        println '======================================================'
-        println 'Done building modules'
-        println '======================================================'
+        logger.lifecycle('======================================================')
+        logger.lifecycle('Done building modules')
+        logger.lifecycle('======================================================')
     }
 }
 
-task war (dependsOn: [
-    setupJar,
-    resourcesJar,
-    modulesJar,
-    allModules
-], type: Zip){
+tasks.register('war', Zip) {
+    dependsOn setupJar, resourcesJar, modulesJar, allModules
 
     if (hasExtModules) {
         dependsOn {
@@ -916,7 +1134,7 @@ task war (dependsOn: [
         ])
     }
 
-    from ("${project.buildDir}/libs") {
+    from (layout.buildDirectory.dir("libs")) {
         include '*.jar'
         exclude 'opencms-gwt*.jar'
         exclude 'opencms-test*.jar'
@@ -946,7 +1164,7 @@ task war (dependsOn: [
     if (hasExtModules) {
         // Note that the module deps do not need to be copied
         // since they are contained in configurations.moduleDeps
-        def extModulesDir = "${extModulesProject.buildDir}/modules"
+        def extModulesDir = extModulesProject.layout.buildDirectory.dir("modules").get().asFile
         from ("${extModulesDir}/libs") {
             include '*.jar'
             into '/WEB-INF/lib'
@@ -957,16 +1175,13 @@ task war (dependsOn: [
     }
 }
 
-task updater (dependsOn: [
-    setupJar,
-    resourcesJar,
-    modulesJar,
-    allModules
-], type: Zip){
+tasks.register('updater', Zip) {
+    dependsOn setupJar, resourcesJar, modulesJar, allModules
     if (hasExtModules) {
         // without this declaration, Gradle 8 complains about implicit dependencies
         dependsOn {
             ':extmodules:bindist'
+            ':extmodules:copyProjectProps'
         }
     }
 
@@ -1083,7 +1298,7 @@ task updater (dependsOn: [
         include '*'
         include '**/*'
     }
-    from ("${project.buildDir}/libs") {
+    from (layout.buildDirectory.dir("libs")) {
         include '*.jar'
         exclude 'opencms-test*.jar'
         exclude 'opencms-gwt*.jar'
@@ -1109,9 +1324,10 @@ task updater (dependsOn: [
     }
 }
 
-task bindist (dependsOn: war, type: Zip){
+tasks.register('bindist', Zip) {
+    dependsOn war, storageMigrationJar, storageMaintenanceJar
     archiveBaseName = 'opencms'
-    from "${project.buildDir}/distributions/opencms.war"
+    from layout.buildDirectory.file("distributions/opencms.war").get().asFile
     from(projectDir) {
         include 'INSTALL.md'
         include 'LICENSE'
@@ -1122,141 +1338,259 @@ task bindist (dependsOn: war, type: Zip){
             OPENCMS_VERSION: product_name+' '+ project.version
         ])
     }
+    into('tools/storage') {
+        from tasks.named('storageMigrationJar')
+        from tasks.named('storageMaintenanceJar')
+    }
 }
 
 
-test {
-    // We fix max heap size here, since with less heap size tests will fail.
+// Shared configuration for all test tasks
+tasks.withType(Test).configureEach {
     maxHeapSize = "2000m"
+    jvmArgs += ['--enable-native-access=ALL-UNNAMED']
     useJUnit()
-    scanForTestClasses false
+    scanForTestClasses = false
+    testLogging.showStandardStreams = true
+    ignoreFailures = true
+}
+
+def coreTestConfig = {
+    useJUnitPlatform()
     testClassesDirs = files(sourceSets.test.java.classesDirectory)
     systemProperties['test.data.path'] = "${projectDir}/test/data"
     systemProperties['test.webapp.path'] = "${projectDir}/webapp"
     systemProperties['test.project.path'] = "${projectDir}"
-    systemProperties['test.build.folder'] =sourceSets.test.output.resourcesDir
-    testLogging.showStandardStreams = true
-    ignoreFailures true
-    filter {
-        includeTestsMatching "org.opencms.test.AllTests"
+    systemProperties['test.build.folder'] = sourceSets.test.output.resourcesDir
+    if (project.hasProperty('dbProduct')) {
+        systemProperties['db.product'] = project.property('dbProduct')
     }
-}
-
-task testSingle(type: Test, dependsOn: [compileTestJava]) {
-    description "Runs a specified test case set like this: -PtestCaseToRun=org.opencms.main.TestCmsSystemInfo*"
+    systemProperties['opencms.test.verbose'] = providers.systemProperty('opencms.test.verbose')
+        .orElse(providers.environmentVariable('OPENCMS_TEST_VERBOSE'))
+        .orElse('false')
+        .get()
     inputs.dir "${projectDir}/test/data"
     inputs.dir "${projectDir}/webapp"
-
-    useJUnit()
-    if (!project.hasProperty('testCaseToRun')){
-        project.ext.testCaseToRun='org.opencms.main.TestCmsSystemInfo*'
-        }
-    doFirst{
-        println "Running test case : ${testCaseToRun}"
-    }
-    filter {
-        includeTestsMatching testCaseToRun
-    }
-    scanForTestClasses false
-    testClassesDirs = files(sourceSets.test.java.classesDirectory)
-    systemProperties['test.data.path'] = "${projectDir}/test/data"
-    systemProperties['test.webapp.path'] = "${projectDir}/webapp"
-    systemProperties['test.build.folder'] =sourceSets.test.output.resourcesDir
-    maxHeapSize = max_heap_size
-    testLogging.showStandardStreams = true
-    ignoreFailures true
 }
 
-task testJar(dependsOn: compileTestJava, type: Jar) {
+def storageBackendTestPatterns = [
+    'org.opencms.db.storage.Test*'
+]
+
+def storageVfsRegressionTestClasses = [
+    'org.opencms.file.TestStorageVfsDriver',
+    'org.opencms.file.TestCreateWriteResource',
+    'org.opencms.file.TestReadResource',
+    'org.opencms.file.TestPublishing',
+    'org.opencms.file.TestHistory',
+    'org.opencms.file.TestSiblings',
+    'org.opencms.file.TestDeletion',
+    'org.opencms.file.TestReplace',
+    'org.opencms.file.TestRestoreFromHistory'
+]
+
+test {
+    configure coreTestConfig
+    // includes = ['org/opencms/test/AllTestsBridge.class']
+    description = "Runs the complete OpenCms core test suite."
+
+    includes = ['**/Test*.class']
+    excludes = [
+        'org/opencms/db/storage/Test*.class',
+        'org/opencms/file/TestStorageVfsDriver.class'
+    ]
+    scanForTestClasses = true
+}
+
+tasks.register('testStorage', Test) {
+    description = "Runs the storage backend tests and selected VFS regression tests with external storage enabled."
+    group = 'verification'
+    configure coreTestConfig
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = files(sourceSets.test.java.classesDirectory)
+    useJUnitPlatform()
+    outputs.upToDateWhen { false }
+    [
+        'opencms.s3.test.endpoint': 'OPENCMS_S3_TEST_ENDPOINT',
+        'opencms.s3.test.bucket': 'OPENCMS_S3_TEST_BUCKET',
+        'opencms.s3.test.accessKey': 'OPENCMS_S3_TEST_ACCESS_KEY',
+        'opencms.s3.test.secretKey': 'OPENCMS_S3_TEST_SECRET_KEY',
+        'opencms.s3.test.pathStyle': 'OPENCMS_S3_TEST_PATH_STYLE',
+        'opencms.s3.test.region': 'OPENCMS_S3_TEST_REGION',
+        'opencms.s3.test.listingCount': 'OPENCMS_S3_TEST_LISTING_COUNT'
+    ].each { propertyName, environmentName ->
+        Provider<String> value = providers.gradleProperty(propertyName)
+            .orElse(providers.systemProperty(propertyName))
+            .orElse(providers.environmentVariable(environmentName))
+        if (value.present) {
+            systemProperties[propertyName] = value.get()
+        }
+    }
+
+    doFirst {
+        delete reports.html.outputLocation.get().asFile
+        delete reports.junitXml.outputLocation.get().asFile
+        def dbProduct = systemProperties['db.product'] ?: 'hsqldb'
+        systemProperties['test.config.folder'] = "config.${dbProduct}_storage"
+        logger.lifecycle("Running storage tests with ${systemProperties['test.config.folder']}")
+    }
+
+    filter {
+        storageBackendTestPatterns.each { includeTestsMatching it }
+        storageVfsRegressionTestClasses.each { includeTestsMatching it }
+    }
+}
+
+tasks.register('testStorageMigrationIntegration', Test) {
+    description = "Runs optional storage migration tool integration tests against an explicitly enabled database."
+    group = 'verification'
+    configure coreTestConfig
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.tools.runtimeClasspath
+    testClassesDirs = files(sourceSets.test.java.classesDirectory)
+    useJUnitPlatform()
+    ignoreFailures = false
+    outputs.upToDateWhen { false }
+
+    if (project.hasProperty('storageMigrationTestDbs')) {
+        systemProperties['opencms.storage.migration.test.dbs'] = project.property('storageMigrationTestDbs')
+        }
+
+    doFirst {
+        delete reports.html.outputLocation.get().asFile
+        delete reports.junitXml.outputLocation.get().asFile
+        def dbProduct = systemProperties['db.product'] ?: 'hsqldb'
+        logger.lifecycle("Running storage migration integration tests for db.product=${dbProduct}")
+        logger.lifecycle("Enable databases with -PstorageMigrationTestDbs=${dbProduct} or OPENCMS_STORAGE_MIGRATION_TEST_DBS.")
+    }
+
+    filter {
+        includeTestsMatching 'org.opencms.tools.storage.TestCmsStorageMigrationToolIntegration'
+    }
+}
+
+tasks.register('testSingle', Test) {
+    description = "Runs a specified test case. Equivalent to standard 'test' task.\n Default: Runs TestCmsSystemInfo test case if no filters are provided."
+    group = 'verification'
+    configure coreTestConfig
+    classpath = sourceSets.test.runtimeClasspath
+    testClassesDirs = files(sourceSets.test.java.classesDirectory)
+    useJUnitPlatform()
+    ignoreFailures = false
+    doNotTrackState("Single-test execution uses ad hoc filters and generated result paths.")
+    outputs.upToDateWhen { false } // makes --rerun the default
+
+    doFirst{
+        delete reports.html.outputLocation.get().asFile
+        delete reports.junitXml.outputLocation.get().asFile
+        logger.info("Test filter configuration - commandLineIncludePatterns: ${filter.commandLineIncludePatterns}, includePatterns: ${filter.includePatterns}")
+
+        boolean hasExplicit = !filter.commandLineIncludePatterns.empty || !filter.includePatterns.empty
+        logger.debug("hasExplicitTestSelection: ${hasExplicit}")
+
+        if (!hasExplicit) {
+            logger.lifecycle("No specific tests requested, applying default filter: org.opencms.main.TestCmsSystemInfo*")
+            filter.includeTestsMatching "org.opencms.main.TestCmsSystemInfo*"
+        }
+    }
+}
+
+tasks.register('testJar', Jar) {
+    dependsOn compileTestJava
     from sourceSets.test.output
     archiveBaseName = 'opencms-test'
     exclude '**/.gitignore'
     exclude '**/*.java'
 }
 
-task javadocTest(type: Javadoc, dependsOn: jar) {
+tasks.register('javadocTest', Javadoc) {
+    dependsOn jar
     source = sourceSets.test.allJava
     classpath = project.sourceSets.test.compileClasspath
-    destinationDir = file("${buildDir}/docs/javadocTest")
+    destinationDir = layout.buildDirectory.dir("docs/javadocTest").get().asFile
 }
 
-task javadocJarTest(type: Jar, dependsOn: javadocTest) {
+tasks.register('javadocJarTest', Jar) {
+    dependsOn javadocTest
     archiveClassifier = 'javadoc'
-    from "${buildDir}/docs/javadocTest"
+    from layout.buildDirectory.dir("docs/javadocTest")
     archiveBaseName = 'opencms-test'
 }
 
-task sourcesJarTest(type: Jar) {
+tasks.register('sourcesJarTest', Jar) {
     from sourceSets.test.java.srcDirs
     archiveClassifier = 'sources'
     archiveBaseName = 'opencms-test'
 }
 
 
-task testGwt(type: Test, dependsOn: [compileTestGwtJava]) {
+tasks.register('testGwt', Test) {
+    dependsOn compileTestGwtJava
     classpath=sourceSets.testGwt.runtimeClasspath
     classpath += files("${projectDir}/src")
     classpath += files("${projectDir}/src-gwt")
     classpath += files("${projectDir}/test-gwt")
     useJUnit()
-    filter {
-        includeTestsMatching 'org.opencms.client.test.AllTests'
-    }
-    scanForTestClasses false
+    includes = ['org/opencms/client/test/AllTestsBridge.class']
+    scanForTestClasses = true
     testClassesDirs = files(sourceSets.testGwt.java.classesDirectory)
     systemProperties['gwt.args'] = "-logLevel WARN -setProperty locale=en"
     systemProperties['java.awt.headless'] = "true"
     maxHeapSize = max_heap_size
     testLogging.showStandardStreams = true
-    ignoreFailures true
+    ignoreFailures = true
 }
 
-artifacts {
-    archives sourcesJar
+def legacyArchiveTasks = [
+    sourcesJar,
+    setupJar,
+    sourcesJarSetup,
+    modulesJar,
+    sourcesJarModules,
+    gwtJar,
+    sourcesJarGwt,
+    testJar,
+    sourcesJarTest,
+]
 
-	if (gradle.startParameter.taskNames.contains("uploadArchives")) {
+if (gradle.startParameter.taskNames.contains('uploadArchives')) {
         // do not include the war if only running the install task, it takes ages to build
-        archives war
-        archives resourcesJar
-    }
+    legacyArchiveTasks.add(war)
+    legacyArchiveTasks.add(resourcesJar)
+}
 
-    archives setupJar
-    archives sourcesJarSetup
-
-    archives modulesJar
-    archives sourcesJarModules
-
-    archives gwtJar
-    archives sourcesJarGwt
-
-    archives testJar
-    archives sourcesJarTest
-
-    tasks.each { task ->
-        if (task.name.startsWith("jar_org.opencms.")){
-            def moduleName=task.archiveBaseName
-            archives task
-            if (tasks.hasProperty("sourcesJar_$moduleName")) {
-                archives tasks["sourcesJar_$moduleName"]
+tasks.each { task ->
+    if (task.name.startsWith('jar_org.opencms.')) {
+        def moduleName = task.archiveBaseName.get()
+        legacyArchiveTasks.add(task)
+        def sourcesTask = tasks.findByName("sourcesJar_${moduleName}")
+        if (sourcesTask != null) {
+            legacyArchiveTasks.add(sourcesTask)
             }
         }
-    }
-    // in case the property 'skip_javadoc' is set to 'true', javadoc generation is skipped - this is supposed to speed up build time for CI
-    if (addJavadoc) {
-        archives javadocJar
-        archives javadocJarSetup
-        archives javadocJarModules
-        archives javadocJarGwt
-        archives javadocJarTest
+}
+
+// in case the property 'skip_javadoc' is set to 'true', javadoc generation is skipped - this is supposed to speed up build time for CI
+if (addJavadoc) {
+    legacyArchiveTasks.addAll([
+        javadocJar,
+        javadocJarSetup,
+        javadocJarModules,
+        javadocJarGwt,
+        javadocJarTest,
+    ])
         tasks.each { task ->
-            if (task.name.startsWith("jar_org.opencms.")) {
-                def moduleName=task.archiveBaseName
-                if (tasks.hasProperty("javadocJar_$moduleName")) {
-            archives tasks["javadocJar_$moduleName"]
+        if (task.name.startsWith('jar_org.opencms.')) {
+            def moduleName = task.archiveBaseName.get()
+            def javadocTask = tasks.findByName("javadocJar_${moduleName}")
+            if (javadocTask != null) {
+                legacyArchiveTasks.add(javadocTask)
             }
         }
     }
-    }
+}
+
+tasks.named('assemble') {
+    dependsOn(legacyArchiveTasks.toSet())
 }
 
 
@@ -1269,8 +1603,9 @@ publishing {
             pom {
                 name = product_name
                 description = product_description
-                packaging 'jar'
-                groupId 'org.opencms'
+                packaging = 'jar'
+                groupId = 'org.opencms'
+                artifactId = "opencms-core${pVariant.get()}"
                 url = 'http://www.opencms.org'
                 scm {
                     url = 'scm:git@github.com:alkacon/opencms-core.git'
@@ -1303,9 +1638,11 @@ publishing {
                         asNode().dependencies.'*'.each() { dep ->
                             if (dep.scope.text() == 'runtime' && dep.artifactId.text() in [
                                         'javax.servlet-api',
-                                        'javax.servlet.jsp-api'
+                                        'javax.servlet.jsp-api',
+                                        'jakarta.servlet-api',
+                                        'jakarta.servlet.jsp-api'
                                     ]) {
-                                println("Correcting scope for dependency ${dep.artifactId.text()}")
+                                logger.lifecycle("Correcting scope for dependency ${dep.artifactId.text()}")
                                 dep.scope.first().setValue('compile')
                             }
                         }
@@ -1369,11 +1706,11 @@ publishing {
                     artifact art
                 }
                 pom {
-                    artifactId "opencms-${pub.key}"
+                    artifactId = "opencms-${pub.key}${pVariant.get()}"
                     name = product_name
                     description = product_description
-                    packaging 'jar'
-                    groupId 'org.opencms'
+                    packaging = 'jar'
+                    groupId = 'org.opencms'
                     url = 'http://www.opencms.org'
                     scm {
                         url = 'scm:git@github.com:alkacon/opencms-core.git'
@@ -1435,7 +1772,7 @@ publishing {
             webapp(MavenPublication) {
                 artifact war
                 pom {
-                    artifactId 'opencms-webapp'
+                    artifactId "opencms-webapp${pVariant.get()}"
                     name = product_name
                     description = product_description
                     packaging 'war'
@@ -1474,39 +1811,57 @@ publishing {
 
 
 // add it to keep the old task names
-task install(dependsOn: publishToMavenLocal) {
+tasks.register('install') {
+    dependsOn publishToMavenLocal
     doFirst {
-        println "Installing artifacts for version $version"
+        logger.lifecycle("Installing artifacts for version $version")
     }
 }
 
-task uploadArchives { // dependency tasks are set dynamically via afterEvaluate
+tasks.register('uploadArchives') { // dependency tasks are set dynamically via afterEvaluate
     doFirst {
-        println "Upload artifacts for version $version"
+        logger.lifecycle("Upload artifacts for version $version")
     }
 }
 
+// fail in case the source is badly formatted
+tasks.named('compileJava') {
+    dependsOn spotlessCheck
+}
 
 // fixed issue with libraries containing both .java and .class files
 tasks.withType(JavaCompile) {
     options.sourcepath=files()
     options.encoding='UTF-8'
     options.incremental = true
+    if (gradle.startParameter.logLevel == LogLevel.QUIET) {
+        options.compilerArgs += ['-Xlint:none', '-nowarn']
+        logging.captureStandardOutput LogLevel.INFO
+        logging.captureStandardError LogLevel.INFO
+    }
 }
 tasks.withType(Javadoc) {
     options.addStringOption("sourcepath", "")
-    if (JavaVersion.current().isJava8Compatible()) {
         options.addStringOption("Xdoclint:none", "-quiet")
-        options.addBooleanOption("-allow-script-in-comments",true);
-    }
+    options.addBooleanOption("-allow-script-in-comments", true)
     doLast {
-        def searchScript = new File(destinationDir.getAbsolutePath() + '/search.js')
+        def searchScript = new File(destinationDir, 'search.js')
         searchScript.append "getURLPrefix = function(ui) { return ''; };"
     }
 }
 // all tasks implementing the CopySpec (Copy,Jar,Zip,...) should fail, in case they generate duplicate files
-tasks.withType(CopySpec) {
-    duplicatesStrategy 'fail'
+tasks.withType(org.gradle.api.tasks.AbstractCopyTask).configureEach {
+    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.FAIL
+}
+
+tasks.named('storageMigrationJar') {
+    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
+    zip64 = true
+}
+
+tasks.named('storageMaintenanceJar') {
+    duplicatesStrategy = org.gradle.api.file.DuplicatesStrategy.EXCLUDE
+    zip64 = true
 }
 
 
@@ -1518,8 +1873,30 @@ tasks.withType(GenerateModuleMetadata) {
     enabled = false
 }
 
-
 afterEvaluate {
 	def uploadArchivesDeps = [tasks.findByName("publishToSonatype"), tasks.findByName("closeSonatypeStagingRepository")]
-	tasks.findByName("uploadArchives").dependsOn(uploadArchivesDeps) 
+    tasks.findByName("uploadArchives").dependsOn(uploadArchivesDeps)
 }
+
+
+// For some reason when opencms-core is built together with the Mercury Template,
+// *and* the Jakarta EE Migration plugin is active, Gradle complains that the different 
+// configurations must be identifiable through their set of attributes and capabilities,
+// and archives and signatures conflict in this way with the default configuration.
+// This is really strange, as the attributes are also not distinct if we only compile the core,
+// or use the javax "mode".
+// So we add an artifactType attribute to disambiguate them. The name or values of the attribute
+// are arbitrary for this, it doesn't seem to matter if we just want to keep Gradle from complaining.
+
+configurations.named("archives") {
+    attributes {
+        attribute(Attribute.of("artifactType", String), "archives")
+    }
+}
+
+configurations.named("signatures") {
+    attributes {
+        attribute(Attribute.of("artifactType", String), "signatures")
+    }
+}
+

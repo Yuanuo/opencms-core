@@ -49,6 +49,7 @@ import org.opencms.xml.content.CmsXmlContent;
 import org.opencms.xml.content.CmsXmlContentFactory;
 import org.opencms.xml.content.CmsXmlContentPropertyHelper;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
@@ -114,7 +115,7 @@ public class CmsContainerElementBean implements Cloneable {
      * @param inMemoryOnly the in memory flag
      * @param editorHash the editor hash to use
      * @param createNew <code>true</code> if a new element should be created replacing the given one on first edit of a container-page
-     **/
+     */
     public CmsContainerElementBean(
         CmsFile file,
         CmsUUID formatterId,
@@ -136,7 +137,7 @@ public class CmsContainerElementBean implements Cloneable {
      * @param formatterId the formatter's structure id, could be <code>null</code>
      * @param individualSettings the element settings as a map of name/value pairs
      * @param createNew <code>true</code> if a new element should be created replacing the given one on first edit of a container-page
-     **/
+     */
     public CmsContainerElementBean(
         CmsUUID elementId,
         CmsUUID formatterId,
@@ -444,6 +445,30 @@ public class CmsContainerElementBean implements Cloneable {
     public CmsUUID getFormatterId() {
 
         return m_formatterId;
+    }
+
+    /**
+     * Helper method for getting a formatter key from the settings, for a particular container name.
+     *
+     * <p>First tries the setting formatterSettings#ContainerName, then formatterSettings# as a fallback.
+     * The second case can occur when dealing with elements from the user's favorite/recent list.
+     *
+     * @param containerName the container name
+     * @return the formatter key, or null
+     */
+    public String getFormatterKey(String containerName) {
+
+        if (getIndividualSettings() == null) {
+            return null;
+        }
+        for (String name : Arrays.asList(containerName, "")) {
+            String key = CmsFormatterConfig.getSettingsKeyForContainer(name);
+            String formatter = getIndividualSettings().get(key);
+            if (formatter != null) {
+                return formatter;
+            }
+        }
+        return null;
     }
 
     /**

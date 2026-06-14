@@ -29,24 +29,34 @@ package org.opencms.ui.login;
 
 import org.opencms.db.CmsLoginMessage;
 import org.opencms.i18n.CmsMessages;
+import org.opencms.main.CmsLog;
 import org.opencms.main.OpenCms;
 import org.opencms.security.CmsOrganizationalUnit;
+import org.opencms.security.I_CmsCustomLogin;
+import org.opencms.security.I_CmsCustomLogin.Mode;
+import org.opencms.ui.A_CmsUI;
 import org.opencms.ui.CmsVaadinUtils;
 import org.opencms.ui.Messages;
 import org.opencms.ui.components.CmsFakeWindow;
 import org.opencms.ui.components.OpenCmsTheme;
+import org.opencms.util.CmsStringUtil;
 
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.commons.logging.Log;
+
 import com.google.common.collect.Maps;
 import com.vaadin.annotations.DesignRoot;
 import com.vaadin.event.ShortcutAction.KeyCode;
 import com.vaadin.server.FontAwesome;
+import com.vaadin.server.Page;
 import com.vaadin.ui.Button;
 import com.vaadin.ui.Button.ClickEvent;
 import com.vaadin.ui.Button.ClickListener;
+import com.vaadin.ui.CssLayout;
+import com.vaadin.ui.FormLayout;
 import com.vaadin.ui.themes.ValoTheme;
 import com.vaadin.v7.shared.ui.label.ContentMode;
 import com.vaadin.v7.ui.Label;
@@ -66,29 +76,40 @@ public class CmsLoginForm extends VerticalLayout {
     /** The public PC type constant. */
     public static final String PC_TYPE_PUBLIC = "public";
 
+    /** Logger instance for this class. */
+    private static final Log LOG = CmsLog.getLog(CmsLoginForm.class);
+
     /** Version id. */
     private static final long serialVersionUID = 1L;
 
     /** The login controller. */
     protected CmsLoginController m_controller;
 
+    /** Label showing an optional configurable message.*/
+    private Label m_additionalMessage;
+
     /** The label showing the copyright information. */
     private Label m_copyright;
+
+    private CssLayout m_customControls;
 
     /** The error label. */
     private Label m_error;
 
-    /** Button for opening the "forgot password" dialog. */
-    private Button m_forgotPasswordButton;
-
     /**Fake window. */
     private CmsFakeWindow m_fakeWindow;
 
-    /** Label showing an optional configurable message.*/
-    private Label m_additionalMessage;
+    /** Button for opening the "forgot password" dialog. */
+    private Button m_forgotPasswordButton;
 
     /** Login button. */
     private Button m_loginButton;
+
+    private FormLayout m_mainForm;
+
+    private Label m_mainFormLabel;
+
+    private boolean m_multipleOus;
 
     /** Button to show / hide advanced options. */
     private Button m_optionsButton;
@@ -102,16 +123,16 @@ public class CmsLoginForm extends VerticalLayout {
     /** Widget for entering the password. */
     private CmsLoginPasswordField m_passwordField;
 
-    /** The password visibility toggle. */
-    private Button m_showPasswordButton;
-
     /** The security field, which allows the user to choose between a private or public PC. */
     private OptionGroup m_securityField;
 
+    private List<CmsOrganizationalUnit> m_selectableOus;
+
+    /** The password visibility toggle. */
+    private Button m_showPasswordButton;
+
     /** Widget for entering the user name.  */
     private TextField m_userField;
-
-    private boolean m_multipleOus;
 
     /**
      * Creates a new instance.<p>
@@ -196,7 +217,66 @@ public class CmsLoginForm extends VerticalLayout {
         m_showPasswordButton.addStyleName(OpenCmsTheme.BUTTON_UNPADDED);
         m_showPasswordButton.setIcon(FontAwesome.EYE_SLASH);
         m_showPasswordButton.addClickListener(evt -> togglePasswordVisible());
+        I_CmsCustomLogin customLogin = OpenCms.getLoginManager().getCustomLogin();
+        m_customControls.setVisible(false);
+        boolean loginAllowed = false;
+        try {
+            OpenCms.getLoginManager().checkLoginAllowed();
+            loginAllowed = true;
+        } catch (Exception e) {
+            // ignore
+        }
+        if ((customLogin != null) && customLogin.isEnabled() && loginAllowed) {
+            Button customButton = new Button();
+            customButton.addStyleName("o-custom-login-button");
+            customButton.setCaption(customLogin.getLoginButtonCaption(locale));
+            m_customControls.setVisible(true);
+            com.vaadin.ui.Label separator = new com.vaadin.ui.Label();
+            separator.setContentMode(com.vaadin.shared.ui.ContentMode.HTML);
+            String text = CmsVaadinUtils.getMessageText(Messages.GUI_LOGIN_CUSTOM_LOGIN_SEPARATOR_0);
+            String escapedText = CmsStringUtil.escapeHtml(text);
+            separator.setValue("<span>" + escapedText + "</span>");
+            separator.addStyleName("o-login-top-divider");
+            separator.setWidth("100%");
+            m_customControls.addComponent(separator);
+            m_customControls.addComponent(customButton);
+            CmsLoginOuSelector customLoginOuSelect = new CmsLoginOuSelector();
+            if (customLogin.needsOrgUnit()) {
+                List<CmsOrganizationalUnit> ouList = CmsLoginHelper.getOrgUnitsForLoginDialog(
+                    A_CmsUI.getCmsObject(),
+                    null);
+                customLoginOuSelect.initOrgUnits(ouList, false);
+                customLoginOuSelect.setValue(CmsLoginOuSelector.getId(ouList.get(0)));
+                customLoginOuSelect.addStyleName("o-custom-login-ou-select");
+                m_customControls.addComponent(customLoginOuSelect);
+            }
+            customButton.setCaption(customLogin.getLoginButtonCaption(locale));
+            customButton.addStyleName("o-custom-login-button");
 
+            customButton.setWidth("100%");
+            customButton.addClickListener(event -> {
+                String ou = null;
+                if (customLogin.needsOrgUnit()) {
+                    ou = customLoginOuSelect.getValue();
+                }
+                String redirect = customLogin.getRedirect(ou);
+                if (redirect != null) {
+                    Page.getCurrent().open(redirect, "_top", false);
+                } else {
+                    LOG.error("getRedirect() returned null for " + customLogin.getClass().getName());
+                }
+            });
+            if (customLogin.getMode() == Mode.replace) {
+                m_mainForm.setVisible(false);
+                m_mainFormLabel.setVisible(false);
+                m_securityField.setVisible(false);
+                m_loginButton.setVisible(false);
+                m_optionsButton.setVisible(false);
+                separator.setVisible(false);
+
+            }
+
+        }
     }
 
     /**
@@ -298,8 +378,10 @@ public class CmsLoginForm extends VerticalLayout {
      */
     public void setSelectableOrgUnits(List<CmsOrganizationalUnit> ous) {
 
+        m_selectableOus = ous;
         boolean addEmptySelection = OpenCms.getLoginManager().isOrgUnitRequired() && (ous.size() > 1);
         m_ouSelect.initOrgUnits(ous, addEmptySelection);
+
         boolean optionsVisible = addEmptySelection && (ous.size() > 1);
         setOptionsVisible(optionsVisible);
     }

@@ -28,6 +28,9 @@
 				class="org.opencms.workplace.editors.CmsPreEditorActionDefinitionXmlContent" />
 		</editorpreconditions>
 		<editor-max-locale-buttons>5</editor-max-locale-buttons>
+		<content-translation class="org.opencms.ade.contenteditor.CmsDummyTranslator">
+			<param name="exampleParam">foo</param>
+		</content-translation>
 		<directeditprovider
 			class="org.opencms.workplace.editors.directedit.CmsDirectEditDefaultProvider" />
 		<exportpoints>
@@ -349,7 +352,7 @@
 		<upload-restriction class="org.opencms.ade.upload.CmsDefaultUploadRestriction">
             <param name="/">enabled:true|types:pdf,doc,png,jpg</param>
         </upload-restriction>
-        <virus-scanner class="org.opencms.configuration.CmsDummyVirusScanner" enabled="true">
+        <virus-scanner class="org.opencms.configuration.CmsTestDummyVirusScanner" enabled="true">
         	<param name="key1">value1</param>
         	<param name="key2">value2</param>
         </virus-scanner>

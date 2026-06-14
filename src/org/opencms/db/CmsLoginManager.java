@@ -35,6 +35,7 @@ import org.opencms.security.CmsAuthentificationException;
 import org.opencms.security.CmsRole;
 import org.opencms.security.CmsRoleViolationException;
 import org.opencms.security.CmsUserDisabledException;
+import org.opencms.security.I_CmsCustomLogin;
 import org.opencms.security.Messages;
 import org.opencms.util.CmsStringUtil;
 
@@ -188,6 +189,9 @@ public class CmsLoginManager {
     /** The before login message. */
     private CmsLoginMessage m_beforeLoginMessage;
 
+    /** The configured custom login. */
+    private I_CmsCustomLogin m_customLogin;
+
     /** The login message, setting this may also disable logins for non-Admin users. */
     private CmsLoginMessage m_loginMessage;
 
@@ -205,6 +209,9 @@ public class CmsLoginManager {
 
     /** User data check interval. */
     private String m_userDateCheckInterval;
+
+    /** If true, forces logout for non-ELEMENT_AUTHOR users when opening /system/login. */
+    private boolean m_forceLogoutForUnprivilegedUsers;
 
     /**
      * Creates a new storage for invalid logins.<p>
@@ -228,7 +235,8 @@ public class CmsLoginManager {
         String passwordChangeInterval,
         String userDataCheckInterval,
         boolean requireOrgUnit,
-        String logoutUri) {
+        String logoutUri,
+        boolean forceLogoutForUnprivilegedUsers) {
 
         m_maxBadAttempts = maxBadAttempts;
         if (TEMP_DISABLED_USER == null) {
@@ -248,6 +256,7 @@ public class CmsLoginManager {
         m_userDateCheckInterval = userDataCheckInterval;
         m_requireOrgUnit = requireOrgUnit;
         m_logoutUri = logoutUri;
+        m_forceLogoutForUnprivilegedUsers = forceLogoutForUnprivilegedUsers;
     }
 
     /**
@@ -384,6 +393,16 @@ public class CmsLoginManager {
     }
 
     /**
+     * Gets the configured custom login method, if any.
+     *
+     * @return the configured custom login method
+     */
+    public I_CmsCustomLogin getCustomLogin() {
+
+        return m_customLogin;
+    }
+
+    /**
      * Returns the minutes an account gets disabled after too many failed login attempts.<p>
      *
      * @return the minutes an account gets disabled after too many failed login attempts
@@ -416,6 +435,7 @@ public class CmsLoginManager {
     public String getLogoutUri() {
 
         return m_logoutUri;
+
     }
 
     /**
@@ -529,6 +549,16 @@ public class CmsLoginManager {
     public boolean isExcludedFromPasswordReset(CmsObject cms, CmsUser user) {
 
         return user.isManaged() || user.isWebuser() || OpenCms.getDefaultUsers().isDefaultUser(user.getName());
+    }
+
+    /**
+     * Checks if non-ELEMENT_AUTHOR users should be logged out when visiting /system/login.
+     *
+     * @return true if unprivileged users should be logged out
+     */
+    public boolean isForceLogoutForUnprivilegedUsers() {
+
+        return m_forceLogoutForUnprivilegedUsers;
     }
 
     /**
@@ -714,6 +744,19 @@ public class CmsLoginManager {
         if (m_beforeLoginMessage != null) {
             m_beforeLoginMessage.setFrozen();
         }
+    }
+
+    /**
+     * Sets the custom login method.
+     *
+     * @param customLogin the custom login method
+     */
+    public void setCustomLogin(I_CmsCustomLogin customLogin) {
+
+        if ((customLogin != null) && (m_customLogin != null)) {
+            throw new RuntimeException("Custom login is already set: " + m_customLogin.toString());
+        }
+        m_customLogin = customLogin;
     }
 
     /**

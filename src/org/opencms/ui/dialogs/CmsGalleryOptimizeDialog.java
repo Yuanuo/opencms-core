@@ -124,7 +124,7 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
 
         /**
          * Creates a new instance.
-        
+         *
          * @param dataItem the data item
          */
         public ContextMenu(DataItem dataItem) {
@@ -904,6 +904,9 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
         /** The data item of this file delete composite. */
         private DataItem m_dataItem;
 
+        /** The file delete checkbox. */
+        private CheckBox m_fileDelete;
+
         /**
          * Creates a new file delete composite for a given data item.<p>
          *
@@ -925,9 +928,9 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
             if (!m_dataItem.getIsUsed().booleanValue()) {
                 CssLayout layout = new CssLayout();
                 Label labelInUse = createDisplayInUseInfo();
-                CheckBox fieldDeleteFlag = createFieldDeleteFlag();
+                m_fileDelete = createFieldDeleteFlag();
                 layout.addComponent(labelInUse);
-                layout.addComponent(fieldDeleteFlag);
+                layout.addComponent(m_fileDelete);
                 addComponent(layout);
                 setExpandRatio(layout, 1.0f);
                 setComponentAlignment(layout, Alignment.BOTTOM_LEFT);
@@ -935,6 +938,17 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 setExpandRatio(dimension, 1.0f);
             } else {
                 setExpandRatio(fileSize, 1.0f);
+            }
+        }
+
+        /**
+         * Programmatically selects or de-selects a file to delete.
+         * @param value whether to select or de-select
+         */
+        public void selectForDelete(boolean value) {
+
+            if (m_fileDelete != null) {
+                m_fileDelete.setValue(Boolean.valueOf(value));
             }
         }
 
@@ -1542,9 +1556,9 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                             m_deletedCurrentResource.add(dataItem.getResource());
                         } else if ((dataItem.getDeleteFlag().booleanValue() == false)
                             && m_deletedCurrent.contains(dataItem)) {
-                                m_deletedCurrent.remove(dataItem);
-                                m_deletedCurrentResource.remove(dataItem.getResource());
-                            }
+                            m_deletedCurrent.remove(dataItem);
+                            m_deletedCurrentResource.remove(dataItem.getResource());
+                        }
                     } catch (ValidationException e) {
                         LOG.warn(e.getLocalizedMessage(), e);
                     }
@@ -1814,6 +1828,33 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                 finishDialog(m_saveHandler.getChangedIds());
             }
         }
+    }
+
+    /**
+     * Creates a check all unused items control displayed above the list.
+     *
+     * @param html the HTML content
+     * @param styles the additional CSS classes
+     * @return the created widget
+     */
+    private HorizontalLayout createCheckAllUnused(String html, String... styles) {
+
+        HorizontalLayout layout1 = new HorizontalLayout();
+        layout1.setWidthFull();
+        layout1.addStyleNames("v-panel", "o-error-dialog");
+        layout1.addStyleName("o-optimize-gallery-note-checkbox");
+        layout1.addStyleNames(styles);
+        CheckBox checkbox = new CheckBox();
+        checkbox.setCaptionAsHtml(true);
+        checkbox.setCaption(html);
+        checkbox.addValueChangeListener(event -> {
+            boolean select = event.getValue().booleanValue();
+            m_provider.getItems().forEach(item -> {
+                item.getCompositeFileDelete().selectForDelete(select);
+            });
+        });
+        layout1.addComponent(checkbox);
+        return layout1;
     }
 
     /**
@@ -2312,13 +2353,19 @@ public class CmsGalleryOptimizeDialog extends CmsBasicDialog {
                     ? Messages.GUI_GALLERY_OPTIMIZE_NO_UNUSED_0
                     : Messages.GUI_GALLERY_OPTIMIZE_NO_UNUSED_DOWNLOADS_0);
                 m_unusedInfo.addComponent(createSimpleNote(text, "o-optimize-gallery-warning"));
+            } else if (unusedCount == 1) {
+                String text = CmsVaadinUtils.getMessageText(
+                    isImageGallery
+                    ? Messages.GUI_GALLERY_OPTIMIZE_ONE_UNUSED_0
+                    : Messages.GUI_GALLERY_OPTIMIZE_ONE_UNUSED_DOWNLOADS_0);
+                m_unusedInfo.addComponent(createSimpleNote(text));
             } else {
                 String text = CmsVaadinUtils.getMessageText(
                     isImageGallery
                     ? Messages.GUI_GALLERY_OPTIMIZE_NUM_UNUSED_1
                     : Messages.GUI_GALLERY_OPTIMIZE_NUM_UNUSED_DOWNLOADS_1,
                     unusedCount);
-                m_unusedInfo.addComponent(createSimpleNote(text));
+                m_unusedInfo.addComponent(createCheckAllUnused(text));
             }
         } else if (m_provider.getSortComparator() == m_provider.SORT_NOCOPYRIGHT_FIRST) {
             long noCopyright = m_provider.getItems().stream().filter(item -> !item.getNoCopyright()).count();

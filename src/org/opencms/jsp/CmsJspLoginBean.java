@@ -56,7 +56,7 @@ import org.apache.commons.logging.Log;
  * Initialize this bean at the beginning of your JSP like this:
  * <pre>
  * &lt;jsp:useBean id="cmslogin" class="org.opencms.jsp.CmsJspLoginBean"&gt;
- * &lt% cmslogin.init(pageContext, request, response); %&gt;
+ * &lt;% cmslogin.init(pageContext, request, response); %&gt;
  * &lt;/jsp:useBean&gt;
  * </pre>
  * <p>
@@ -70,6 +70,9 @@ public class CmsJspLoginBean extends CmsJspActionElement {
 
     /** Flag to indicate if a login was successful. */
     private CmsException m_loginException;
+
+    /** The logout redirect target. If null, the current form URI is used. */
+    private String m_logoutTarget;
 
     /** The verification code for 2FA. */
     private String m_verificationCode;
@@ -207,6 +210,18 @@ public class CmsJspLoginBean extends CmsJspActionElement {
     public CmsException getLoginException() {
 
         return m_loginException;
+    }
+
+    /**
+     * Gets the currently set logout target.
+     *
+     * <p>If this is null, the current login form URI is used as the logout target.
+     *
+     * @return
+     */
+    public String getLogoutTarget() {
+
+        return m_logoutTarget;
     }
 
     /**
@@ -378,6 +393,11 @@ public class CmsJspLoginBean extends CmsJspActionElement {
 
         String loggedInUserName = getRequestContext().getCurrentUser().getName();
         HttpSession session = getRequest().getSession(false);
+        String logoutTarget = m_logoutTarget != null ? m_logoutTarget : getFormLink();
+        String redirectUri = OpenCms.getAuthorizationHandler().getLogoutRedirectUri(
+            getCmsObject(),
+            getRequest(),
+            logoutTarget);
         if (session != null) {
             session.invalidate();
             /* we need this because a new session might be created after this method,
@@ -394,7 +414,19 @@ public class CmsJspLoginBean extends CmsJspActionElement {
                     getRequestContext().getRemoteAddress()));
         }
         CmsUserLog.logLogout(getCmsObject());
-        getResponse().sendRedirect(getFormLink());
+        getResponse().sendRedirect(redirectUri);
+
+    }
+
+    /**
+     * Manually sets a URI that should be redirected to after logout.
+     *
+     * @param logoutTarget the logout target
+     */
+    public void setLogoutTarget(String logoutTarget) {
+
+        m_logoutTarget = logoutTarget;
+
     }
 
     /**

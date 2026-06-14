@@ -48,7 +48,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import org.apache.solr.client.solrj.SolrQuery;
+import org.apache.solr.client.solrj.request.SolrQuery;
 import org.apache.solr.common.params.CommonParams;
 
 /**
@@ -435,7 +435,11 @@ public class CmsSolrQuery extends SolrQuery {
     }
 
     /**
-     * @see org.apache.solr.client.solrj.SolrQuery#setRequestHandler(java.lang.String)
+     * Sets the request handler.<p>
+     *
+     * @param qt the request handler
+     *
+     * @return this query
      */
     @Override
     public SolrQuery setRequestHandler(String qt) {

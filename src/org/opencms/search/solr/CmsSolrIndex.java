@@ -36,6 +36,7 @@ import org.opencms.configuration.CmsParameterConfiguration;
 import org.opencms.file.CmsFile;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsProject;
+import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
@@ -54,6 +55,7 @@ import org.opencms.search.CmsSearchResource;
 import org.opencms.search.CmsSearchResultList;
 import org.opencms.search.I_CmsIndexWriter;
 import org.opencms.search.I_CmsSearchDocument;
+import org.opencms.search.extractors.I_CmsExtractionResult;
 import org.opencms.search.fields.CmsSearchField;
 import org.opencms.search.galleries.CmsGallerySearchParameters;
 import org.opencms.search.galleries.CmsGallerySearchResult;
@@ -65,7 +67,6 @@ import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsStringUtil;
 
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.io.UnsupportedEncodingException;
 import java.io.Writer;
 import java.nio.charset.Charset;
@@ -83,14 +84,12 @@ import javax.servlet.ServletResponse;
 
 import org.apache.commons.logging.Log;
 import org.apache.solr.client.solrj.SolrClient;
-import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.embedded.EmbeddedSolrServer;
+import org.apache.solr.client.solrj.request.SolrQuery;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.common.SolrDocument;
 import org.apache.solr.common.SolrDocumentList;
 import org.apache.solr.common.SolrInputDocument;
-import org.apache.solr.common.util.ContentStreamBase;
-import org.apache.solr.common.util.FastWriter;
 import org.apache.solr.common.util.NamedList;
 import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.core.CoreContainer;
@@ -99,7 +98,6 @@ import org.apache.solr.handler.ReplicationHandler;
 import org.apache.solr.request.LocalSolrQueryRequest;
 import org.apache.solr.request.SolrQueryRequest;
 import org.apache.solr.request.SolrRequestHandler;
-import org.apache.solr.response.BinaryQueryResponseWriter;
 import org.apache.solr.response.QueryResponseWriter;
 import org.apache.solr.response.SolrQueryResponse;
 
@@ -124,10 +122,13 @@ public class CmsSolrIndex extends CmsSearchIndex {
     /** Constant for additional parameter to set the post processor class name. */
     public static final String POST_PROCESSOR = "search.solr.postProcessor";
 
+    /** Constant for additional parameter to set an index-specific document transformer. */
+    public static final String DOCUMENT_TRANSFORMER = "search.solr.documentTransformer";
+
     /**
      * Constant for additional parameter to set the maximally processed results (start + rows) for searches with this index.
      * It overwrites the global configuration from {@link CmsSolrConfiguration#getMaxProcessedResults()} for this index.
-    **/
+    */
     public static final String SOLR_SEARCH_MAX_PROCESSED_RESULTS = "search.solr.maxProcessedResults";
 
     /** Constant for additional parameter to set the fields the select handler should return at maximum. */
@@ -223,6 +224,9 @@ public class CmsSolrIndex extends CmsSearchIndex {
     /** The post document manipulator. */
     private transient I_CmsSolrPostSearchProcessor m_postProcessor;
 
+    /** The index specific document transformer. */
+    private transient I_CmsSolrDocumentTransformer m_documentTransformer;
+
     /** The core name for the index. */
     private transient String m_coreName;
 
@@ -311,6 +315,20 @@ public class CmsSolrIndex extends CmsSearchIndex {
                     }
                 }
                 break;
+            case DOCUMENT_TRANSFORMER:
+                if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
+                    try {
+                        Class<I_CmsSolrDocumentTransformer> transformerClass = (Class<I_CmsSolrDocumentTransformer>)Class.forName(
+                            value);
+                        setDocumentTransformer(transformerClass.getDeclaredConstructor().newInstance());
+                    } catch (Exception e) {
+                        CmsException ex = new CmsException(
+                            Messages.get().container(Messages.LOG_SOLR_ERR_DOCUMENT_TRANSFORMER_NOT_EXIST_1, value),
+                            e);
+                        LOG.error(ex.getMessage(), ex);
+                    }
+                }
+                break;
             case SOLR_HANDLER_ALLOWED_FIELDS:
                 if (CmsStringUtil.isNotEmptyOrWhitespaceOnly(value)) {
                     m_handlerAllowedFields = Stream.of(value.split(",")).map(v -> v.trim()).toArray(String[]::new);
@@ -385,6 +403,30 @@ public class CmsSolrIndex extends CmsSearchIndex {
     }
 
     /**
+     * @see org.opencms.search.I_CmsSearchIndex#applyDocumentTransformation(org.opencms.search.I_CmsSearchDocument, org.opencms.file.CmsObject, org.opencms.file.CmsResource, org.opencms.search.extractors.I_CmsExtractionResult, java.util.List, java.util.List)
+     */
+    @Override
+    public I_CmsSearchDocument applyDocumentTransformation(
+        I_CmsSearchDocument doc,
+        CmsObject cms,
+        CmsResource resource,
+        I_CmsExtractionResult extractionResult,
+        List<CmsProperty> properties,
+        List<CmsProperty> propertiesSearched) {
+
+        if (null != m_documentTransformer) {
+            return m_documentTransformer.transform(
+                doc,
+                cms,
+                resource,
+                extractionResult,
+                properties,
+                propertiesSearched);
+        }
+        return doc;
+    }
+
+    /**
      * @see org.opencms.search.CmsSearchIndex#createEmptyDocument(org.opencms.file.CmsResource)
      */
     @Override
@@ -434,7 +476,7 @@ public class CmsSolrIndex extends CmsSearchIndex {
                 if ("content".equalsIgnoreCase(propValue.trim())) {
                     return false;
                 }
-                if (!("false".equalsIgnoreCase(propValue.trim()))) {
+                if (!(propValue.trim().toLowerCase().startsWith("false"))) {
                     return true;
                 }
             }
@@ -968,9 +1010,8 @@ public class CmsSolrIndex extends CmsSearchIndex {
             // initialize the search context
             CmsObject searchCms = OpenCms.initCmsObject(cms);
 
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            //////////////////////// QUERY FOR PERMISSION CHECK, FACETS, SPELLCHECK, SUGGESTIONS ///////////////////////////
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////////////////////////////////////////////////////////////////////////////////////////// QUERY
+            /// FOR PERMISSION CHECK, FACETS, SPELLCHECK, SUGGESTIONS
 
             // Clone the query and keep the original one
             CmsSolrQuery checkQuery = query.clone();
@@ -1096,9 +1137,8 @@ public class CmsSolrIndex extends CmsSearchIndex {
                 } while ((resultSolrIds.size() < rows) && (processedResults < maxToProcess));
             }
 
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            //////////////////////// QUERY FOR RESULTS AND HIGHLIGHTING ////////////////////////////////////////////////////
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////////////////////////////////////////////////////////////////////////////////////////// QUERY
+            /// FOR RESULTS AND HIGHLIGHTING
 
             // the lists storing the found documents that will be returned
             List<CmsSearchResource> resourceDocumentList = new ArrayList<CmsSearchResource>(resultSolrIds.size());
@@ -1168,9 +1208,8 @@ public class CmsSolrIndex extends CmsSearchIndex {
 
             long processTime = System.currentTimeMillis() - startTime - solrPermissionTime - solrResultTime;
 
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            //////////////////////// CREATE THE FINAL RESPONSE /////////////////////////////////////////////////////////
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            //////////////////////////////////////////////////////////////////////////////////////////////////////////// CREATE
+            /// THE FINAL RESPONSE
 
             // we are manipulating the checkQueryResponse to set up the final response, we want to deliver.
 
@@ -1330,6 +1369,17 @@ public class CmsSolrIndex extends CmsSearchIndex {
     }
 
     /**
+     * Sets the document transformer.<p>
+     *
+     * @param documentTransformer the document transformer to set
+     */
+    public void setDocumentTransformer(I_CmsSolrDocumentTransformer documentTransformer) {
+
+        documentTransformer.init(this);
+        m_documentTransformer = documentTransformer;
+    }
+
+    /**
      * Sets the logical key/name of this search index.<p>
      *
      * @param name the logical key/name of this search index
@@ -1361,6 +1411,24 @@ public class CmsSolrIndex extends CmsSearchIndex {
     public void setSolrServer(SolrClient client) {
 
         m_solr = client;
+    }
+
+    /**
+     * Shuts down the search index.<p>
+     *
+     * This will close the local Lucene index searcher instance.<p>
+     */
+    @Override
+    public void shutDown() {
+
+        super.shutDown();
+        if (m_solr != null) {
+            try {
+                m_solr.close();
+            } catch (IOException e) {
+                LOG.warn("Failed to close the solr client.", e);
+            }
+        }
     }
 
     /**
@@ -1675,18 +1743,7 @@ public class CmsSolrIndex extends CmsSearchIndex {
                     response.setContentType(ct);
                 }
 
-                if (responseWriter instanceof BinaryQueryResponseWriter) {
-                    BinaryQueryResponseWriter binWriter = (BinaryQueryResponseWriter)responseWriter;
-                    binWriter.write(response.getOutputStream(), queryRequest, queryResponse);
-                } else {
-                    String charset = ContentStreamBase.getCharsetFromContentType(ct);
-                    out = ((charset == null) || charset.equalsIgnoreCase(UTF8.toString()))
-                    ? new OutputStreamWriter(response.getOutputStream(), UTF8)
-                    : new OutputStreamWriter(response.getOutputStream(), charset);
-                    out = new FastWriter(out);
-                    responseWriter.write(out, queryRequest, queryResponse);
-                    out.flush();
-                }
+                responseWriter.write(response.getOutputStream(), queryRequest, queryResponse);
             } finally {
                 core.close();
                 if (out != null) {

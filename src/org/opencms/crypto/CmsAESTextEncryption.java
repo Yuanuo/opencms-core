@@ -62,6 +62,9 @@ public class CmsAESTextEncryption implements I_CmsTextEncryption {
     /** Logger instance for this class. */
     private static final Log LOG = CmsLog.getLog(CmsAESTextEncryption.class);
 
+    /** The default cipher - what you'd effectively get with Cipher.getInstance("AES"). */
+    protected String m_aesVariant = "AES/ECB/PKCS5Padding";
+
     /** The parameter configuration. */
     private CmsParameterConfiguration m_config = new CmsParameterConfiguration();
 
@@ -120,7 +123,7 @@ public class CmsAESTextEncryption implements I_CmsTextEncryption {
 
         byte[] encryptedBytes = BASE64.decode(input);
         try {
-            Cipher cipher = Cipher.getInstance(AES);
+            Cipher cipher = Cipher.getInstance(m_aesVariant);
             cipher.init(Cipher.DECRYPT_MODE, m_key);
             byte[] decData = cipher.doFinal(encryptedBytes);
             String result = new String(decData, StandardCharsets.UTF_8);
@@ -136,7 +139,7 @@ public class CmsAESTextEncryption implements I_CmsTextEncryption {
     public String encrypt(String input) throws CmsEncryptionException {
 
         try {
-            Cipher cipher = Cipher.getInstance(AES);
+            Cipher cipher = Cipher.getInstance(m_aesVariant);
             cipher.init(Cipher.ENCRYPT_MODE, m_key);
             byte[] encData = cipher.doFinal(input.getBytes(StandardCharsets.UTF_8));
             String lit = BASE64.encode(encData);
@@ -178,7 +181,7 @@ public class CmsAESTextEncryption implements I_CmsTextEncryption {
 
         String secret = m_config.get(PARAM_SECRET);
         if (secret == null) {
-            throw new IllegalArgumentException("Parameter 'secret' must be set for CmsAESTextEncryption!");
+            throw new IllegalArgumentException("Parameter 'secret' must be set!");
         }
         m_key = generateAESKey(secret);
     }

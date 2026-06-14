@@ -931,11 +931,7 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
 
             if (!params.isIgnoreQuery()) {
                 // since OpenCms 8 the query can be empty in which case only filters are used for the result
-                if (params.getParsedQuery() != null) {
-                    // the query was already build, re-use it
-                    QueryParser p = new QueryParser(CmsSearchField.FIELD_CONTENT, getAnalyzer());
-                    fieldsQuery = p.parse(params.getParsedQuery());
-                } else if (params.getFieldQueries() != null) {
+                if (params.getFieldQueries() != null) {
                     // each field has an individual query
                     BooleanQuery.Builder mustOccur = null;
                     BooleanQuery.Builder shouldOccur = null;
@@ -1004,9 +1000,6 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
             if (query == null) {
                 // if no text query is set, then we match all documents
                 query = new MatchAllDocsQuery();
-            } else {
-                // store the parsed query for page browsing
-                params.setParsedQuery(query.toString(CmsSearchField.FIELD_CONTENT));
             }
 
             // build the final query
@@ -1044,9 +1037,9 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
             timeResultProcessing = -System.currentTimeMillis();
 
             if (hits != null) {
-                long hitCount = hits.totalHits.value > hits.scoreDocs.length
+                long hitCount = hits.totalHits.value() > hits.scoreDocs.length
                 ? hits.scoreDocs.length
-                : hits.totalHits.value;
+                : hits.totalHits.value();
                 int page = params.getSearchPage();
                 long start = -1, end = -1;
                 if ((params.getMatchesPerPage() > 0) && (page > 0) && (hitCount > 0)) {
@@ -1077,7 +1070,9 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
                                 // do not use the resource to obtain the raw content, read it from the lucene document!
                                 String excerpt = null;
                                 if (isCreatingExcerpt() && (fieldsQuery != null)) {
-                                    Document exDoc = searcher.storedFields().document(hits.scoreDocs[i].doc, excerptFields);
+                                    Document exDoc = searcher.storedFields().document(
+                                        hits.scoreDocs[i].doc,
+                                        excerptFields);
                                     I_CmsTermHighlighter highlighter = OpenCms.getSearchManager().getHighlighter();
                                     excerpt = highlighter.getExcerpt(exDoc, this, params, fieldsQuery, getAnalyzer());
                                 }
@@ -1117,7 +1112,7 @@ public class CmsSearchIndex extends A_CmsSearchIndex {
         if (LOG.isDebugEnabled()) {
             timeTotal += System.currentTimeMillis();
             Object[] logParams = new Object[] {
-                Long.valueOf(hits == null ? 0 : hits.totalHits.value),
+                Long.valueOf(hits == null ? 0 : hits.totalHits.value()),
                 Long.valueOf(timeTotal),
                 Long.valueOf(timeLucene),
                 Long.valueOf(timeResultProcessing)};

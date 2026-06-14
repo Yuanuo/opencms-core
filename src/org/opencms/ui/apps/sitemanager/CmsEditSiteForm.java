@@ -72,6 +72,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -190,6 +192,7 @@ public class CmsEditSiteForm extends CmsBasicDialog {
             if (enteredServer.isEmpty()) {
                 return;
             }
+            checkUriAuthority(enteredServer);
             if (m_alreadyUsedURL.contains(new CmsSiteMatcher(enteredServer))) {
                 if (!OpenCms.getSiteManager().getSites().get(new CmsSiteMatcher(enteredServer)).equals(m_site)) {
                     throw new InvalidValueException(
@@ -438,6 +441,7 @@ public class CmsEditSiteForm extends CmsBasicDialog {
             if (enteredServer.isEmpty()) {
                 throw new InvalidValueException(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_SERVER_EMPTY_0));
             }
+            checkUriAuthority(enteredServer);
             if (m_alreadyUsedURL.contains(new CmsSiteMatcher(enteredServer))) {
                 throw new InvalidValueException(
                     CmsVaadinUtils.getMessageText(Messages.GUI_SITE_SERVER_ALREADYUSED_1, enteredServer));
@@ -1006,6 +1010,30 @@ public class CmsEditSiteForm extends CmsBasicDialog {
     }
 
     /**
+     * Validates a site URI is syntactically correct
+     * .
+     * @param enteredServer the site URI to check
+     * @throws InvalidValueException if the site URI is invalid
+     */
+    public void checkUriAuthority(String enteredServer) throws InvalidValueException {
+
+        boolean invalid = false;
+        try {
+            URI uri = new URI(enteredServer);
+            if (uri.getAuthority() == null) {
+                LOG.debug("missing authority: " + enteredServer);
+                invalid = true;
+            }
+        } catch (URISyntaxException e) {
+            invalid = true;
+        }
+        if (invalid) {
+            throw new InvalidValueException(CmsVaadinUtils.getMessageText(Messages.GUI_SITE_INVALID_URI_0));
+        }
+
+    }
+
+    /**
      * Checks if site root exists in on and offline repository.<p>
      */
     protected void checkOnOfflineSiteRoot() {
@@ -1063,7 +1091,7 @@ public class CmsEditSiteForm extends CmsBasicDialog {
      * Creates field for aliases.<p>
      *
      * @param alias url
-     * @param red redirect
+     * @param redirectMode redirect mode
      * @return component
      */
     protected FormLayout createAliasComponent(String alias, CmsSiteMatcher.RedirectMode redirectMode) {
@@ -1243,8 +1271,9 @@ public class CmsEditSiteForm extends CmsBasicDialog {
         CmsSiteMatcher testAlias = new CmsSiteMatcher(aliasName);
         int count = 0;
         for (Component c : m_aliases) {
-            if (c instanceof CmsRemovableFormRow<?>) {
-                String alName = (String)((CmsRemovableFormRow<? extends AbstractField<?>>)c).getInput().getValue();
+            if (c instanceof I_CmsEditableGroupRow) {
+                TextField field = getTextFieldForAliasRow((I_CmsEditableGroupRow)c);
+                String alName = field.getValue();
                 if (testAlias.equals(new CmsSiteMatcher(alName))) {
                     count++;
                 }
@@ -1281,8 +1310,8 @@ public class CmsEditSiteForm extends CmsBasicDialog {
         boolean ret = true;
 
         for (I_CmsEditableGroupRow row : m_aliasGroup.getRows()) {
-            FormLayout layout = (FormLayout)(row.getComponent());
-            TextField field = (TextField)layout.getComponent(0);
+
+            TextField field = getTextFieldForAliasRow(row);
             ret = ret & field.isValid();
         }
         return ret;
@@ -1715,7 +1744,11 @@ public class CmsEditSiteForm extends CmsBasicDialog {
             FormLayout layout = (FormLayout)(row.getComponent());
             ComboBox box = (ComboBox)(layout.getComponent(1));
             TextField field = (TextField)layout.getComponent(0);
-            CmsSiteMatcher matcher = new CmsSiteMatcher(field.getValue());
+            String value = field.getValue();
+            if (CmsStringUtil.isEmptyOrWhitespaceOnly(value)) {
+                continue;
+            }
+            CmsSiteMatcher matcher = new CmsSiteMatcher(value);
             matcher.setRedirectMode((RedirectMode)(box.getValue()));
             ret.add(matcher);
         }
@@ -1943,6 +1976,19 @@ public class CmsEditSiteForm extends CmsBasicDialog {
             res = res.endsWith("/") ? res.substring(0, res.length() - 1) : res;
         }
         return res;
+    }
+
+    /**
+     * Gets the text field for the given alias row.
+     *
+     * @param row the alias row
+     * @return the text field in that row
+     */
+    private TextField getTextFieldForAliasRow(I_CmsEditableGroupRow row) {
+
+        FormLayout layout = (FormLayout)(row.getComponent());
+        TextField field = (TextField)layout.getComponent(0);
+        return field;
     }
 
     /**

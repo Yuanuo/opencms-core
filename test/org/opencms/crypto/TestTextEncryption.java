@@ -27,19 +27,27 @@
 
 package org.opencms.crypto;
 
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 
 /**
  * Tests for text en/decryption.
  */
-public class TestTextEncryption extends TestCase {
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class TestTextEncryption {
 
     /**
      * This is mostly an integration test to show that the crypto libraries work.
      */
+    @Test
+    @Order(1)
     public void testAES() throws Exception {
+
         String key1 = "key1";
         String key2 = "key2";
         CmsAESTextEncryption enc1 = new CmsAESTextEncryption(key1);
@@ -52,6 +60,30 @@ public class TestTextEncryption extends TestCase {
         assertNotEquals(encrypted1, encrypted2);
         assertEquals(plaintext, enc1.decrypt(encrypted1));
         assertEquals(plaintext, enc2.decrypt(encrypted2));
+    }
+
+    /**
+     * Test for AES in CBC mode.
+     */
+    @Test
+    @Order(2)
+    public void testAESCBC() throws Exception {
+
+        String key1 = "key1";
+        String key2 = "key2";
+        CmsAESCBCTextEncryption enc1 = new CmsAESCBCTextEncryption(key1);
+        CmsAESCBCTextEncryption enc2 = new CmsAESCBCTextEncryption(key2);
+        String plaintext = "foo bar baz";
+        String encrypted1 = enc1.encrypt(plaintext);
+        String encrypted2 = enc2.encrypt(plaintext);
+        assertNotEquals(plaintext, encrypted1);
+        assertNotEquals(plaintext, encrypted2);
+        assertNotEquals(encrypted1, encrypted2);
+        assertEquals(plaintext, enc1.decrypt(encrypted1));
+        assertEquals(plaintext, enc2.decrypt(encrypted2));
+
+        // multiple encryptions of the same input give different results
+        assertNotEquals(enc1.encrypt(plaintext), enc1.encrypt(plaintext));
     }
 
 }

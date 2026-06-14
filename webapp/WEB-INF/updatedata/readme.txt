@@ -21,7 +21,7 @@ IMPORTANT: Alkacon OCEE versions less than @OPENCMS_VERSION@ will not work with 
 IMPORTANT: The updater is only compatible with the database engines MySQL,
            Oracle and PostgreSQL.
 
-IMPORTANT: This version of OpenCms requires at least Java 11.
+IMPORTANT: This version of OpenCms requires at least Java 21.
 
 IMPORTANT: The upgrade wizard will replace all VFS resources of the updated modules.
            If you made modifications to these modules, their changes will be lost.
@@ -133,7 +133,7 @@ You should now be able to log into the OpenCms workplace as before.
 As the search libraries and configuration may have changed, it is necessary to rebuild all search indexes.
 Log into OpenCms and navigate to Launchpad > Database -> Search Indexes and rebuild all indexes.
 
-If you update from OpenCms 10.x or 11.x, you must delete the files under WEB-INF/index/ first and restart your
+If you update from OpenCms 17 or older, you must delete the files under WEB-INF/index/ first and restart your
 servlet container and then reindex your search indexes as shown above.
 
 

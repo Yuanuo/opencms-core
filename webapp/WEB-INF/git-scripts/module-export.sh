@@ -5,6 +5,12 @@
 # The modules are transfered as ZIP files and copied over an existing directory structure.
 #
 
+# associative arrays require bash >= 4
+if ((BASH_VERSINFO[0] < 4)); then
+    echo "This script requires Bash 4 or newer." >&2
+    exit 2
+fi
+
 ##################
 #
 # Display error message ${1} and then exit the script with code ${2}.
@@ -27,6 +33,47 @@ echoVerbose() {
     if [ -n "${OPT_VERBOSE}" ]; then
         echo "${1}${normal}"
     fi
+}
+
+##################
+#
+# Ensures that options requiring a value actually received one.
+#
+requireOptionValue() {
+    if [[ -z "$1" ]]; then
+        echoError "Missing value for option \"$2\"." 3
+    fi
+}
+
+##################
+#
+# Print command line usage information.
+#
+printHelp() {
+    cat <<EOF
+Usage: ${0##*/} [options] [configfile]
+
+Export OpenCms modules from a mounted instance into a local Git repository.
+
+Arguments:
+  configfile                 Configuration file to load.
+                             Default: module-export.conf
+
+Options:
+  -mo <group>                Export modules defined by <group> in the config.
+  -m, --modules <modules>    Export the given space-separated module(s).
+  -s, --substring <text>     Export modules containing the substring <text>.
+  -l, --list                 List module groups defined in the config and exit.
+  -v, --verbose              Enable verbose output.
+  -t, --no-copy-and-unzip    Do not copy and unzip exported modules.
+  -h, --help                 Show this help and exit.
+      --export-folder <dir>  Override the module export source folder.
+      --exclude-libs         Exclude library modules.
+      --no-exclude-libs      Do not exclude library modules.
+      --ignore-unclean       Continue with an unclean Git repository.
+      --no-ignore-unclean    Fail on an unclean Git repository.
+      --copy-and-unzip       Copy ZIPs and unzip them into the target folder.
+EOF
 }
 
 ##################
@@ -61,18 +108,31 @@ setOptions() {
     #read commandline arguments
     while [ "$1" != "" ]; do
         case $1 in
+            -h | --help )           printHelp
+                                    exit 0
+                                    ;;
             -v | --verbose )		OPT_VERBOSE="true"
                                     echoVerbose "* Activated option: --verbose"
                                     ;;
             -m | --modules )		shift
+                                    requireOptionValue "$1" "-m|--modules"
                                     modulesToExport=$1
                                     echoVerbose "* Modules to export: \"$modulesToExport\""
                                     ;;
             -mo )					shift
+                                    requireOptionValue "$1" "-mo"
                                     modulesExportVar=$1
                                     echoVerbose "* Modules to export defined by variable: \"$modulesExportVar\""
                                     ;;
+            -s | --substring )		shift
+                                    requireOptionValue "$1" "-s|--substring"
+                                    moduleSubstring=$1
+                                    echoVerbose "* Modules to export with substring filter: \"$moduleSubstring\""
+                                    ;;
+            -l | --list )		    OPT_LIST="true"
+                                    ;;
             --export-folder )		shift
+                                    requireOptionValue "$1" "--export-folder"
                                     moduleSourcePath=$1
                                     echoVerbose "* Module source path: \"$moduleSourcePath\""
                                     ;;
@@ -101,16 +161,117 @@ setOptions() {
     done
 }
 
-getExportedModule(){
-    echo $( ls | grep "${module}.zip" | head -n1 )
+##################
+#
+# Normalize a space-separated list of modules, remove duplicates and print one
+# module per line.
+#
+normalizeModuleList() {
+    local module
+    declare -A seenModules
+    for module in $1; do
+        if [[ -z "${seenModules[$module]}" ]]; then
+            seenModules[$module]=1
+            echo "$module"
+        fi
+    done
 }
 
-testGitRepository(){
+##################
+#
+# Return true if ${1} looks like a space-separated module list.
+#
+isModuleList() {
+    local module
+    local moduleCount=0
+    for module in $1; do
+        if [[ ! "$module" =~ ^[A-Za-z0-9_-]+([.][A-Za-z0-9_-]+)+$ ]]; then
+            return 1
+        fi
+        moduleCount=$((moduleCount + 1))
+    done
+    [[ $moduleCount -gt 0 ]]
+}
+
+##################
+#
+# Print a module list group with a blank line before it, except for the first
+# group.
+#
+printModuleGroup() {
+    local groupName=$1
+    local modules=$2
+    local module
+    local normalizedModules
+
+    normalizedModules=$(normalizeModuleList "$modules")
+    if [[ -z "$normalizedModules" ]]; then
+        return
+    fi
+
+    if [[ -n "$moduleListGroupPrinted" ]]; then
+        echo
+    fi
+    moduleListGroupPrinted=1
+
+    echo "${groupName}:"
+    while IFS= read -r module; do
+        echo "- ${module}"
+    done <<< "$normalizedModules"
+}
+
+##################
+#
+# List the module groups defined by the configuration file.
+#
+listModuleGroups() {
+    local varName
+    local varValue
+    local normalizedDefaultModules
+    local normalizedModules
+    local moduleListKey
+    declare -A listedModuleLists
+
+    echoVerbose "* Listing the available module groups in the config file:"
+
+    moduleListGroupPrinted=""
+    normalizedDefaultModules=$(normalizeModuleList "$DEFAULT_MODULES_TO_EXPORT")
+    printModuleGroup "Default" "$DEFAULT_MODULES_TO_EXPORT"
+    if [[ -n "$normalizedDefaultModules" ]]; then
+        moduleListKey=${normalizedDefaultModules//$'\n'/ }
+        listedModuleLists[$moduleListKey]=1
+    fi
+
+    for varName in "${configVariables[@]}"; do
+        if [[ "$varName" == "DEFAULT_MODULES_TO_EXPORT" ]]; then
+            continue
+        fi
+
+        varValue=${!varName}
+        if [[ -z "$varValue" ]]; then
+            continue
+        fi
+        if ! isModuleList "$varValue"; then
+            continue
+        fi
+
+        normalizedModules=$(normalizeModuleList "$varValue")
+        moduleListKey=${normalizedModules//$'\n'/ }
+        if [[ -n "${listedModuleLists[$moduleListKey]}" ]]; then
+            continue
+        fi
+        listedModuleLists[$moduleListKey]=1
+
+        printModuleGroup "$varName" "$varValue"
+    done
+}
+
+testGitRepository() {
     # test git repository
     echoVerbose
     echoVerbose "Testing git repository and adjusting user information"
     __pwd=$(pwd)
-    cd $REPOSITORY_HOME
+    cd "$REPOSITORY_HOME"
     if [[ $? != 0 ]]; then
         echoError "The git repository's main folder \"$REPOSITORY_HOME\" does not exist." 5
     fi
@@ -130,29 +291,29 @@ testGitRepository(){
     else
         echoVerbose "* Test ok: found clean git repository at \"$(pwd)\"."
     fi
-    cd $__pwd
+    cd "$__pwd"
 }
 
-testModuleSourcePath(){
+testModuleSourcePath() {
     __pwd=$(pwd)
-    cd $moduleSourcePath
+    cd "$moduleSourcePath"
     if [[ $? != 0 ]]; then
         echoError "The specified module source path \"$moduleSourcePath\" does not exist!" 7
     fi
     echoVerbose
     echo "* Modules exported from: ${cyan}$(pwd)${normal}"
-    cd $_pwd
+    cd "$__pwd"
 }
 
-testModuleTargetPath(){
+testModuleTargetPath() {
     __pwd=$(pwd)
-    cd $MODULE_TARGET_PATH
+    cd "$MODULE_TARGET_PATH"
     if [[ $? != 0 ]]; then
         echoError "The specified module target path \"$MODULE_TARGET_PATH\" does not exist!" 8
         exit 8
     fi
     echo "* Modules exported to  : ${cyan}$(pwd)${normal}"
-    cd $__pwd
+    cd "$__pwd"
 }
 
 ##################
@@ -163,10 +324,6 @@ testModuleTargetPath(){
 # Initialize command line parameters
 setOptions "${@}"
 
-echo
-echo "${green}${bold}Exporting modules from OpenCms to local git repository.${normal}"
-echo
-
 if [[ -z "$configfile" ]]; then
     echoError "No config file provided!" 3
 fi
@@ -174,18 +331,54 @@ if [[ ! -f "$configfile" ]]; then
     echoError "Config file '${configfile}' does not exit!" 3
 fi
 
-source $configfile
+declare -A variablesBeforeConfig
+configVariables=()
+variableName=""
+for variableName in $(compgen -v); do
+    variablesBeforeConfig[$variableName]=1
+done
+
+source "$configfile"
+
+for variableName in $(compgen -v); do
+    if [[ -z "${variablesBeforeConfig[$variableName]}" ]]; then
+        configVariables+=("$variableName")
+    fi
+done
+
 echoVerbose "* Contents of configuration file \"$configfile\":"
 
 if [ -n "${OPT_VERBOSE}" ]; then
-    cat $configfile | awk '$0="   * "$0'
+    cat "$configfile" | awk '$0="   * "$0'
 fi
+
+if [[ -n "$OPT_LIST" ]]; then
+    listModuleGroups
+    exit 0
+fi
+
+echo
+echo "${green}${bold}Exporting modules from OpenCms to local git repository.${normal}"
+echo
 
 if [[ ! -z "$modulesExportVar" ]]; then
     MODULES_TO_EXPORT=${!modulesExportVar}
     if [[ -z "$MODULES_TO_EXPORT" ]]; then
         echoError "No modules defined by variable \"$modulesExportVar\"!" 3
     fi
+fi
+
+if [[ ! -z "$moduleSubstring" ]]; then
+    if [[ ${#moduleSubstring} -lt 3 ]]; then
+        echoError "Substring \"$moduleSubstring\" is too short. Please provide at least 3 letters." 3
+    fi
+    for module in $DEFAULT_MODULES_TO_EXPORT; do
+        if [[ "$module" == *"$moduleSubstring"* ]]; then
+            if [[ " $MODULES_TO_EXPORT " != *" $module "* ]]; then
+                MODULES_TO_EXPORT="${MODULES_TO_EXPORT} ${module}"
+            fi
+        fi
+    done
 fi
 
 # see http://wiki.bash-hackers.org/syntax/pe#use_a_default_value
@@ -211,12 +404,12 @@ if [[ -z "$modulesToExport" ]]; then
 else
     newModules=""
     for module in $modulesToExport; do
-        if [[ ! ($MODULES_TO_EXPORT =~ (^| )$module($| ) ) ]]; then
+        if [[ " $MODULES_TO_EXPORT " != *" $module "* ]]; then
             newModules="${newModules}${module} "
         fi
     done
     if [[ $newModules != "" ]]; then
-        sed -i "/^MODULES_TO_EXPORT/s/=\"/=\"$newModules/" $configfile
+        sed -i "/^MODULES_TO_EXPORT/s/=\"/=\"$newModules/" "$configfile"
         echo
         echo " * Added new modules \"$newModules\" to the config file."
         echo
@@ -281,10 +474,10 @@ echoVerbose "* Set exclude libs flag: $excludeLibs."
 declare -A moduleMappings
 if [ ! -z "$MODULE_MAPPINGS" ] ; then
     for MAPPING in $MODULE_MAPPINGS ; do
-        IFS="=" read k v <<< "$MAPPING"
+        IFS="=" read -r k v <<< "$MAPPING"
         moduleMappings[$k]="$v"
     done
-    command -v perl || {
+    command -v perl >/dev/null 2>&1 || {
         echoError "Perl is required when using module mappings." 15
     }
 fi
@@ -300,19 +493,25 @@ for module in $modulesToExport; do
 done
 
 echo
-if [ $copyAndUnzip == 1 ]; then
+if [[ "$copyAndUnzip" == 1 ]]; then
     ## copy and unzip modules
     unzipOptions=""
     if [ ! -n "${OPT_VERBOSE}" ]; then
         unzipOptions="-qq"
     fi
+    cd "$moduleSourcePath"
+    moduleExportFileCache=$(ls)
     for module in $modulesToExport; do
         echoVerbose
         echo "* Exporting: ${cyan}${module}${normal}"
         echoVerbose
-        cd $moduleSourcePath
-        fileName=$(getExportedModule)
+        cd "$moduleSourcePath"
+        fileName=$( echo $( printf '%s\n' "$moduleExportFileCache" | grep -F -x -m1 -- "${module}.zip" ) )
         if [[ ! -z "$fileName" ]]; then
+            if ! unzip -tqq "${fileName}" > /dev/null 2>&1; then
+                echo "${yellow}${bold}* WARNING:${normal}${yellow} Skipped module $module - \"${moduleSourcePath}/${fileName}\" is not a valid zip archive!${normal}"
+                continue
+            fi
             targetModule=${moduleMappings[$module]}
             if [ -z "$targetModule" ] ; then
                 targetModule=$module
@@ -323,10 +522,10 @@ if [ $copyAndUnzip == 1 ]; then
             #check if a subdirectory for the module exists - if not add it
             if [ ! -d "$targetModule" ]; then
                 echoVerbose "   * Creating missing module directory \"$targetModule\" under \"$(pwd)\"."
-                mkdir $targetModule
+                mkdir "$targetModule"
             fi
             #go to the modules' subfolder in the project
-            cd $targetModule
+            cd "$targetModule"
             #remove leading "/" from MODULE_RESOURCES_SUBFOLDER, if necessary
             if [[ (! -z "$MODULE_RESOURCES_SUBFOLDER") && (${MODULE_RESOURCES_SUBFOLDER:0:1} == "/") ]]; then
                 MODULE_RESOURCES_SUBFOLDER=${MODULE_RESOURCES_SUBFOLDER:1}
@@ -335,16 +534,18 @@ if [ $copyAndUnzip == 1 ]; then
             if [[ (! -z "$MODULE_RESOURCES_SUBFOLDER") && (! -d "$MODULE_RESOURCES_SUBFOLDER") ]]; then
                 echoVerbose "   * Creating missing resources subfolder \"$MODULE_RESOURCES_SUBFOLDER\"\
                     under $(pwd)."
-                mkdir $MODULE_RESOURCES_SUBFOLDER
+                mkdir "$MODULE_RESOURCES_SUBFOLDER"
             fi
             #if there's a resources subfolder, switch to it
             if [[ -d "$MODULE_RESOURCES_SUBFOLDER" ]]; then
-                cd $MODULE_RESOURCES_SUBFOLDER
+                cd "$MODULE_RESOURCES_SUBFOLDER"
             fi
             #delete all resources currently checked in in the project
-            if [[ "$(pwd)" == "${MODULE_TARGET_PATH}"* ]]; then
+            currentPath=$(pwd -P)
+            moduleTargetPath=$(cd "$MODULE_TARGET_PATH" && pwd -P)
+            if [[ "$currentPath" == "$moduleTargetPath"/* ]]; then
                 echoVerbose "   * Removing old version of the module resources under $(pwd)."
-                rm -fr ./{.[^.],}*
+                rm -rf -- ./* ./.??*
                 if [[ $? != 0 ]]; then
                     echoError "Failed to remove all resources under $(pwd)." 13
                 fi
@@ -377,7 +578,7 @@ if [ $copyAndUnzip == 1 ]; then
             echoVerbose "   * Unzipping copied file."
             #unzip it
             unzip -o ${unzipOptions} "${fileName}" | awk '$0="     "$0'
-            if [[ $? != 0 ]]; then
+            if [[ ${PIPESTATUS[0]} != 0 ]]; then
                 echoError "Failed to unzip \"${fileName}\" in $(pwd)." 13
             fi
             if [ ! "$module" == "$targetModule" ] ; then
@@ -387,7 +588,7 @@ if [ $copyAndUnzip == 1 ]; then
                 echoVerbose "Manifest path: $manifest"
                 if [ ! -z "$manifest" ] ; then
                     export targetModule
-                    perl -ne 'if (/<module>/../<\/module>/) { s#<name>.*?</name>#<name>$ENV{"targetModule"}</name>#; } ; print;' < $manifest > "${manifest}.tmp"
+                    perl -ne 'if (/<module>/../<\/module>/) { s#<name>.*?</name>#<name>$ENV{"targetModule"}</name>#; } ; print;' < "$manifest" > "${manifest}.tmp"
                     tmpContent=$(cat "${manifest}.tmp")
                     if [ ! -z "$tmpContent" ] ; then
                         rm "$manifest"
@@ -402,7 +603,7 @@ if [ $copyAndUnzip == 1 ]; then
             #remove lib/ subfolder if necessary
             echoVerbose "   * Removing lib folder ..."
             if [[ $excludeLibs == 1 ]]; then
-                libFolder="system/modules/${module}/lib"
+                libFolder="system/modules/${targetModule}/lib"
                 if [[ -d "$libFolder" ]]; then
                     rm -fr "$libFolder"
                     echoVerbose "     * ... lib/ folder \"$(pwd)/$libFolder\" removed."
@@ -422,7 +623,7 @@ else
 fi
 
 # commit changes
-cd $REPOSITORY_HOME
+cd "$REPOSITORY_HOME"
 
 echo
 echo "${bold}Export completed successfully!${normal}"

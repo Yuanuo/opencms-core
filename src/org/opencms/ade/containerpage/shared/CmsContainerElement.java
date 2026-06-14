@@ -27,6 +27,7 @@
 
 package org.opencms.ade.containerpage.shared;
 
+import org.opencms.gwt.shared.CmsAvailabilityInfo;
 import org.opencms.gwt.shared.CmsPermissionInfo;
 import org.opencms.gwt.shared.I_CmsHasIconClasses;
 import org.opencms.util.CmsUUID;
@@ -125,11 +126,13 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
      * Key for the setting used to identify which page this element was read from originally.
      *
      * <p>This setting is not stored when saving a container page.
-     **/
+     */
     public static final String SETTING_PAGE_ID = "SYSTEM::pageId";
 
     /** The use as copy model setting key. */
     public static final String USE_AS_COPY_MODEL = "use_as_copy_model";
+
+    private CmsAvailabilityInfo m_availabilityInfo;
 
     private CmsElementLockInfo m_lockInfo = new CmsElementLockInfo(null, false);
 
@@ -193,6 +196,9 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
     /** True if the element is marked as 'reused'. */
     private boolean m_reused;
 
+    /** True if the element has the name pattern property. */
+    private boolean m_hasNamePatternProperty;
+
     /**
      * Default constructor.<p>
      */
@@ -219,6 +225,7 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
             m_permissionInfo.hasWritePermission(),
             m_permissionInfo.getNoEditReason());
         result.m_releasedAndNotExpired = m_releasedAndNotExpired;
+        result.m_availabilityInfo = m_availabilityInfo;
         result.m_resourceType = m_resourceType;
         result.m_iconClasses = m_iconClasses;
         result.m_sitePath = m_sitePath;
@@ -229,7 +236,13 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
         result.m_wasModelGroup = m_wasModelGroup;
         result.m_isModelGroupAlwaysReplace = m_isModelGroupAlwaysReplace;
         result.m_reused = m_reused;
+        result.m_hasNamePatternProperty = m_hasNamePatternProperty;
         return result;
+    }
+
+    public CmsAvailabilityInfo getAvailabilityInfo() {
+
+        return m_availabilityInfo;
     }
 
     /**
@@ -354,6 +367,16 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
     public boolean hasEditHandler() {
 
         return m_hasEditHandler;
+    }
+
+    /**
+     * Checks if the element has the name pattern property.
+     *
+     * @return true if the element has the name pattern property
+     */
+    public boolean hasNamePatternProperty() {
+
+        return m_hasNamePatternProperty;
     }
 
     /**
@@ -501,6 +524,11 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
         return m_wasModelGroup;
     }
 
+    public void setAvailabilityInfo(CmsAvailabilityInfo availabilityInfo) {
+
+        m_availabilityInfo = availabilityInfo;
+    }
+
     /**
      * Sets the client id.<p>
      *
@@ -549,6 +577,16 @@ public class CmsContainerElement implements IsSerializable, I_CmsHasIconClasses 
     public void setHasEditHandler(boolean hasEditHandler) {
 
         m_hasEditHandler = hasEditHandler;
+    }
+
+    /**
+     * Sets/clears the 'has name pattern property' status.
+     *
+     * @param hasNamePatternProperty true if the element has the name pattern property
+     */
+    public void setHasNamePatternProperty(boolean hasNamePatternProperty) {
+
+        m_hasNamePatternProperty = hasNamePatternProperty;
     }
 
     /**

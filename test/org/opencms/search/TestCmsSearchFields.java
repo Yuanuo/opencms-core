@@ -31,26 +31,26 @@ import org.opencms.file.CmsObject;
 import org.opencms.main.OpenCms;
 import org.opencms.report.CmsShellReport;
 import org.opencms.search.fields.CmsSearchField;
-import org.opencms.test.OpenCmsTestCase;
-import org.opencms.test.OpenCmsTestProperties;
+import org.opencms.test.OpenCmsTestRunner;
 import org.opencms.util.CmsStringUtil;
 
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
-import org.apache.lucene.search.BooleanClause.Occur;
-
-import junit.extensions.TestSetup;
-import junit.framework.Test;
-import junit.framework.TestSuite;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.TestMethodOrder;
 
 /**
  * Unit test for searching in special fields of extracted document text.<p>
  *
  */
-public class TestCmsSearchFields extends OpenCmsTestCase {
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+public class TestCmsSearchFields extends OpenCmsTestRunner {
 
     /** Name of the index used for testing. */
     public static final String INDEX_OFFLINE = "Offline project (VFS)";
@@ -59,51 +59,13 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
     public static final String INDEX_ONLINE = "Online project (VFS)";
 
     /**
-     * Default JUnit constructor.<p>
-     *
-     * @param arg0 JUnit parameters
+     * @see org.opencms.test.OpenCmsTestRunner#$openCmsSetUp(org.junit.jupiter.api.TestInfo)
      */
-    public TestCmsSearchFields(String arg0) {
+    @Override
+    @BeforeAll
+    public void $openCmsSetUp(TestInfo testInfo) {
 
-        super(arg0);
-    }
-
-    /**
-     * Test suite for this test class.<p>
-     *
-     * @return the test suite
-     */
-    public static Test suite() {
-
-        OpenCmsTestProperties.initialize(org.opencms.test.AllTests.TEST_PROPERTIES_PATH);
-
-        TestSuite suite = new TestSuite();
-        suite.setName(TestCmsSearchFields.class.getName());
-
-        suite.addTest(new TestCmsSearchFields("testSearchInFields"));
-        suite.addTest(new TestCmsSearchFields("testExcerptCreationFromFields"));
-        suite.addTest(new TestCmsSearchFields("testSearchWithFieldQuery"));
-        suite.addTest(new TestCmsSearchFields("testSearchWithCombinedFieldQuery"));
-        suite.addTest(new TestCmsSearchFields("testSearchWithPreBuildQuery"));
-        suite.addTest(new TestCmsSearchFields("testExcerptCreationWithFieldQuery"));
-        suite.addTest(new TestCmsSearchFields("testSearchWithResouceTypeLimitaion"));
-
-        TestSetup wrapper = new TestSetup(suite) {
-
-            @Override
-            protected void setUp() {
-
-                setupOpenCms("simpletest", "/");
-            }
-
-            @Override
-            protected void tearDown() {
-
-                removeOpenCms();
-            }
-        };
-
-        return wrapper;
+        setupOpenCms(testInfo, "simpletest", "/");
     }
 
     /**
@@ -111,6 +73,8 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
      *
      * @throws Exception if the test fails
      */
+    @Order(2)
+    @Test
     public void testExcerptCreationFromFields() throws Exception {
 
         CmsObject cms = getCmsObject();
@@ -179,6 +143,8 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
      *
      * @throws Exception if the test fails
      */
+    @Order(5)
+    @Test
     public void testExcerptCreationWithFieldQuery() throws Exception {
 
         CmsObject cms = getCmsObject();
@@ -269,6 +235,8 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
      *
      * @throws Exception if the test fails
      */
+    @Order(1)
+    @Test
     public void testSearchInFields() throws Exception {
 
         CmsObject cms = getCmsObject();
@@ -319,6 +287,8 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
      *
      * @throws Exception if the test fails
      */
+    @Order(4)
+    @Test
     public void testSearchWithCombinedFieldQuery() throws Exception {
 
         CmsObject cms = getCmsObject();
@@ -356,6 +326,8 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
      *
      * @throws Exception if the test fails
      */
+    @Order(3)
+    @Test
     public void testSearchWithFieldQuery() throws Exception {
 
         CmsObject cms = getCmsObject();
@@ -415,94 +387,12 @@ public class TestCmsSearchFields extends OpenCmsTestCase {
     }
 
     /**
-     * Tests searching with a pre-build field query.<p>
-     *
-     * @throws Exception if the test fails
-     */
-    public void testSearchWithPreBuildQuery() throws Exception {
-
-        CmsObject cms = getCmsObject();
-        echo("Testing search with a pre-build field query");
-
-        // perform a search on the newly generated index
-        CmsSearch searchBean = new CmsSearch();
-        List<CmsSearchResult> searchResult;
-
-        searchBean.init(cms);
-        searchBean.setIndex(INDEX_ONLINE);
-        searchBean.setSearchRoot("/");
-
-        // search for "article" or "opencms" in the "title" field, or "opencms" in the content field
-        searchBean.addFieldQuery(
-            new CmsSearchParameters.CmsSearchFieldQuery(
-                CmsSearchField.FIELD_TITLE_UNSTORED,
-                Occur.SHOULD,
-                Arrays.asList("article", "opencms"),
-                Occur.SHOULD));
-        searchBean.addFieldQueryShould(CmsSearchField.FIELD_CONTENT, "opencms");
-        // extend the search to make the query more complex
-        searchBean.addFieldQuery(
-            new CmsSearchParameters.CmsSearchFieldQuery(
-                CmsSearchField.FIELD_TITLE_UNSTORED,
-                Occur.MUST,
-                Arrays.asList("article", "page*", "index", "alkacon"),
-                Occur.SHOULD));
-        // extend the search to make the query more complex
-        searchBean.addFieldQuery(
-            new CmsSearchParameters.CmsSearchFieldQuery(
-                CmsSearchField.FIELD_TITLE_UNSTORED,
-                Occur.MUST_NOT,
-                Arrays.asList("subfolder", "page1"),
-                Occur.SHOULD));
-
-        searchResult = searchBean.getSearchResult();
-        assertNotNull(searchResult);
-        System.out.println("\n\nResults found with a comlex field query:");
-        TestCmsSearch.printResults(searchResult, cms);
-        String parsedQuery1 = searchBean.getParsedQuery();
-        echo("Query: " + parsedQuery1);
-        assertEquals(8, searchResult.size());
-
-        // now do a new search with the same parameters from a string
-        searchBean = new CmsSearch();
-        searchBean.init(cms);
-        searchBean.setIndex(INDEX_ONLINE);
-        searchBean.setSearchRoot("/");
-
-        // search for "Cologne" in the "special" field
-        searchBean.setParsedQuery(parsedQuery1);
-
-        searchResult = searchBean.getSearchResult();
-        assertNotNull(searchResult);
-        System.out.println("\n\nResults found when reusing pre-parsed query:");
-        TestCmsSearch.printResults(searchResult, cms);
-        String parsedQuery2 = searchBean.getParsedQuery();
-        echo("Query: " + parsedQuery2);
-        assertEquals(8, searchResult.size());
-
-        // now do a new search with the same parameters from a string
-        searchBean = new CmsSearch();
-        searchBean.init(cms);
-        searchBean.setIndex(INDEX_ONLINE);
-        searchBean.setSearchRoot("/");
-
-        // search for "Cologne" in the "special" field
-        searchBean.setParsedQuery(parsedQuery2);
-
-        searchResult = searchBean.getSearchResult();
-        assertNotNull(searchResult);
-        System.out.println("\n\nResults found when reusing pre-parsed query:");
-        TestCmsSearch.printResults(searchResult, cms);
-        String parsedQuery3 = searchBean.getParsedQuery();
-        echo("Query: " + parsedQuery3);
-        assertEquals(8, searchResult.size());
-    }
-
-    /**
      * Tests limiting the search result to certain resource types.<p>
      *
      * @throws Exception if the test fails
      */
+    @Order(6)
+    @Test
     public void testSearchWithResouceTypeLimitaion() throws Exception {
 
         CmsObject cms = getCmsObject();

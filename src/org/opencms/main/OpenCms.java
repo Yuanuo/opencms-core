@@ -58,6 +58,7 @@ import org.opencms.security.CmsRoleManager;
 import org.opencms.security.I_CmsAuthorizationHandler;
 import org.opencms.security.I_CmsCredentialsResolver;
 import org.opencms.security.I_CmsPasswordHandler;
+import org.opencms.security.I_CmsSecretStore;
 import org.opencms.security.I_CmsValidationHandler;
 import org.opencms.security.twofactor.CmsTwoFactorAuthenticationHandler;
 import org.opencms.site.CmsSiteManagerImpl;
@@ -316,7 +317,7 @@ public final class OpenCms {
     }
 
     /**
-     * Creates a string containing all current flex cache keys, for use in debugging.<p<
+     * Creates a string containing all current flex cache keys, for use in debugging.<p>
      *
      * @return a string containing all current flex cache keys
      */
@@ -328,7 +329,7 @@ public final class OpenCms {
     /**
      * Gets the folder size tracker for the Offline or Online project.
      *
-     * @param true if we want the Online folder size tracker, false for the Offline project one
+     * @param online if we want the Online folder size tracker, false for the Offline project one
      * @return the folder size tracker
      */
     public static CmsFolderSizeTracker getFolderSizeTracker(boolean online) {
@@ -547,6 +548,16 @@ public final class OpenCms {
     public static CmsSearchManager getSearchManager() {
 
         return OpenCmsCore.getInstance().getSearchManager();
+    }
+
+    /**
+     * Get the secret store.
+     *
+     * @return the secret store
+     */
+    public static I_CmsSecretStore getSecretStore() {
+
+        return OpenCmsCore.getInstance().getSecretStore();
     }
 
     /**
@@ -844,6 +855,16 @@ public final class OpenCms {
     throws CmsException {
 
         return OpenCmsCore.getInstance().initResource(cms, resourceName, req, res);
+    }
+
+    /**
+     * Registers an action to be executed before shutdown.
+     *
+     * @param action the action to be executed before shutdown
+     */
+    public static void registerShutdownAction(Runnable action) {
+
+        OpenCmsCore.getInstance().registerShutdownAction(action);
     }
 
     /**

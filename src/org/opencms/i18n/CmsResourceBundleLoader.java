@@ -387,7 +387,7 @@ public final class CmsResourceBundleLoader {
                 } catch (IOException ex) {
                     // this will happen if the resource is contained for example in a .jar file
                     is = CmsResourceBundleLoader.class.getClassLoader().getResourceAsStream(resourceName);
-                } catch (Exception ex) {
+                } catch (SecurityException acex) {
                     // fixed bug #1550
                     // this will happen if the resource is contained for example in a .jar file
                     // and security manager is turned on.

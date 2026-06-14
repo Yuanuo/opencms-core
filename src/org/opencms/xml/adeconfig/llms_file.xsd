@@ -1,0 +1,95 @@
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+    <!-- File: seo_file.xsd -->
+
+    <xsd:include schemaLocation="opencms://opencms-xmlcontent.xsd" />
+    <xsd:include schemaLocation="opencms://system/modules/org.opencms.ade.config/schemas/llms_page.xsd" />
+
+    <xsd:element name="LlmsFiles" type="OpenCmsLlmsFiles" />
+
+    <xsd:complexType name="OpenCmsLlmsFiles">
+        <xsd:sequence>
+            <xsd:element name="LlmsFile" type="OpenCmsLlmsFile" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:complexType name="OpenCmsLlmsFile">
+        <xsd:sequence>
+            <xsd:element name="Date" type="OpenCmsDateTime" minOccurs="1" maxOccurs="1" />
+            <xsd:element name="Page" type="OpenCmsLlmsFilePage" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:element name="Result" type="OpenCmsString" minOccurs="1" maxOccurs="1" />
+        </xsd:sequence>
+        <xsd:attribute name="language" type="OpenCmsLocale" use="optional" />
+    </xsd:complexType>
+
+    <xsd:annotation>
+        <xsd:appinfo>
+            <resourcebundles>
+                <xmlbundle name="org.opencms.xml.adeconfig.llms_file.xml">
+                <bundle locale="en">
+                    <resource key="label.LlmsFile.Date">Date</resource>
+                    <resource key="label.LlmsFile.Date.help">The last update date of the summary file.</resource>
+                    <resource key="label.LlmsFile.Page">Page</resource>
+                    <resource key="label.LlmsFile.Page.help">Summary information of one page.</resource>
+                    <resource key="label.LlmsFile.Result">Result</resource>
+                    <resource key="label.LlmsFile.Result.help">The final summary text that is shown in the llms.txt file.</resource>
+                    <resource key="label.LlmsFilePage.URL">URL</resource>
+                    <resource key="label.LlmsFilePage.URL.help">The URL of the page.</resource>
+                    <resource key="label.LlmsFilePage.ID">ID</resource>
+                    <resource key="label.LlmsFilePage.ID.help">The internal ID of the page.</resource>
+                    <resource key="label.LlmsFilePage.Date">Date</resource>
+                    <resource key="label.LlmsFilePage.Date.help">The last modification date of the page.</resource>
+                    <resource key="label.LlmsFilePage.Title">Title</resource>
+                    <resource key="label.LlmsFilePage.Title.help">The page title.</resource>
+                    <resource key="label.LlmsFilePage.Summary">Summary</resource>
+                    <resource key="label.LlmsFilePage.Summary.help">The automatically generated summary of the page.</resource>
+                    <resource key="label.LlmsFilePage.Hide">Hide page</resource>
+                    <resource key="label.LlmsFilePage.Hide.help">If checked, the page is not included in the llms.txt output.</resource>
+                    <resource key="label.LlmsFilePage.OverrideSummary">Override summary</resource>
+                    <resource key="label.LlmsFilePage.URL.help">This optional individual text overrides the automatically generated summary if present.</resource>
+                </bundle>
+                <bundle locale="de">
+                    <resource key="label.LlmsFile.Date">Datum</resource>
+                    <resource key="label.LlmsFile.Date.help">Das Datum der letzten Aktualisierung der Zusammenfassungsdatei.</resource>
+                    <resource key="label.LlmsFile.Page">Seite</resource>
+                    <resource key="label.LlmsFile.Page.help">Zusammenfassungsinformationen einer Seite.</resource>
+                    <resource key="label.LlmsFile.Result">Ergebnis</resource>
+                    <resource key="label.LlmsFile.Result.help">Der endgültige Zusammenfassungstext, der in der llms.txt-Datei angezeigt wird.</resource>
+                    <resource key="label.LlmsFilePage.URL">URL</resource>
+                    <resource key="label.LlmsFilePage.URL.help">Die URL der Seite.</resource>
+                    <resource key="label.LlmsFilePage.ID">ID</resource>
+                    <resource key="label.LlmsFilePage.ID.help">Die interne ID der Seite.</resource>
+                    <resource key="label.LlmsFilePage.Date">Datum</resource>
+                    <resource key="label.LlmsFilePage.Date.help">Das Datum der letzten Änderung der Seite.</resource>
+                    <resource key="label.LlmsFilePage.Title">Titel</resource>
+                    <resource key="label.LlmsFilePage.Title.help">Der Seitentitel.</resource>
+                    <resource key="label.LlmsFilePage.Summary">Zusammenfassung</resource>
+                    <resource key="label.LlmsFilePage.Summary.help">Die automatisch generierte Zusammenfassung der Seite.</resource>
+                    <resource key="label.LlmsFilePage.Hide">Seite verstecken</resource>
+                    <resource key="label.LlmsFilePage.Hide.help">Wenn angekreuzt, wird die Seite nicht in der llms.txt Ausgabe angezeigt.</resource>
+                    <resource key="label.LlmsFilePage.OverrideSummary">EigeneZusammenfassung</resource>
+                    <resource key="label.LlmsFilePage.URL.help">Dieser optionale individuelle Text überschreibt die automatisch generierte Zusammenfassung, falls vorhanden.</resource>
+                </bundle>
+                </xmlbundle>
+            </resourcebundles>
+            <defaults>
+                <default element="Date" value="%(currenttime)" />
+            </defaults>
+            <layouts>
+                <layout element="Result" widget="DisplayWidget" />
+            </layouts>
+            <FieldSettings>
+                <Setting>
+                    <PropertyName>Page/Date</PropertyName>
+                    <Visibility>hidden</Visibility>
+                </Setting>
+                <Setting>
+                    <PropertyName>Result</PropertyName>
+                    <Visibility>hidden</Visibility>
+                </Setting>
+            </FieldSettings>
+        </xsd:appinfo>
+    </xsd:annotation>
+
+</xsd:schema>
+
