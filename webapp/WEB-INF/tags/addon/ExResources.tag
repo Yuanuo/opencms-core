@@ -23,6 +23,8 @@
     description="Extended Resources"%>
 
 <%!
+public static final String ID = "ExResources_tag";
+
 public static void createFolder(CmsObject cms, String folder, String title) {
 
     if (StringUtils.isBlank(title)) {
@@ -106,7 +108,7 @@ public static CmsResource createResource(CmsObject cms, String folder, String fi
     }
 
     CmsResource createdResource = null;
-    String newResname = CmsUploadBean.getNewResourceName(cms, fileName, folder);
+    String newResname = CmsUploadBean.getNewResourceName(cms, fileName, folder, false);
 
     if (!cms.existsResource(newResname, CmsResourceFilter.IGNORE_EXPIRATION)) {
         // if the resource does not exist, create it

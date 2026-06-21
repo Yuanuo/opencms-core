@@ -1098,6 +1098,8 @@ tasks.register('war', Zip) {
         exclude '**/*.properties'
         exclude '**/*.txt'
         exclude '**/*.xml'
+        exclude 'WEB-INF/tags/mercury'
+        exclude 'WEB-INF/test'
     }
 
     // copy SOLR config files separately to avoid the replace filter corrupting them

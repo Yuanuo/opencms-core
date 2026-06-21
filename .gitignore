@@ -30,3 +30,5 @@ Thumbs.db
 /build/
 /module-export.sh
 /.idea
+/webapp/WEB-INF/tags/mercury
+/webapp/WEB-INF/test

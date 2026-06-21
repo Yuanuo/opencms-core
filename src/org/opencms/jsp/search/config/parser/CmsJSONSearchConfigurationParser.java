@@ -754,6 +754,7 @@ public class CmsJSONSearchConfigurationParser implements I_CmsSearchConfiguratio
         } catch (JSONException e) {
             if (LOG.isDebugEnabled()) {
                 LOG.info(Messages.get().getBundle().key(Messages.LOG_ADDITIONAL_PARAMETER_CONFIG_NOT_PARSED_0), e);
+            }
             return null != m_baseConfig ? m_baseConfig.getGeneralConfig().getAdditionalParameters() : new HashMap<>();
         }
         return result;
@@ -773,9 +774,9 @@ public class CmsJSONSearchConfigurationParser implements I_CmsSearchConfiguratio
                 }
                 return null;
             }
-                return m_baseConfig.getGeneralConfig().getSolrCore();
-            }
+            return m_baseConfig.getGeneralConfig().getSolrCore();
         }
+    }
 
     /**
      * Returns the flag, indicating if the characters in the query string that are commands to Solr should be escaped.
