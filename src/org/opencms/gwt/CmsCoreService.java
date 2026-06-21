@@ -1404,6 +1404,23 @@ public class CmsCoreService extends CmsGwtService implements I_CmsCoreService {
                 }
                 return; // Dont adding category to folder
             }
+            // "sio" means "singleton in one folder
+            // when set "sio" to a resource, it should remove all refs at first
+            categories.stream().filter(s -> s.startsWith("sio_") || s.endsWith("_sio")).forEach(cat -> {
+                try {
+                    List<CmsResource> list = catService.readCategoryResources(cms, cat, true, cms.getSitePath(resource));
+                    for (CmsResource res : list) {
+                        if (!res.equals(resource)) {
+                            ensureLock(res);
+                            catService.removeResourceFromCategory(cms, cms.getSitePath(res), cat);
+                            tryUnlock(res);
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.warn("sio fail", e);
+                }
+            });
+
             ensureLock(resource);
             String sitePath = cms.getSitePath(resource);
             List<CmsCategory> previousCategories = catService.readResourceCategories(cms, resource);
