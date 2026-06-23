@@ -759,6 +759,61 @@ public class CmsCategoryService {
     }
 
     /**
+     * @see #removeResourceFromCategory(CmsObject, String, String)
+     */
+    public void removeResourceFromCategory(CmsObject cms, String resourceName, String categoryPath, boolean recursively)
+            throws CmsException {
+
+        CmsResource resource = cms.readResource(resourceName, CmsResourceFilter.IGNORE_EXPIRATION);
+        List<CmsCategory> resCategories = readResourceCategories(cms, resource);
+
+        String siteCatPath = cms.getRequestContext().removeSiteRoot(categoryPath);
+        if (!siteCatPath.endsWith("/")) {
+            siteCatPath += "/";
+        }
+
+        while (true) {
+            // 2. 检查当前层级是否确实存在关联
+            final String catPath = siteCatPath;
+            CmsCategory category = resCategories.stream().filter(c -> c.getPath().equals(catPath)).findFirst().orElse(null);
+            if (category == null) {
+                break;
+            }
+
+            // 3. 【核心保护】检查当前层级下是否还有其他子分类被该资源关联
+            //    排除自身，只看严格子路径
+            boolean hasChildAssignment = resCategories.stream()
+                    .anyMatch(c -> c.getPath().startsWith(catPath) && !c.getPath().equals(catPath));
+
+            if (hasChildAssignment) {
+                // 例如当前是 a/b/，但资源仍关联 a/b/d/ → 保留 a/b/，停止递归
+                break;
+            }
+
+            // 4. 安全移除当前层级关联
+            resCategories.remove(category);
+            removeResourceFromCategory(cms, resourceName, category);
+
+            // 5. 非递归模式只移除目标分类本身
+            if (!recursively) {
+                break;
+            }
+
+            // 6. 向上一级移动: "a/b/c/" → "a/b/" → "a/"
+            String trimmed = catPath.endsWith("/")
+                    ? catPath.substring(0, catPath.length() - 1)
+                    : catPath;
+            int lastSep = trimmed.lastIndexOf('/');
+            if (lastSep > 0) {
+                siteCatPath = trimmed.substring(0, lastSep + 1);
+            } else {
+                // 已到达根级别 "/" 或无法再向上，退出
+                break;
+            }
+        }
+    }
+
+    /**
      * Repairs broken category relations.<p>
      *
      * This could be caused by renaming/moving a category folder,
