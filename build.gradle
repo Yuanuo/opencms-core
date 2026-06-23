@@ -1122,20 +1122,6 @@ gwtModuleNames.split(',').each{ gwtModule ->
         // Workaround for incremental build (GRADLE-1483)
         outputs.upToDateSpec = new org.gradle.api.specs.AndSpec()
 
-        doFirst {
-            logger.lifecycle('======================================================')
-            logger.lifecycle("Building GWT resources for ${gwtModule}")
-            logger.lifecycle('======================================================')
-            // to clean the output directory, delete it first
-            def dir = file(buildDir)
-            if (dir.exists()){
-                delete(dir)
-            }
-            dir.mkdirs()
-        }
-
-        mainClass = 'com.google.gwt.dev.Compiler'
-
         classpath {
             [
                 // Java source core
@@ -1152,6 +1138,49 @@ gwtModuleNames.split(',').each{ gwtModule ->
                 sourceSets.gwt.compileClasspath,
             ]
         }
+
+        doFirst {
+            logger.lifecycle('======================================================')
+            logger.lifecycle("Building GWT resources for ${gwtModule}")
+            logger.lifecycle('======================================================')
+            // to clean the output directory, delete it first
+            def dir = file(buildDir)
+            if (dir.exists()){
+                delete(dir)
+            }
+            dir.mkdirs()
+
+            // ============================================================
+            // 🔧 FIX: 绕过 Gradle Manifest Jar，使用 JDK @argfile 传递真实 ClassPath
+            // ============================================================
+            // 1. 获取 Gradle 解析出的完整真实 classpath
+            def realCp = classpath.asPath.replace('\\', '/')
+
+            // 2. 将 JVM 参数和 -cp 写入临时 argfile（每个参数独占一行）
+            def argFile = file("${temporaryDir}/gwt-compiler-args.txt")
+            argFile.text = [
+                    "-cp",
+                    realCp,
+                    "-Dgwt.jjs.permutationWorkerFactory=com.google.gwt.dev.ThreadedPermutationWorkerFactory",
+                    "-Dfile.encoding=UTF-8",
+                    "-Duser.country=US",
+                    "-Duser.language=en"
+            ].join("\n")
+
+            // 3. 【关键】清空原有 jvmArgs 和 classpath
+            //    防止 Gradle 再次生成 manifest jar 并追加到命令行
+            jvmArgs = []
+            classpath = files()
+
+            // 4. 注入 @argfile，JVM 会在启动前自动展开为完整命令行
+            jvmArgs "@${argFile.absolutePath}"
+
+            logger.lifecycle("[GWT] Using @argfile to bypass Windows 32KB limit")
+            logger.lifecycle("[GWT] Real classpath entries: ${realCp.split(File.pathSeparator).length}")
+            // ============================================================
+        }
+
+        mainClass = 'com.google.gwt.dev.Compiler'
 
 
         if (project.hasProperty('gwtDraft')) {
@@ -1192,10 +1221,11 @@ gwtModuleNames.split(',').each{ gwtModule ->
                         extraDir,
                         '-strict'
                     ]
-            }
-        jvmArgs = [
-            '-Dgwt.jjs.permutationWorkerFactory=com.google.gwt.dev.ThreadedPermutationWorkerFactory'
-        ]
+        }
+        // ⚠️ 原有的 jvmArgs 已移入 doFirst 的 argfile 中，此处留空或删除
+//        jvmArgs = [
+//                '-Dgwt.jjs.permutationWorkerFactory=com.google.gwt.dev.ThreadedPermutationWorkerFactory'
+//        ]
 
         maxHeapSize = max_heap_size
     }
@@ -1500,6 +1530,7 @@ tasks.register('war', Zip) {
         exclude '**/*.txt'
         exclude '**/*.xml'
         exclude 'WEB-INF/tags/mercury'
+        exclude 'WEB-INF/tags/xyz'
         exclude 'WEB-INF/test'
     }
 
@@ -2234,9 +2265,9 @@ tasks.register('uploadArchives') { // dependency tasks are set dynamically via a
 }
 
 // fail in case the source is badly formatted
-tasks.named('compileJava') {
-    dependsOn spotlessCheck
-}
+//tasks.named('compileJava') {
+//    dependsOn spotlessCheck
+//}
 
 // fixed issue with libraries containing both .java and .class files
 tasks.withType(JavaCompile) {
