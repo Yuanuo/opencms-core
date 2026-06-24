@@ -2188,7 +2188,7 @@ publishing {
                                 }
                             }
                             def dependencyNode = deps.appendNode('dependency')
-                            dependencyNode.appendNode('artifactId','opencms-core')
+                            dependencyNode.appendNode('artifactId', "opencms-core${pVariant.get()}")
                             dependencyNode.appendNode('groupId','org.opencms')
                             dependencyNode.appendNode('version',version)
                         }
@@ -2200,7 +2200,7 @@ publishing {
                             }
                             def dependenciesNode = asNode().appendNode('dependencies')
                             def dependencyNode = dependenciesNode.appendNode('dependency')
-                            dependencyNode.appendNode('artifactId','opencms-core')
+                            dependencyNode.appendNode('artifactId', "opencms-core${pVariant.get()}")
                             dependencyNode.appendNode('groupId','org.opencms')
                             dependencyNode.appendNode('version',version)
                         }

@@ -175,6 +175,43 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
     }
 
     /**
+     * Tests that the optional content extraction policy is read from the formatter configuration.<p>
+     *
+     * @throws Exception if something goes wrong
+     */
+    @Test
+    public void testContentExtractionPolicy() throws Exception {
+
+        CmsObject cms = OpenCms.initCmsObject(getCmsObject());
+        try {
+            cms.createResource(
+                "/system/formatter-policy.fc",
+                getTypeId("formatter_config"),
+                createFormatterConfigXml("with-policy", "extract-main").getBytes(StandardCharsets.UTF_8),
+                new ArrayList<CmsProperty>());
+            cms.createResource(
+                "/system/formatter-nopolicy.fc",
+                getTypeId("formatter_config"),
+                createFormatterConfigXml("without-policy", null).getBytes(StandardCharsets.UTF_8),
+                new ArrayList<CmsProperty>());
+            OpenCms.getADEManager().waitForFormatterCache(false);
+            Collection<I_CmsFormatterBean> formatters = OpenCms.getADEManager().getCachedFormatters(
+                false).getFormatters().values();
+
+            assertEquals(
+                "extract-main",
+                findFormatterByName(formatters, "with-policy").getContentExtractionPolicy(),
+                "the configured content extraction policy should be parsed");
+            assertNull(
+                findFormatterByName(formatters, "without-policy").getContentExtractionPolicy(),
+                "the content extraction policy should be null when not configured");
+        } finally {
+            delete("/system/formatter-policy.fc");
+            delete("/system/formatter-nopolicy.fc");
+        }
+    }
+
+    /**
      * Tests default formatter selection.<p>
      *
      * @throws Exception
@@ -213,6 +250,139 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
             formatterConfig.getDefaultFormatter("foo", 350).getNiceName(java.util.Locale.ENGLISH),
             "Formatter with higher ranking should have matched");
 
+    }
+
+    /**
+     * The configuration origin of a setting must be resolved via the formatter's include name, not the
+     * setting's property name: when two referenced shared setting files define the same property name
+     * under different include names, the file matching the formatter's include name is the one that
+     * defines the setting.<p>
+     *
+     * @throws Exception if something goes wrong
+     */
+    @Test
+    public void testFindSettingDefinitionFileByIncludeName() throws Exception {
+
+        CmsObject cms = OpenCms.initCmsObject(getCmsObject());
+        try {
+            createFolder(cms, "/system/include-name-test");
+            createFolder(cms, "/system/include-name-test/.content");
+            String folder = "/system/include-name-test/";
+            CmsResource jsp = createFile(cms, folder + "formatter.jsp", "jsp", "<div></div>");
+
+            // shared file X: defines property 'cssWrapper' under include name 'cssWrapper.other'
+            String sharedXText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<SettingsConfigs xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/settings_config.xsd\">\n"
+                + "  <SettingsConfig language=\"en\">\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[cssWrapper.other]]></IncludeName>\n"
+                + "      <PropertyName><![CDATA[cssWrapper]]></PropertyName>\n"
+                + "      <Default><![CDATA[from-X]]></Default>\n"
+                + "    </Setting>\n"
+                + "  </SettingsConfig>\n"
+                + "</SettingsConfigs>\n";
+            CmsResource sharedX = createFile(cms, folder + "shared-x.xml", "settings_config", sharedXText);
+
+            // shared file Y: defines property 'cssWrapper' under include name 'cssWrapper.default'
+            String sharedYText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<SettingsConfigs xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/settings_config.xsd\">\n"
+                + "  <SettingsConfig language=\"en\">\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[cssWrapper.default]]></IncludeName>\n"
+                + "      <PropertyName><![CDATA[cssWrapper]]></PropertyName>\n"
+                + "      <Default><![CDATA[from-Y]]></Default>\n"
+                + "    </Setting>\n"
+                + "  </SettingsConfig>\n"
+                + "</SettingsConfigs>\n";
+            CmsResource sharedY = createFile(cms, folder + "shared-y.xml", "settings_config", sharedYText);
+
+            // formatter A references X then Y; its listed setting uses include name 'cssWrapper.default' (Y)
+            String formatterConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<NewFormatters xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/new_formatter.xsd\">\n"
+                + "  <NewFormatter language=\"en\">\n"
+                + "    <NiceName><![CDATA[include name test formatter]]></NiceName>\n"
+                + "    <Type><![CDATA[binary]]></Type>\n"
+                + "    <Key><![CDATA[include-name-test-formatter]]></Key>\n"
+                + "    <Jsp>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA["
+                + folder
+                + "formatter.jsp]]></target>\n"
+                + "        <uuid>"
+                + jsp.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </Jsp>\n"
+                + "    <Rank><![CDATA[1000]]></Rank>\n"
+                + "    <Match>\n"
+                + "      <Types>\n"
+                + "        <ContainerType><![CDATA[element]]></ContainerType>\n"
+                + "      </Types>\n"
+                + "    </Match>\n"
+                + "    <AutoEnabled>true</AutoEnabled>\n"
+                + "    <SearchContent>true</SearchContent>\n"
+                + "    <StrictContainers>true</StrictContainers>\n"
+                + "    <IncludeSettings>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA["
+                + folder
+                + "shared-x.xml]]></target>\n"
+                + "        <uuid>"
+                + sharedX.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </IncludeSettings>\n"
+                + "    <IncludeSettings>\n"
+                + "      <link type=\"WEAK\">\n"
+                + "        <target><![CDATA["
+                + folder
+                + "shared-y.xml]]></target>\n"
+                + "        <uuid>"
+                + sharedY.getStructureId()
+                + "</uuid>\n"
+                + "      </link>\n"
+                + "    </IncludeSettings>\n"
+                + "    <Setting>\n"
+                + "      <IncludeName><![CDATA[cssWrapper.default]]></IncludeName>\n"
+                + "      <Widget><![CDATA[string]]></Widget>\n"
+                + "    </Setting>\n"
+                + "  </NewFormatter>\n"
+                + "</NewFormatters>\n";
+            createFile(cms, folder + "formatter.xml", "formatter_config", formatterConfigText);
+
+            String sitemapConfigText = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<SitemapConfigurations xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/sitemap_config.xsd\">\n"
+                + "  <SitemapConfiguration language=\"en\">\n"
+                + "    <UseFormatterKeys>true</UseFormatterKeys>\n"
+                + "  </SitemapConfiguration>\n"
+                + "</SitemapConfigurations>\n";
+            createFile(cms, folder + ".content/.config", "sitemap_config", sitemapConfigText);
+
+            OpenCms.getADEManager().waitForCacheUpdate(false);
+            OpenCms.getADEManager().waitForFormatterCache(false);
+            CmsADEConfigData config = OpenCms.getADEManager().lookupConfiguration(cms, "/system/include-name-test");
+            I_CmsFormatterBean formatter = config.findFormatter("include-name-test-formatter");
+
+            // the render path already resolves the setting via its include name (Y); sanity check
+            CmsXmlContentProperty setting = formatter.getSettings(config).get("cssWrapper");
+            assertNotNull(setting, "the cssWrapper setting should resolve via its include name");
+            assertEquals(
+                "from-Y",
+                setting.getDefault(),
+                "the setting should resolve to the include 'cssWrapper.default' (Y)");
+
+            // origin discovery must report Y (matched by include name), not X (same property name)
+            CmsSettingConfiguration.CmsSettingDefiningFile definingFile = ((CmsFormatterBean)formatter).findSettingDefinitionFile(
+                config,
+                "cssWrapper");
+            assertNotNull(definingFile, "a defining file should be found for cssWrapper");
+            assertEquals(
+                sharedY.getStructureId(),
+                definingFile.getFileId(),
+                "the defining file should be the one matching the formatter's include name (Y), not X");
+        } finally {
+            delete("/system/include-name-test");
+        }
     }
 
     /**
@@ -903,10 +1073,52 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
             false,
             null,
             Collections.emptyMap(),
-            false);
+            false,
+            null);
 
         return result;
 
+    }
+
+    /**
+     * Creates the XML content for a formatter, optionally including a content extraction policy.<p>
+     *
+     * @param name the formatter nice name
+     * @param contentExtractionPolicy the content extraction policy, or null to omit the element
+     * @return the formatter XML
+     * @throws Exception if something goes wrong
+     */
+    private String createFormatterConfigXml(String name, String contentExtractionPolicy) throws Exception {
+
+        CmsObject cms = getCmsObject();
+        CmsResource formatter = cms.readResource("/system/f1.jsp");
+        String policyElement = contentExtractionPolicy == null
+        ? ""
+        : "    <ContentExtractionPolicy><![CDATA[" + contentExtractionPolicy + "]]></ContentExtractionPolicy>\n";
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            + "\n"
+            + "<NewFormatters xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:noNamespaceSchemaLocation=\"opencms://system/modules/org.opencms.ade.config/schemas/formatters/new_formatter.xsd\">\n"
+            + "  <NewFormatter language=\"en\">\n"
+            + "    <NiceName>"
+            + name
+            + "</NiceName>\n"
+            + "    <Type><![CDATA[plain]]></Type>\n"
+            + "    <Jsp>\n"
+            + link(formatter)
+            + "    </Jsp>\n"
+            + "    <Rank>1000</Rank>\n"
+            + "    <Match>\n"
+            + "      <Types>\n"
+            + "        <ContainerType><![CDATA[foo]]></ContainerType>\n"
+            + "      </Types>\n"
+            + "    </Match>\n"
+            + "    <Preview>true</Preview>\n"
+            + "    <SearchContent>true</SearchContent>\n"
+            + "    <AutoEnabled>true</AutoEnabled>\n"
+            + policyElement
+            + "    <Detail>true</Detail>\n"
+            + "  </NewFormatter>\n"
+            + "</NewFormatters>\n";
     }
 
     /**
@@ -1027,7 +1239,8 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
             false,
             null,
             Collections.emptyMap(),
-            false);
+            false,
+            null);
 
         return result;
 
@@ -1099,7 +1312,8 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
             false,
             null,
             Collections.emptyMap(),
-            false);
+            false,
+            null);
 
         return result;
     }
@@ -1166,8 +1380,26 @@ public class TestFormatterConfiguration extends OpenCmsTestRunner {
             false,
             null,
             Collections.emptyMap(),
-            false);
+            false,
+            null);
         return result;
+    }
+
+    /**
+     * Finds a cached formatter by its nice name.<p>
+     *
+     * @param formatters the formatters to search
+     * @param name the nice name to look for
+     * @return the matching formatter, or null if none was found
+     */
+    private I_CmsFormatterBean findFormatterByName(Collection<I_CmsFormatterBean> formatters, String name) {
+
+        for (I_CmsFormatterBean formatter : formatters) {
+            if (name.equals(formatter.getNiceName(Locale.ENGLISH))) {
+                return formatter;
+            }
+        }
+        return null;
     }
 
     /**
